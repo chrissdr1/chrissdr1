@@ -710,7 +710,7 @@ function runNow(){
       "atas dihitung untuk jam itu, bukan untuk sekarang</b>. Jam segini tarifnya memang "+
       "tidak pernah diukur dan tidak ada di model. <b>Kalau Ibu masih di jalan: pulang.</b>"));
   }
-  var jamTempuhPulang = kmProtokol / CALIB.kecepatan * faktorMacet(o.pulang - 0.5, o.zona);
+  var jamTempuhPulang = jamTempuhRumah(L, o.pulang - 0.5, kmProtokol);
   var mulaiPulang = Math.min(o.pulang - Math.max(0.5, jamTempuhPulang + 0.25), (ctx.dow === 0 && !ctx.holi) ? 20.5 : 22);
   nn.push(note("","Protokol pulang","Mulai mengarah pulang pukul <b>"+hhmm(Math.max(o.keluar, mulaiPulang))+"</b> &mdash; "+
     Math.round(kmProtokol)+" km, &plusmn;"+Math.round(jamTempuhPulang*60)+" menit"+

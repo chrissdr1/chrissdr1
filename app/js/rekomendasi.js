@@ -37,14 +37,14 @@ var Rekomendasi = (function(){
       var K = LOKMAP[id]; if (!K) return;
       var diSini = !!(L && L.id === K.id);
       var kmPindah = 0;
+      var jamPindah = 0;
       if (!diSini){
-        if (asal) kmPindah = jarakDatar(asal.lat, asal.lon, K.lat, K.lon) * LIKU;
-        else kmPindah = Math.abs(((L && L.home) || 0) - K.home) + 3;   /* tanpa koordinat: tebakan kasar */
+        if (L && L.id && LOKMAP[L.id] && L.lat != null){ kmPindah = jarakAntar(L, K); jamPindah = jamTempuhAntar(L, K, o.keluar); }
+        else if (asal){ kmPindah = jarakDatar(asal.lat, asal.lon, K.lat, K.lon) * LIKU; jamPindah = kmPindah / CALIB.kecepatan * faktorMacet(o.keluar, K.z); }
+        else { kmPindah = Math.abs(((L && L.home) || 0) - K.home) + 3; jamPindah = kmPindah / CALIB.kecepatan * faktorMacet(o.keluar, K.z); }   /* tanpa koordinat: tebakan kasar */
       }
-      /* Kecepatan kalibrasi sudah kecepatan jam sibuk; di luar jam sibuk 1,6x
-         (Tangerang) / 1,9x (arah Jakarta) lebih cepat. macet > 1 hanya label. */
+      /* macet > 1 hanya label "jam macet" di kartu; waktunya sudah dari koridor terukur. */
       var macet = jamSibuk(o.keluar) ? ((K.z === "jkt" || K.z === "mix") ? 1.9 : 1.6) : 1;
-      var jamPindah = kmPindah / CALIB.kecepatan * faktorMacet(o.keluar, K.z);
       var socPindah = (kmPindah / CALIB.kmkwh) / o.bat * 100;
       var keluar = o.keluar + jamPindah;
       if (o.pulang - keluar < 0.5) return;   /* tidak sempat kerja di sana */

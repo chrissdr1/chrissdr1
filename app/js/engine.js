@@ -185,6 +185,48 @@ function tripLen(namaBlok, zona){
    lebih lancar 1,6x (Tangerang) / 1,9x (arah Jakarta), bukan sebaliknya.
    Dulu 26 km/jam dikalikan 1,6/1,9 LAGI sehingga CBD jadi 129 menit. */
 function jamSibuk(jam){ return (jam >= 6 && jam < 9) || (jam >= 16.5 && jam < 20); }
+/* Waktu tempuh (jam) ke/dari rumah untuk tempat L pada jam tertentu. Tempat
+   inti punya menit terukur (Rute 700K, lancar & jam sibuk); tempat lain
+   memakai km / kecepatan kalibrasi x faktor macet. Kalau kecepatan sudah
+   terkalibrasi dari catatan Ibu, menit terukur ikut diskalakan. */
+function jamTempuhRumah(L, jam, km){
+  var kmPakai = (typeof km === "number") ? km : (L ? L.home : 0);
+  if (L && L.mnt){
+    var m = jamSibuk(jam) ? L.mnt.sibuk : L.mnt.lancar;
+    var skala = KEC_BAWAAN / Math.max(10, CALIB.kecepatan);   /* kalibrasi lambat -> lebih lama */
+    var dasar = m / 60 * skala;
+    /* km yang diminta beda dari km tempat (mis. protokol dari wilayah inti): proporsional */
+    return (typeof km === "number" && L.home > 0) ? dasar * km / L.home : dasar;
+  }
+  var zona = L ? L.z : "tng";
+  return kmPakai / CALIB.kecepatan * faktorMacet(jam, zona);
+}
+/* Jarak jalan antar dua tempat (km): garis lurus x faktor kelokan. Faktor tiap
+   tempat diturunkan dari jarak terukur ke rumah (km terukur / garis lurus),
+   dibatasi 1,3-2,2; pasangan memakai rata-rata geometrisnya. Untuk pasangan
+   yang salah satunya rumah, jarak terukurnya dipakai langsung. */
+function jarakAntar(A, B){
+  if (!A || !B || A.lat == null || B.lat == null) return 0;
+  if (A.id === B.id) return 0;
+  if (A.id === "kota") return B.pergi || B.home;
+  if (B.id === "kota") return A.home;
+  var lurus = jarakLurus(A.lat, A.lon, B.lat, B.lon);
+  function liku(L){ var d = jarakLurus(RUMAH.lat, RUMAH.lon, L.lat, L.lon); return Math.max(1.3, Math.min(2.2, d > 0.5 ? L.home / d : 1.35)); }
+  return lurus * Math.sqrt(liku(A) * liku(B));
+}
+/* Waktu tempuh antar tempat (jam): jarak jalan / kecepatan koridor. Kecepatan
+   koridor tiap tempat = km terukur / menit terukur (lancar atau sibuk); pasangan
+   memakai rata-ratanya, diskalakan kalibrasi. */
+function jamTempuhAntar(A, B, jam){
+  var km = jarakAntar(A, B); if (!km) return 0;
+  function v(L){
+    if (L && L.mnt){ var m = jamSibuk(jam) ? L.mnt.sibuk : L.mnt.lancar; return (L.pergi || L.home) / (m / 60); }
+    return CALIB.kecepatan / faktorMacet(jam, L ? L.z : "tng");
+  }
+  /* dari/ke rumah: koridor tempat itu sendiri yang terukur, bukan rata-rata */
+  var kec = (A.id === "kota" ? v(B) : B.id === "kota" ? v(A) : (v(A) + v(B)) / 2) * (CALIB.kecepatan / KEC_BAWAAN);
+  return km / Math.max(8, kec);
+}
 function faktorMacet(jam, zona){
   if (jamSibuk(jam)) return 1;
   return 1 / ((zona === "jkt" || zona === "mix") ? 1.9 : 1.6);
@@ -447,7 +489,7 @@ function buildSteps(o, r, opts){
   var z = ZONA[o.zona], ctx = o.ctx;
   var noPagi = !!ctx.holi || ctx.dow === 6 || ctx.dow === 0;
   var pos = opts.L, jauh = pos && pos.jauh, diJkt = pos && pos.z === "jkt";
-  var jamPulang = jauh ? Math.max(0.75, pos.home / CALIB.kecepatan * faktorMacet(o.pulang - 0.5, pos.z || o.zona)) : 0;
+  var jamPulang = jauh ? Math.max(0.75, jamTempuhRumah(pos, o.pulang - 0.5)) : 0;
   var mulaiPulang = o.pulang - jamPulang;
   var sudahSampai = false;
   var out = [], cum = opts.cum || 0;
@@ -520,7 +562,7 @@ function buildSteps(o, r, opts){
 
   if (!opts.noHome){
     var kmHome = (typeof opts.kmHome === "number") ? opts.kmHome : r.kmHome;
-    var jamTempuh = kmHome / CALIB.kecepatan * faktorMacet(o.pulang - 0.5, o.zona);
+    var jamTempuh = pos ? jamTempuhRumah(pos, o.pulang - 0.5, kmHome) : kmHome / CALIB.kecepatan * faktorMacet(o.pulang - 0.5, o.zona);
     var mulai = o.pulang - Math.max(0.5, jamTempuh + 0.25);
     /* Batas keras 22:00 (Minggu 20:30): protokol pulang tidak pernah dijadwalkan lewat batas itu. */
     var batas = (ctx.dow === 0 && !ctx.holi) ? 20.5 : 22;
@@ -559,7 +601,7 @@ function blockAt(t, shapeDay){
 function advise(blk, L, o){
   var ctx=o.ctx, noPagi = !!ctx.holi||ctx.dow===6||ctx.dow===0;
   if (L.jauh){
-    var jamPulang = Math.max(0.75, L.home / CALIB.kecepatan * faktorMacet(o.pulang - 0.5, L.z || o.zona));
+    var jamPulang = Math.max(0.75, jamTempuhRumah(L, o.pulang - 0.5));
     var slack = (o.pulang - o.keluar) - jamPulang;
     var mulai = hhmm(o.pulang - jamPulang);
     var dasar = "Jarak pulang dari "+L.n+" <b>"+Math.round(L.home)+" km</b>, sekitar <b>"+

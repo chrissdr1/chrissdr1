@@ -30,16 +30,20 @@ var ZONA = {
   jkt:{peak:1.25, off:0.80, dead:14.1, pulang:18.4, kmx:1.20, need:1, label:"Jakarta dominan"},
   apt:{peak:1.05, off:0.95, dead:18.4, pulang:23.4, kmx:1.18, need:0, label:"Fokus bandara"}
 };
+/* pergi = km dari Modernland ke tempat itu (home = km balik, yang untuk Jakarta
+   dan bandara lebih jauh karena tol/putaran); mnt = menit tempuh lancar dan jam
+   sibuk dari tabel "Koridor kerja" Rute 700K (terukur). Tempat tanpa mnt
+   memakai kecepatan kalibrasi. */
 var LOK = [
   {id:"kota",    n:"Kota Tangerang / Modernland", home:0,    res:18, z:"tng", lat:-6.1973, lon:106.6362},
-  {id:"stasiun", n:"Sekitar Stasiun Tangerang",   home:5.4,  res:18, z:"tng", lat:-6.1768, lon:106.632},
-  {id:"karawaci",n:"Karawaci",                    home:8.2,  res:19, z:"tng", lat:-6.2273, lon:106.6069},
-  {id:"alsut",   n:"Alam Sutera",                 home:9.1,  res:20, z:"tng", lat:-6.2448, lon:106.6531},
-  {id:"serpong", n:"Gading Serpong",              home:9.9,  res:20, z:"tng", lat:-6.2407, lon:106.6286},
-  {id:"bsd",     n:"BSD",                         home:17.1, res:23, z:"tng", lat:-6.3044, lon:106.6442},
-  {id:"bandara", n:"Bandara Soekarno-Hatta",      home:23.4, res:27, z:"apt", lat:-6.1274, lon:106.6522},
-  {id:"jakbar",  n:"Jakarta Barat",               home:18.4, res:24, z:"jkt", lat:-6.189, lon:106.7347},
-  {id:"cbd",     n:"Jakarta CBD",                 home:29.5, res:30, z:"jkt", lat:-6.2129, lon:106.8197},
+  {id:"stasiun", n:"Sekitar Stasiun Tangerang",   home:5.4,  res:18, z:"tng", pergi:5.4, mnt:{lancar:8, sibuk:13}, lat:-6.1768, lon:106.632},
+  {id:"karawaci",n:"Karawaci",                    home:8.2,  res:19, z:"tng", pergi:8.2, mnt:{lancar:10, sibuk:16}, lat:-6.2273, lon:106.6069},
+  {id:"alsut",   n:"Alam Sutera",                 home:9.1,  res:20, z:"tng", pergi:9.1, mnt:{lancar:12, sibuk:19}, lat:-6.2448, lon:106.6531},
+  {id:"serpong", n:"Gading Serpong",              home:9.9,  res:20, z:"tng", pergi:9.9, mnt:{lancar:13, sibuk:21}, lat:-6.2407, lon:106.6286},
+  {id:"bsd",     n:"BSD",                         home:17.1, res:23, z:"tng", pergi:16.7, mnt:{lancar:21, sibuk:34}, lat:-6.3044, lon:106.6442},
+  {id:"bandara", n:"Bandara Soekarno-Hatta",      home:23.4, res:27, z:"apt", pergi:18.4, mnt:{lancar:19, sibuk:30}, lat:-6.1274, lon:106.6522},
+  {id:"jakbar",  n:"Jakarta Barat",               home:18.4, res:24, z:"jkt", pergi:14.1, mnt:{lancar:16, sibuk:30}, lat:-6.189, lon:106.7347},
+  {id:"cbd",     n:"Jakarta CBD",                 home:29.5, res:30, z:"jkt", pergi:26.0, mnt:{lancar:24, sibuk:46}, lat:-6.2129, lon:106.8197},
   /* wilayah luar inti — jarak balik ke Modernland terukur lewat OSRM */
   {id:"ciledug", n:"Ciledug",                      home:11.8, res:21, z:"tng", luar:1, lat:-6.2411, lon:106.7043},
   {id:"bintaro", n:"Bintaro / Pondok Aren",        home:16.1, res:23, z:"tng", luar:1, lat:-6.2742, lon:106.7001},

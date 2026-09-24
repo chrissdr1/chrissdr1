@@ -621,8 +621,17 @@ async function main(){
       const y = h2.daftar.find(z => z.id === "cbd");
       return x ? { macet:x.macet, menit:Math.round(x.jamPindah*60), km:Math.round(x.kmPindah), menitLancar:y ? Math.round(y.jamPindah*60) : null, macetLancar:y && y.macet } : null;
     });
-    ok(rek && rek.macet === 1.9 && Math.abs(rek.menit - rek.km / CALIB_KECEPATAN * 60) <= 3 && rek.macetLancar === 1 && rek.menitLancar < rek.menit * 0.6,
-       "waktu pindah: jam sibuk = km / kecepatan kalibrasi (sudah macet), di luar jam sibuk 1,9x lebih cepat", JSON.stringify(rek));
+    ok(rek && rek.macet === 1.9 && rek.menit === 46 && rek.macetLancar === 1 && rek.menitLancar === 24,
+       "waktu pindah Modernland -> CBD memakai menit terukur: 46 di jam sibuk, 24 di luar jam sibuk", JSON.stringify(rek));
+    /* Waktu tempuh dari tabel Koridor kerja Rute 700K, bukan km/26: CBD 46 mnt sibuk, 24 lancar; antar tempat masuk akal & simetris */
+    const tempuh = await ci.evaluate(() => ({
+      cbdSibuk: Math.round(jamTempuhRumah(LOKMAP.cbd, 18) * 60), cbdLancar: Math.round(jamTempuhRumah(LOKMAP.cbd, 14) * 60),
+      bsdSibuk: Math.round(jamTempuhRumah(LOKMAP.bsd, 17) * 60),
+      kmKarSer: Math.round(jarakAntar(LOKMAP.karawaci, LOKMAP.serpong) * 10) / 10, kmSerKar: Math.round(jarakAntar(LOKMAP.serpong, LOKMAP.karawaci) * 10) / 10,
+      mntKotaCbd: Math.round(jamTempuhAntar(LOKMAP.kota, LOKMAP.cbd, 18) * 60), kmKotaBsd: jarakAntar(LOKMAP.kota, LOKMAP.bsd) }));
+    ok(tempuh.cbdSibuk === 46 && tempuh.cbdLancar === 24 && tempuh.bsdSibuk === 34 && tempuh.mntKotaCbd === 46 && tempuh.kmKotaBsd === 16.7 &&
+       tempuh.kmKarSer === tempuh.kmSerKar && tempuh.kmKarSer > 4 && tempuh.kmKarSer < 9,
+       "waktu tempuh memakai menit terukur Rute 700K; jarak antar tempat simetris dan masuk akal", JSON.stringify(tempuh));
     await ci.close();
   }
 
