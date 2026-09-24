@@ -7,7 +7,7 @@
    (jatah gratis harian ada; anak yang mendaftar) ubin "traffic flow" TomTom
    ditumpangkan langsung di peta ini.
 
-   Ubin peta diambil dari internet saat dilihat; tanpa sinyal, penanda tetap
+   Ubin peta diambil dari internet saat dilihat; tanpa sinyal, penibu tetap
    tampil di atas latar kosong. */
 "use strict";
 

@@ -1,5 +1,5 @@
 /* Rekomendasi rute otomatis: begitu halaman dibuka (dan tiap masukan berubah),
-   sembilan tempat kerja dibandingkan memakai mesin yang sama dengan proyeksi:
+   sembilan tempat kerja dibandingkan memakai perhitungan yang sama dengan perkiraan:
    untuk tiap tempat, sisa hari disimulasikan dari jam tiba di sana, dengan
    wilayah tarifnya (Tangerang / Jakarta / bandara), baterai setelah perjalanan
    pindah, hujan, acara, hari, dan jarak pulangnya. Hasilnya diurutkan.
@@ -37,14 +37,14 @@ var Rekomendasi = (function(){
       var K = LOKMAP[id]; if (!K) return;
       var diSini = !!(L && L.id === K.id);
       var kmPindah = 0;
+      var jamPindah = 0;
       if (!diSini){
-        if (asal) kmPindah = jarakDatar(asal.lat, asal.lon, K.lat, K.lon) * LIKU;
-        else kmPindah = Math.abs(((L && L.home) || 0) - K.home) + 3;   /* tanpa koordinat: tebakan kasar */
+        if (L && L.id && LOKMAP[L.id] && L.lat != null){ kmPindah = jarakAntar(L, K); jamPindah = jamTempuhAntar(L, K, o.keluar); }
+        else if (asal){ kmPindah = jarakDatar(asal.lat, asal.lon, K.lat, K.lon) * LIKU; jamPindah = kmPindah / CALIB.kecepatan * faktorMacet(o.keluar, K.z); }
+        else { kmPindah = Math.abs(((L && L.home) || 0) - K.home) + 3; jamPindah = kmPindah / CALIB.kecepatan * faktorMacet(o.keluar, K.z); }   /* tanpa koordinat: tebakan kasar */
       }
-      /* Kecepatan kalibrasi sudah kecepatan jam sibuk; di luar jam sibuk 1,6x
-         (Tangerang) / 1,9x (arah Jakarta) lebih cepat. macet > 1 hanya label. */
+      /* macet > 1 hanya label "jam macet" di kartu; waktunya sudah dari koridor terukur. */
       var macet = jamSibuk(o.keluar) ? ((K.z === "jkt" || K.z === "mix") ? 1.9 : 1.6) : 1;
-      var jamPindah = kmPindah / CALIB.kecepatan * faktorMacet(o.keluar, K.z);
       var socPindah = (kmPindah / CALIB.kmkwh) / o.bat * 100;
       var keluar = o.keluar + jamPindah;
       if (o.pulang - keluar < 0.5) return;   /* tidak sempat kerja di sana */
@@ -71,12 +71,13 @@ var Rekomendasi = (function(){
   /* Faktor yang ikut menentukan, untuk ditampilkan apa adanya. */
   function faktor(o, soc){
     var ctx = o.ctx, f = [];
-    f.push(ctx.name + (Math.abs(ctx.mult - 1) > 0.005 ? " ×" + ctx.mult.toFixed(2).replace(".", ",") : ""));
+    f.push(ctx.name);
     if (ctx.holi) f.push("tanggal merah");
     if (ctx.eve) f.push("malam sebelum libur");
-    f.push("blok " + blockAt(o.keluar, ctx.shapeDay).n.toLowerCase());
-    if (o.hujan) f.push("hujan +20%");
-    if (ctx.ev) f.push("acara: " + ctx.ev[0]); else if (o.acara) f.push("acara besar +15%");
+    var b = blockAt(o.keluar, ctx.shapeDay).n;
+    f.push("jam " + (typeof labelBlok === "function" ? labelBlok(b) : b).toLowerCase());
+    if (o.hujan) f.push("hujan");
+    if (ctx.ev) f.push("acara " + ctx.ev[0]); else if (o.acara) f.push("acara besar");
     f.push("baterai " + soc + "%");
     if (o.filter === 0) f.push("filter habis");
     f.push("pulang " + hhmm(o.pulang));

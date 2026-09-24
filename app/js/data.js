@@ -20,26 +20,33 @@ var SHAPE = {
   0: {"Subuh":26000,"Peak pagi":28000,"Pagi akhir":30000,"Siang":32000,"Jam mati":28000,
       "Pra-peak":34000,"Peak sore":44000,"Malam":40000,"Larut":26000}
 };
-var DAYMULT = {1:1.03, 2:0.95, 3:0.95, 4:0.98, 5:1.15, 6:1.00, 0:0.97};
+/* Pengali hari: ASUMSI (Rute 700K hanya kualitatif: Jumat terbaik, Selasa/Rabu
+   terlemah, "libur Minggu Rp100 ribu lebih mahal daripada libur Rabu" -> Minggu
+   di atas Rabu). Terkalibrasi dari catatan harian bila cukup hari. */
+var DAYMULT = {1:1.03, 2:0.95, 3:0.95, 4:0.98, 5:1.15, 6:1.02, 0:1.05};
 var DAYNAME = {1:"Senin",2:"Selasa",3:"Rabu",4:"Kamis",5:"Jumat",6:"Sabtu",0:"Minggu"};
 /* dead = km kosong untuk mencapai pangkalan di awal sif.
    pulang = km khas dari titik terakhir hari itu kembali ke Modernland. */
 var ZONA = {
-  tng:{peak:1.00, off:1.00, dead:0,    pulang:9,    kmx:1.00, need:0, label:"Tangerang saja"},
-  mix:{peak:1.20, off:1.00, dead:7,    pulang:11,   kmx:1.12, need:1, label:"Tangerang + Jakarta peak"},
-  jkt:{peak:1.25, off:0.80, dead:14.1, pulang:18.4, kmx:1.20, need:1, label:"Jakarta dominan"},
-  apt:{peak:1.05, off:0.95, dead:18.4, pulang:23.4, kmx:1.18, need:0, label:"Fokus bandara"}
+  tng:{peak:1.00, off:1.00, dead:0,    pulang:9,    kmx:1.00, need:0, label:"Tangerang"},
+  mix:{peak:1.20, off:1.00, dead:7,    pulang:11,   kmx:1.12, need:1, label:"Tangerang, Jakarta saat peak"},
+  jkt:{peak:1.25, off:0.80, dead:14.1, pulang:18.4, kmx:1.20, need:1, label:"Kebanyakan Jakarta"},
+  apt:{peak:1.05, off:0.95, dead:18.4, pulang:23.4, kmx:1.18, need:0, label:"Bandara"}
 };
+/* pergi = km dari Modernland ke tempat itu (home = km balik, yang untuk Jakarta
+   dan bandara lebih jauh karena tol/putaran); mnt = menit tempuh lancar dan jam
+   sibuk dari tabel "Koridor kerja" Rute 700K (terukur). Tempat tanpa mnt
+   memakai kecepatan kalibrasi. */
 var LOK = [
   {id:"kota",    n:"Kota Tangerang / Modernland", home:0,    res:18, z:"tng", lat:-6.1973, lon:106.6362},
-  {id:"stasiun", n:"Sekitar Stasiun Tangerang",   home:5.4,  res:18, z:"tng", lat:-6.1768, lon:106.632},
-  {id:"karawaci",n:"Karawaci",                    home:8.2,  res:19, z:"tng", lat:-6.2273, lon:106.6069},
-  {id:"alsut",   n:"Alam Sutera",                 home:9.1,  res:20, z:"tng", lat:-6.2448, lon:106.6531},
-  {id:"serpong", n:"Gading Serpong",              home:9.9,  res:20, z:"tng", lat:-6.2407, lon:106.6286},
-  {id:"bsd",     n:"BSD",                         home:17.1, res:23, z:"tng", lat:-6.3044, lon:106.6442},
-  {id:"bandara", n:"Bandara Soekarno-Hatta",      home:23.4, res:27, z:"apt", lat:-6.1274, lon:106.6522},
-  {id:"jakbar",  n:"Jakarta Barat",               home:18.4, res:24, z:"jkt", lat:-6.189, lon:106.7347},
-  {id:"cbd",     n:"Jakarta CBD",                 home:29.5, res:30, z:"jkt", lat:-6.2129, lon:106.8197},
+  {id:"stasiun", n:"Sekitar Stasiun Tangerang",   home:5.4,  res:18, z:"tng", pergi:5.4, mnt:{lancar:8, sibuk:13}, lat:-6.1768, lon:106.632},
+  {id:"karawaci",n:"Karawaci",                    home:8.2,  res:19, z:"tng", pergi:8.2, mnt:{lancar:10, sibuk:16}, lat:-6.2273, lon:106.6069},
+  {id:"alsut",   n:"Alam Sutera",                 home:9.1,  res:20, z:"tng", pergi:9.1, mnt:{lancar:12, sibuk:19}, lat:-6.2448, lon:106.6531},
+  {id:"serpong", n:"Gading Serpong",              home:9.9,  res:20, z:"tng", pergi:9.9, mnt:{lancar:13, sibuk:21}, lat:-6.2407, lon:106.6286},
+  {id:"bsd",     n:"BSD",                         home:17.1, res:23, z:"tng", pergi:16.7, mnt:{lancar:21, sibuk:34}, lat:-6.3044, lon:106.6442},
+  {id:"bandara", n:"Bandara Soekarno-Hatta",      home:23.4, res:27, z:"apt", pergi:18.4, mnt:{lancar:19, sibuk:30}, lat:-6.1274, lon:106.6522},
+  {id:"jakbar",  n:"Jakarta Barat",               home:18.4, res:24, z:"jkt", pergi:14.1, mnt:{lancar:16, sibuk:30}, lat:-6.189, lon:106.7347},
+  {id:"cbd",     n:"Jakarta CBD",                 home:29.5, res:30, z:"jkt", pergi:26.0, mnt:{lancar:24, sibuk:46}, lat:-6.2129, lon:106.8197},
   /* wilayah luar inti — jarak balik ke Modernland terukur lewat OSRM */
   {id:"ciledug", n:"Ciledug",                      home:11.8, res:21, z:"tng", luar:1, lat:-6.2411, lon:106.7043},
   {id:"bintaro", n:"Bintaro / Pondok Aren",        home:16.1, res:23, z:"tng", luar:1, lat:-6.2742, lon:106.7001},
@@ -57,6 +64,10 @@ var LOK = [
 ];
 var LOKMAP = {}; LOK.forEach(function(l){ LOKMAP[l.id] = l; });
 var PEAKS = {"Peak pagi":1,"Peak sore":1,"Subuh":1};
+/* Label tampilan blok. Nama di BASE[].n adalah KUNCI data (SHAPE, TRIP_KM,
+   STEP*, PEAKS, BOBOT_TEMPAT) dan tidak boleh diubah; yang tampil ke Ibu
+   lewat labelBlok(n) di engine.js. */
+var LABEL_BLOK = {"Subuh":"Subuh","Peak pagi":"Peak pagi","Pagi akhir":"Lewat peak pagi","Siang":"Siang","Jam mati":"Jam sepi","Pra-peak":"Jelang bubaran","Peak sore":"Peak sore","Malam":"Malam","Larut":"Malam larut"};
 var SESSION_FEE = 25000, PARKIR = 15000, TARIF_KWH = 2470;
 var BASE_RPKM = 2900, BASE_E = 369;
 /* Panjang trip khas per blok (km berbayar per order), ASUMSI dari tabel
@@ -66,6 +77,48 @@ var BASE_RPKM = 2900, BASE_E = 369;
    dasar Rute 700K: 152 km berbayar / 18 trip = 8,4 km. */
 var TRIP_KM = { "Subuh":18, "Peak pagi":12, "Pagi akhir":7, "Siang":6, "Jam mati":6,
                 "Pra-peak":8, "Peak sore":10, "Malam":8, "Larut":10 };
+/* Bobot per TEMPAT per blok jam = Rp/jam di tempat itu dibagi (tarif blok
+   BASE x pengali wilayah ZONA). Tarif blok sudah menggambarkan hasil di
+   POSISI YANG DISARANKAN dokumen untuk blok itu, jadi tempat yang disarankan
+   bernilai ~1,0 dan yang lain di bawahnya; dari Peringkat rute Rute 700K:
+   CBD sore 59.400 = 1,05 x (45.000 x 1,25); kantor BSD/Alsut sore 32.200 =
+   0,75 x 45.000; sirkuit stasiun 30.500 = 0,7 x 45.000 (order padat tapi
+   3-7 km); sirkuit mal siang 23.900 = 1,0 x 24.000. Yang tidak ada angkanya
+   di dokumen adalah asumsi bertanda; 12 tempat luar seluruhnya asumsi.
+   Terkalibrasi perlahan oleh catatan harian (CALIB.bobotTempat, dikalikan).
+   Dipakai simulate() lewat bobotTempat(). Diperiksa dua pembaca dokumen. */
+/* Ruas antar tempat yang TERUKUR di Rute 700K (km jalan; menit lancar bila ada).
+   Kunci "a>b"; ruas tanpa arah balik dipakai dua arah. Yang bertibu ~ di
+   dokumen (Jakbar-CBD, Bandara-CBD) ikut dimuat sebagai perkiraan. */
+var RUAS_TERUKUR = {
+  "alsut>serpong":{km:6.2, mnt:10}, "serpong>bsd":{km:11.4, mnt:14}, "bsd>alsut":{km:9.4},
+  "alsut>jakbar":{km:14.6, mnt:16}, "stasiun>bandara":{km:19.0}, "bandara>stasiun":{km:22.9},
+  "jakbar>cbd":{km:12, mnt:14, kira:true}, "bandara>cbd":{km:25, kira:true}
+};
+var BOBOT_TEMPAT = {
+  kota:      {"Subuh":1, "Peak pagi":1, "Pagi akhir":1, "Siang":0.9, "Jam mati":0.9, "Pra-peak":0.8, "Peak sore":1, "Malam":1, "Larut":1},   /* cluster (Modernland) + Tangcity·Metropol · keyakinan sedang */
+  stasiun:   {"Subuh":0.5, "Peak pagi":0.7, "Pagi akhir":0.7, "Siang":0.6, "Jam mati":0.7, "Pra-peak":0.8, "Peak sore":0.7, "Malam":0.5, "Larut":0.4},   /* stasiun · keyakinan tinggi */
+  karawaci:  {"Subuh":0.8, "Peak pagi":1, "Pagi akhir":1, "Siang":1, "Jam mati":1.1, "Pra-peak":1, "Peak sore":0.75, "Malam":1, "Larut":0.9},   /* campuran (Supermal · Siloam RS · UPH · k · keyakinan sedang */
+  alsut:     {"Subuh":0.8, "Peak pagi":1, "Pagi akhir":1, "Siang":1, "Jam mati":1, "Pra-peak":1, "Peak sore":0.75, "Malam":1.1, "Larut":1},   /* campuran (kantor Prominence·Synergy · Li · keyakinan sedang */
+  serpong:   {"Subuh":0.8, "Peak pagi":0.9, "Pagi akhir":1, "Siang":1, "Jam mati":1, "Pra-peak":1, "Peak sore":0.8, "Malam":1.1, "Larut":1},   /* mal (Summarecon · ruko · Scientia · Beth · keyakinan sedang */
+  bsd:       {"Subuh":0.8, "Peak pagi":0.7, "Pagi akhir":1, "Siang":1, "Jam mati":1, "Pra-peak":1, "Peak sore":0.75, "Malam":1, "Larut":1},   /* kantor (GOP · Digital Hub) + stasiun Raw · keyakinan tinggi */
+  bandara:   {"Subuh":0.9, "Peak pagi":0.9, "Pagi akhir":1, "Siang":1.1, "Jam mati":0.7, "Pra-peak":1, "Peak sore":1.1, "Malam":1.4, "Larut":1},   /* bandara · keyakinan tinggi */
+  jakbar:    {"Subuh":0.8, "Peak pagi":0.75, "Pagi akhir":0.9, "Siang":1, "Jam mati":0.9, "Pra-peak":0.9, "Peak sore":0.75, "Malam":0.9, "Larut":0.8},   /* campuran (kantor Kebon Jeruk·Slipi · mal · keyakinan sedang */
+  cbd:       {"Subuh":0.7, "Peak pagi":1, "Pagi akhir":0.9, "Siang":0.7, "Jam mati":0.7, "Pra-peak":1.1, "Peak sore":1.05, "Malam":0.9, "Larut":0.7},   /* kantor (Sudirman · SCBD · Kuningan · Ras · keyakinan tinggi */
+  ciledug:   {"Subuh":0.8, "Peak pagi":1, "Pagi akhir":0.8, "Siang":0.8, "Jam mati":0.7, "Pra-peak":0.8, "Peak sore":1, "Malam":0.8, "Larut":0.7},   /* luar (perumahan padat, tng) · keyakinan rendah */
+  bintaro:   {"Subuh":0.8, "Peak pagi":1, "Pagi akhir":0.8, "Siang":0.9, "Jam mati":0.7, "Pra-peak":0.9, "Peak sore":1, "Malam":0.9, "Larut":0.7},   /* luar (perumahan + komersial, tng) · keyakinan rendah */
+  cikupa:    {"Subuh":0.7, "Peak pagi":0.9, "Pagi akhir":0.7, "Siang":0.7, "Jam mati":0.6, "Pra-peak":0.7, "Peak sore":0.9, "Malam":0.7, "Larut":0.6},   /* luar (industri, tng barat) · keyakinan rendah */
+  jaksel:    {"Subuh":0.7, "Peak pagi":1, "Pagi akhir":0.8, "Siang":0.8, "Jam mati":0.7, "Pra-peak":1, "Peak sore":1.1, "Malam":0.9, "Larut":0.8},   /* luar (campuran kantor·komersial Blok M,  · keyakinan rendah */
+  jaktim:    {"Subuh":0.7, "Peak pagi":0.9, "Pagi akhir":0.8, "Siang":0.8, "Jam mati":0.7, "Pra-peak":0.9, "Peak sore":0.9, "Malam":0.8, "Larut":0.7},   /* luar (simpul transit Cawang, jkt, jauh) · keyakinan rendah */
+  jakut:     {"Subuh":0.7, "Peak pagi":0.9, "Pagi akhir":0.8, "Siang":0.9, "Jam mati":0.7, "Pra-peak":0.9, "Peak sore":0.9, "Malam":0.9, "Larut":0.7},   /* luar (mal Kelapa Gading, jkt, jauh) · keyakinan rendah */
+  depok:     {"Subuh":0.7, "Peak pagi":0.9, "Pagi akhir":0.8, "Siang":0.8, "Jam mati":0.7, "Pra-peak":0.8, "Peak sore":0.9, "Malam":0.8, "Larut":0.7},   /* luar (perumahan·kampus, jkt, jauh) · keyakinan rendah */
+  bekasi:    {"Subuh":0.7, "Peak pagi":0.9, "Pagi akhir":0.8, "Siang":0.8, "Jam mati":0.7, "Pra-peak":0.8, "Peak sore":0.9, "Malam":0.8, "Larut":0.7},   /* luar (perumahan·industri, jkt, jauh) · keyakinan rendah */
+  cengkareng:{"Subuh":0.8, "Peak pagi":0.9, "Pagi akhir":0.8, "Siang":0.8, "Jam mati":0.8, "Pra-peak":0.9, "Peak sore":0.9, "Malam":0.9, "Larut":0.8},   /* luar (perumahan padat dekat bandara, jkt · keyakinan rendah */
+  cisauk:    {"Subuh":0.7, "Peak pagi":0.9, "Pagi akhir":0.7, "Siang":0.7, "Jam mati":0.6, "Pra-peak":0.7, "Peak sore":0.9, "Malam":0.7, "Larut":0.6},   /* luar (stasiun Cisauk·Intermoda, tng sela · keyakinan rendah */
+  balaraja:  {"Subuh":0.6, "Peak pagi":0.8, "Pagi akhir":0.7, "Siang":0.7, "Jam mati":0.6, "Pra-peak":0.7, "Peak sore":0.8, "Malam":0.7, "Larut":0.6},   /* luar (industri, tng barat jauh) · keyakinan rendah */
+  bogor:     {"Subuh":0.7, "Peak pagi":0.8, "Pagi akhir":0.8, "Siang":0.8, "Jam mati":0.7, "Pra-peak":0.8, "Peak sore":0.8, "Malam":0.8, "Larut":0.7},   /* luar (kota satelit, jkt, jauh) · keyakinan rendah */
+};
+
 var TRIP_ZONA = { tng:1.0, mix:1.15, jkt:1.5, apt:1.8 };
 var BASE_TRIP_KM = 8.4;
 var TARGET_DAY = 515000, TARGET_MONTH = 13400000;
@@ -136,102 +189,130 @@ var HOLI_SAMPAI = "2026-12-25";
 
 /* ---------------- steps ---------------- */
 var STEP = {
-  "Subuh":{b:"Antar penerbangan pertama",s:"Dalam cluster &rarr; Bandara",
-    i:"Nyaris tanpa pesaing, trip panjang, dan mengalir langsung ke peak pagi."},
-  "Peak pagi":{b:"Panen komuter",s:"Dalam cluster &rarr; Jakarta / Bandara",
-    i:"Berdiri di dalam perumahan, bukan di jalan raya di depannya. Terima hampir semua order."},
+  "Subuh":{b:"Antar penerbangan pertama",s:"Dari komplek &rarr; Bandara",
+    i:"Hampir tanpa saingan, order panjang.",
+    k:"Penumpang pesawat pertama dijemput 03:00&ndash;04:30, dan ordernya mengalir langsung ke peak pagi."},
+  "Peak pagi":{b:"Jemput orang berangkat kerja",s:"Dalam komplek &rarr; Jakarta / Bandara",
+    i:"Tunggu di dalam komplek, terima hampir semua order.",
+    k:"Order dari dalam komplek pagi-pagi: jarak jemput hampir nol, tujuannya jauh (Jakarta atau bandara). Di jalan raya depannya Ibu bersaing dengan semua orang."},
   /* Stasiun sengaja DIKELUARKAN dari blok ini. Jadwal resmi KRL: di Stasiun
      Tangerang keretanya 12 per jam sampai 09:00, lalu 8 pada 10:00 dan 6
      dari 11:00 -- tepat separuh, persis di jam yang disarankan langkah ini.
      Menyuruh Ibu menunggu di stasiun saat stasiunnya mengosong. */
-  "Pagi akhir":{b:"Peak habis &mdash; jam termurah",s:"Sirkuit dekat rumah &middot; Tangcity &middot; Siloam Lippo Village &middot; <b>bukan stasiun</b>",
-    i:"Tarif turun tajam. Jangan mengejar order jauh di jam ini &mdash; kerjakan yang dekat saja, dan sarapan. Stasiun sudah mengosong: keretanya tinggal separuh dari jam ramai pagi."},
-  "Siang":{b:"Sirkuit mal, kantor, rumah sakit",s:"Living World &rarr; Summarecon &rarr; AEON &rarr; Karawaci",
-    i:"Rotasi searah. Trip pendek jangan ditolak &mdash; ini yang mengisi poin insentif."},
-  "Jam mati":{b:"Blok terburuk &mdash; istirahat",s:"Pulang sebentar atau top-up",
-    i:"Memaksa cari order di sini membakar baterai untuk hasil terkecil."},
-  "Pra-peak":{b:"Ambil posisi sebelum bubaran",s:"Green Office Park BSD &middot; Digital Hub &middot; Prominence &amp; Synergy Alam Sutera &middot; Lippo Village",
-    i:"Berdiri di drop-off gedungnya, 20&ndash;30 menit sebelum orang keluar. Kalau mau ke Jakarta, berangkat sekarang lewat Tol Kunciran&ndash;Serpong, batas 15:30."},
-  "Peak sore":{b:"Panen bubaran kantor",s:"GOP BSD &middot; Prominence Alam Sutera &middot; Lippo Village &rarr; lalu Stasiun Rawa Buntu &amp; Stasiun Tangerang",
-    i:"Dua gelombang: karyawan pulang 17:00&ndash;19:00, lalu penumpang KRL turun 16:00&ndash;20:00. Tolak order ke Cawang, Kelapa Gading, Bekasi, Depok setelah 18:30."},
+  "Pagi akhir":{b:"Jam murah &mdash; dekat rumah saja",s:"Tangcity &middot; Siloam Lippo Village &middot; <b>bukan stasiun</b>",
+    i:"Jangan kejar order jauh; sarapan dulu, stasiun sudah sepi.",
+    k:"Tarif turun tajam lewat 09:30. Jadwal KRL Stasiun Tangerang: 12 kereta per jam sampai 09:00, lalu 8 pada 10:00 dan 6 dari 11:00 &mdash; tinggal separuh."},
+  "Siang":{b:"Muter mal&ndash;kantor&ndash;RS",s:"Living World &rarr; Summarecon &rarr; AEON &rarr; Karawaci",
+    i:"Order pendek jangan ditolak &mdash; buat insentif.",
+    k:"Putar searah supaya tidak bolak-balik kosong. Order pendek siang hari yang mengisi hitungan order untuk insentif."},
+  "Jam mati":{b:"Jam sepi &mdash; istirahat",s:"Pulang sebentar atau ngecas sebentar",
+    i:"Maksa narik cuma buang baterai.",
+    k:"14:00&ndash;15:15 hasilnya paling kecil sehari. Baterai yang dihabiskan di sini lebih berguna untuk peak sore."},
+  "Pra-peak":{b:"Siap-siap sebelum bubaran",s:"Green Office Park BSD &middot; Digital Hub &middot; Prominence &amp; Synergy Alam Sutera &middot; Lippo Village",
+    i:"Di lobi gedung 20&ndash;30 menit sebelum orang keluar.",
+    k:"Mau ke Jakarta? Berangkat sekarang lewat Tol Kunciran&ndash;Serpong, paling telat 15:30 &mdash; lewat itu jalan keluar kota padat dan sampainya kesorean."},
+  "Peak sore":{b:"Jemput orang pulang kantor",s:"GOP BSD &middot; Prominence Alam Sutera &middot; Lippo Village &rarr; lalu Stasiun Rawa Buntu &amp; Stasiun Tangerang",
+    i:"Setelah 18:30 tolak order ke Cawang, Kelapa Gading, Bekasi, Depok.",
+    k:"Dua gelombang: karyawan pulang 17:00&ndash;19:00, lalu penumpang KRL turun 16:00&ndash;20:00. Order ke timur lewat 18:30 pulangnya 35&ndash;53 km kosong."},
   "Malam":{b:"Mal tutup dan kuliner",s:"Summarecon Serpong &middot; AEON &amp; The Breeze BSD &middot; Supermal Karawaci &middot; Tangcity &rarr; lalu Flavor Bliss &amp; Scientia Square",
-    i:"Ambil posisi di pintu keluar parkir 15 menit sebelum mal tutup pukul 21:00, bukan sesudah antrean terbentuk. Kedatangan bandara 19:00&ndash;22:00 juga searah pulang."},
-  "Larut":{b:"Jam tipis &mdash; mode pulang",s:"Hanya order ke arah barat",
-    i:"Tarif naik tapi order jarang, dan ini merusak peak pagi besok."},
+    i:"Di pintu parkir 15 menit sebelum mal tutup (21:00); bandara 19:00&ndash;22:00 searah pulang.",
+    k:"Datang sebelum antrean mobil terbentuk, bukan sesudahnya. Kedatangan bandara 19:00&ndash;22:00 ordernya panjang dan arahnya sama dengan pulang."},
+  "Larut":{b:"Sudah malam &mdash; pulang",s:"Hanya order ke arah barat",
+    i:"Order jarang, dan besok pagi jadi capek.",
+    k:"Tarifnya naik, tapi ordernya jarang; jam ini memakan peak pagi besok yang jauh lebih besar."},
   "Istirahat":{b:"Istirahat di rumah",s:"Pulang, makan, tidur sebentar",
-    i:"Blok ini sengaja dikosongkan. Jam-jam ini hasilnya paling kecil, dan istirahat di sini membuat peak sore jauh lebih baik."}
+    i:"Jam sepi; istirahat bikin sore lebih kuat.",
+    k:"Jam-jam ini hasilnya paling kecil. Sengaja dikosongkan supaya peak sore dijalani segar."}
 };
 /* Varian teks per wilayah — supaya urutan langkah ikut berubah menurut
    posisi, bukan cuma menurut jam. */
-/* Daftar kata yang boleh Anda pindai di kartu order untuk menilai
+/* Daftar kata yang boleh Ibu pindai di kartu order untuk menilai
    "searah pulang" tanpa membuka peta. */
 var KATA_BARAT = "Kembangan &middot; Puri &middot; Kedoya &middot; Cengkareng &middot; Kalideres &middot; Batuceper &middot; " +
                  "Ciledug &middot; Karawaci &middot; Tangerang &middot; Serpong &middot; BSD &middot; Bintaro";
 
 var STEP_JKT = {
-  "Peak pagi":{b:"Panen koridor Jakarta",s:"Puri Indah &rarr; Kebon Jeruk (Jl. Panjang) &rarr; Slipi (Jl. S. Parman) &rarr; Sudirman",
-    i:"Tarif tertinggi hari ini. Pelat listrik Anda bebas ganjil-genap, jadi Sudirman, Rasuna Said, dan Mega Kuningan terbuka saat pesaing tersaring."},
-  "Pagi akhir":{b:"Peak habis &mdash; pulang berbayar",s:"Filter Tujuan Saya &rarr; Modernland &middot; keluar lewat Tol Jakarta&ndash;Merak",
-    i:"Anda tidak punya SPKLU jangkar di Jakarta. Pakai jatah filter sekarang supaya pulangnya dibayar, lalu isi daya di Supermal Karawaci atau Auto2000 Kunciran."},
-  "Siang":{b:"Jakarta paling sepi siang hari",s:"Tol Jakarta&ndash;Merak arah Merak, atau Jl. Daan Mogot lewat Kalideres",
-    i:"Blok siang di Jakarta lebih buruk daripada di Tangerang. Pulang lewat salah satu koridor itu sambil tetap online &mdash; peluang order naik justru saat mendekati Tangerang."},
+  "Peak pagi":{b:"Narik di Jakarta Barat&ndash;Sudirman",s:"Puri Indah &rarr; Kebon Jeruk (Jl. Panjang) &rarr; Slipi (Jl. S. Parman) &rarr; Sudirman",
+    i:"Tarif tertinggi; mobil listrik bebas ganjil-genap di Sudirman, Rasuna Said, Kuningan.",
+    k:"Saat pesaing berpelat ganjil/genap tersaring, koridor Sudirman, Rasuna Said, dan Mega Kuningan terbuka untuk Ibu."},
+  "Pagi akhir":{b:"Pasang filter, pulang bawa penumpang",s:"Filter tujuan &rarr; Modernland &middot; Tol Jakarta&ndash;Merak",
+    i:"Ngecas nanti di Supermal Karawaci atau Auto2000 Kunciran.",
+    k:"Ibu tidak punya SPKLU langganan di Jakarta, dan tarif Jakarta lewat 09:30 sudah turun. Filter tujuan membuat perjalanan pulang tetap dibayar."},
+  "Siang":{b:"Jakarta sepi &mdash; geser ke barat",s:"Tol Jakarta&ndash;Merak arah Merak, atau Jl. Daan Mogot lewat Kalideres",
+    i:"Jalan pulang sambil online; makin dekat Tangerang makin banyak order.",
+    k:"Siang di Jakarta lebih sepi daripada di Tangerang. Dua koridor itu yang paling sering memberi order searah pulang."},
   "Jam mati":{b:"Jangan menunggu di Jakarta",s:"Keluar tol di Kebon Jeruk atau Kembangan &rarr; Karawaci",
-    i:"Jam tersepi, dan Anda jauh dari jangkar SPKLU. Bergerak pulang sambil online sekalian menyiapkan posisi untuk peak sore."},
-  "Pra-peak":{b:"Ambil posisi di depan gedung kantor",s:"SCBD &middot; Mega Kuningan &middot; Rasuna Said &mdash; atau Puri Indah &middot; Central Park",
-    i:"Berdiri di lobi/drop-off gedung, bukan di jalan raya. Bertahan sampai peak sore lebih untung daripada pulang sekarang &mdash; asal keluarnya nanti berpenumpang."},
-  "Peak sore":{b:"Panen arus keluar kota",s:"SCBD / Kuningan / Slipi &rarr; Tol Jakarta&ndash;Merak arah Tangerang",
-    i:"Blok terbesar. Tolak order ke Cawang, Kelapa Gading, Bekasi, dan Depok setelah 18:30 &mdash; pulangnya 35&ndash;53 km dan kosong."},
-  "Malam":{b:"Hanya order yang memperpendek jarak pulang",s:"Cari tujuan bernama: "+KATA_BARAT,
-    i:"Pindai nama tujuan di kartu order. Kalau tidak mengandung salah satu nama itu, lewati &mdash; kecuali tarifnya besar sekali."}
+    i:"Jam paling sepi, jauh dari SPKLU langganan &mdash; jalan pulang sambil online.",
+    k:"Bergerak pulang sekalian menyiapkan posisi untuk peak sore di Tangerang."},
+  "Pra-peak":{b:"Siap-siap di lobi kantor",s:"SCBD &middot; Mega Kuningan &middot; Rasuna Said &mdash; atau Puri Indah &middot; Central Park",
+    i:"Tahan sampai peak sore lebih untung, asal pulangnya bawa penumpang.",
+    k:"Berdiri di lobi gedung, bukan di jalan raya. Pulang sekarang berarti 18&ndash;30 km kosong; tiga jam lagi order ke arah Tangerang ramai."},
+  "Peak sore":{b:"Antar orang pulang ke Tangerang",s:"SCBD / Kuningan / Slipi &rarr; Tol Jakarta&ndash;Merak arah Tangerang",
+    i:"Setelah 18:30 tolak order ke Cawang, Kelapa Gading, Bekasi, Depok &mdash; pulangnya 35&ndash;53 km kosong.",
+    k:"Jam terbesar hari ini, dan tiap order ke barat membawa Ibu mendekat ke rumah."},
+  "Malam":{b:"Ambil order ke arah rumah saja",s:"Tujuan: "+KATA_BARAT,
+    i:"Kalau tujuannya bukan salah satu itu, lewati &mdash; kecuali tarifnya besar sekali.",
+    k:"Lihat nama tujuan di kartu order sebelum menerima; tidak perlu buka peta."}
 };
 /* Mode campuran: berangkat DARI RUMAH, peak pagi menuju Jakarta,
    lalu sengaja berangkat lagi ke Jakarta sebelum peak sore. */
 var STEP_MIX = {
-  "Peak pagi":{b:"Panen komuter dari rumah ke Jakarta",s:"Dalam cluster Modernland &rarr; Tol Jakarta&ndash;Merak &rarr; Jakarta Barat / CBD",
-    i:"Berdiri di dalam perumahan, bukan di jalan raya. Order pagi dari sini adalah komuter ke Jakarta &mdash; trip panjang dengan jarak jemput hampir nol. Kalau terbawa ke Jakarta, kerjakan lokal sampai 09:00 lalu pulang berbayar."},
+  "Peak pagi":{b:"Jemput orang berangkat ke Jakarta",s:"Dalam komplek Modernland &rarr; Tol Jakarta&ndash;Merak &rarr; Jakarta Barat / CBD",
+    i:"Tunggu di dalam komplek; kalau terbawa ke Jakarta, narik di sana sampai 09:00 lalu pulang pakai filter.",
+    k:"Order pagi dari dalam komplek: jarak jemput hampir nol, tujuannya Jakarta. Setelah 09:00 tarif Jakarta turun; filter tujuan membuat pulangnya tetap dibayar."},
   "Pra-peak":{b:"Berangkat ke Jakarta sekarang",s:"Tol Kunciran&ndash;Serpong &rarr; JORR &rarr; Jakarta Barat / CBD &middot; <b>batas berangkat 15:30</b>",
-    i:"Inilah langkah yang menentukan mode ini. Peak sore di Jakarta lebih tinggi daripada di Tangerang, tapi hanya kalau Ibu tiba sebelum arus keluar kota memadat. Lewat 15:30, batalkan dan kerjakan peak sore di Tangerang saja."},
-  "Peak sore":{b:"Panen arus keluar kota",s:"SCBD &middot; Kuningan &middot; Slipi &rarr; Tol Jakarta&ndash;Merak arah Tangerang",
-    i:"Blok terbesar, dan tiap order membawa Ibu mendekat ke rumah. Tolak order ke Cawang, Kelapa Gading, Bekasi, dan Depok setelah 18:30."}
+    i:"Sore di Jakarta lebih tinggi, asal sampai sebelum 15:30 &mdash; lewat itu, narik sore di Tangerang saja.",
+    k:"Inilah langkah yang menentukan pola ini. Lewat 15:30 jalan keluar kota memadat, tibanya kesorean, dan peak sore Jakarta sudah lewat."},
+  "Peak sore":{b:"Antar orang pulang ke Tangerang",s:"SCBD &middot; Kuningan &middot; Slipi &rarr; Tol Jakarta&ndash;Merak arah Tangerang",
+    i:"Setelah 18:30 tolak order ke Cawang, Kelapa Gading, Bekasi, Depok.",
+    k:"Jam terbesar hari ini, dan tiap order ke barat membawa Ibu mendekat ke rumah. Order ke timur lewat 18:30 pulangnya 35&ndash;53 km kosong."}
 };
 
 var STEP_APT = {
-  "Subuh":{b:"Antar penerbangan pertama",s:"Cluster Modernland &rarr; Terminal 1/2/3 &middot; Tol Sedyatmo",
-    i:"Penerbangan pertama berangkat 05:00&ndash;06:00, penumpangnya dijemput 03:00&ndash;04:30. Hampir tanpa pesaing."},
-  "Peak pagi":{b:"Antar keberangkatan pagi",s:"Cluster &rarr; Bandara &middot; lalu antre kalau &le; 45 menit",
-    i:"Penerbangan 07:00&ndash;09:00. Setelah menurunkan, lihat antrean: di bawah 45 menit tunggu, di atas itu keluar lewat Batu Ceper sambil online &mdash; pulang kosong berarti 23,4 km hangus."},
-  "Pagi akhir":{b:"Antrean mulai memendek",s:"Kolam tunggu bandara &middot; atau keluar ke Batu Ceper / Poris",
-    i:"Keberangkatan pagi sudah lewat. Kalau antrean masih panjang, keluar dan ambil order dari kawasan Batu Ceper atau Poris."},
-  "Siang":{b:"Antrean paling pendek hari ini",s:"Kolam tunggu bandara &middot; waktu terbaik mencoba",
-    i:"Siang adalah saat antrean paling longgar. Kalau mau sekali mencoba menunggu di kolam, sekarang waktunya."},
-  "Jam mati":{b:"Istirahat &mdash; jangan antre sekarang",s:"Keluar ke Batu Ceper &middot; top-up &middot; istirahat",
-    i:"Kedatangan sedang jarang dan antrean tidak bergerak. Pastikan daya cukup untuk gelombang malam plus pulang."},
-  "Pra-peak":{b:"Siapkan posisi untuk gelombang sore",s:"Kolam tunggu bandara &middot; atau Batu Ceper",
-    i:"Kedatangan mulai menumpuk menjelang sore. Masuk kolam sekarang supaya tidak tertinggal antrean."},
-  "Peak sore":{b:"Kedatangan sore",s:"Terminal kedatangan &rarr; Tangerang / Jakarta",
-    i:"Order dari bandara hampir pasti panjang &mdash; tidak ada orang tiba lalu memesan 3 km. Utamakan tujuan ke arah Tangerang."},
-  "Malam":{b:"Gelombang kedatangan malam",s:"Terminal kedatangan 19:00&ndash;22:00 &middot; searah pulang",
-    i:"Gelombang terbesar hari ini, dan rumah hanya 23,4 km dari sini. Ini trip penutup terbaik."}
+  "Subuh":{b:"Antar penerbangan pertama",s:"Komplek Modernland &rarr; Terminal 1/2/3 &middot; Tol Sedyatmo",
+    i:"Penumpang pesawat 05:00&ndash;06:00 dijemput 03:00&ndash;04:30, hampir tanpa saingan."},
+  "Peak pagi":{b:"Antar orang ke bandara",s:"Komplek &rarr; Bandara &middot; antre kalau &le; 45 menit",
+    i:"Antre lebih dari 45 menit? Keluar lewat Batu Ceper sambil online.",
+    k:"Penerbangan 07:00&ndash;09:00. Pulang kosong dari bandara berarti 23 km hangus; keluar lewat Batu Ceper atau Poris sambil online masih bisa dapat order."},
+  "Pagi akhir":{b:"Antrean mulai memendek",s:"Pool bandara &middot; atau Batu Ceper / Poris",
+    i:"Antrean masih panjang? Keluar, ambil order dari Batu Ceper atau Poris.",
+    k:"Keberangkatan pagi sudah lewat, jadi antrean di pool mulai bergerak."},
+  "Siang":{b:"Antrean paling pendek hari ini",s:"Pool bandara",
+    i:"Kalau mau coba antre di pool, sekarang waktunya."},
+  "Jam mati":{b:"Istirahat &mdash; jangan antre sekarang",s:"Batu Ceper &middot; ngecas sebentar &middot; istirahat",
+    i:"Antrean tidak jalan; pastikan baterai cukup untuk malam + pulang.",
+    k:"Kedatangan sedang jarang. Gelombang besar berikutnya sore dan malam."},
+  "Pra-peak":{b:"Masuk pool sebelum sore",s:"Pool bandara &middot; atau Batu Ceper",
+    i:"Kedatangan mulai ramai; masuk sekarang supaya tidak kelamaan antre."},
+  "Peak sore":{b:"Antar orang dari bandara",s:"Terminal kedatangan &rarr; Tangerang / Jakarta",
+    i:"Order dari bandara pasti panjang; pilih yang ke arah Tangerang.",
+    k:"Tidak ada orang tiba di bandara lalu memesan 3 km. Tujuan Tangerang searah pulang."},
+  "Malam":{b:"Kedatangan malam",s:"Terminal kedatangan 19:00&ndash;22:00 &middot; searah pulang",
+    i:"Ramai paling besar hari ini, rumah cuma 23 km &mdash; order penutup terbaik."}
 };
 
 /* Pulang dari luar wilayah itu bertahap dan ADA UJUNGNYA — sasarannya
    berubah tiap tahap, dan setelah sampai, kerja kembali normal. */
 function pulangStep(sisaKm, dariNama){
-  if (sisaKm > 32) return {b:"Pulang tahap 1 &mdash; keluar dari sisi timur",
-    s:"Sasaran: <b>Ulujami</b> atau <b>Pondok Aren</b> lewat JORR arah barat",
-    i:"Dari "+dariNama+" belum ada gunanya menunggu order bagus. Pindai kartu order untuk nama: "+KATA_BARAT+
-      ". Kalau 10 menit kosong, jalan sendiri lewat JORR sambil online &mdash; makin ke barat, makin banyak order yang searah."};
-  if (sisaKm > 14) return {b:"Pulang tahap 2 &mdash; masuk koridor Tangsel",
-    s:"Sasaran: <b>Bintaro</b> &rarr; <b>Pondok Aren</b> &rarr; <b>Serpong</b> &rarr; <b>Alam Sutera</b>",
-    i:"Sudah setengah jalan. Mulai jam ini order pendek yang searah sudah layak diambil &mdash; tidak perlu menunggu yang jauh."};
-  return {b:"Sudah di pinggir wilayah inti",
-    s:"Sasaran: <b>Alam Sutera</b> atau <b>Kota Tangerang</b> &middot; Jl. Raya Serpong",
-    i:"Anda sudah kembali ke wilayah kerja. <b>Mulai blok berikutnya kerja normal lagi</b> &mdash; tidak perlu lagi memilih hanya yang ke arah barat."};
+  if (sisaKm > 32) return {b:"Pulang tahap 1: keluar Jakarta",
+    s:"Ke <b>Ulujami</b> atau <b>Pondok Aren</b> lewat JORR arah barat",
+    i:"Ambil order ke: "+KATA_BARAT+".",
+    k:"Dari "+dariNama+" belum ada gunanya menunggu order bagus. Kosong 10 menit? Jalan sendiri lewat JORR sambil online &mdash; makin ke barat, makin banyak order yang searah."};
+  if (sisaKm > 14) return {b:"Pulang tahap 2: masuk Tangsel",
+    s:"<b>Bintaro</b> &rarr; <b>Pondok Aren</b> &rarr; <b>Serpong</b> &rarr; <b>Alam Sutera</b>",
+    i:"Sudah setengah jalan; order pendek yang searah boleh diambil.",
+    k:"Tidak perlu lagi menunggu order jauh; yang penting tiap order menggeser Ibu ke barat."};
+  return {b:"Sudah dekat rumah",
+    s:"<b>Alam Sutera</b> atau <b>Kota Tangerang</b> &middot; Jl. Raya Serpong",
+    i:"Mulai jam berikutnya narik normal lagi.",
+    k:"Ibu sudah kembali ke daerah biasa; tidak perlu lagi memilih hanya order ke arah barat."};
 }
-var OFFPAGI = {b:"Belum ada arus komuter",s:"Tetap dekat rumah &middot; jangan buang km",
-  i:"Hari ini tidak punya peak pagi. Permintaan baru naik menjelang siang."};
-var EVEPETANG = {b:"Arus keluar kota",s:"Bandara &middot; Batu Ceper &middot; Terminal Poris",
-  i:"Malam sebelum libur: penumpang berkoper, tujuan jauh. Prioritaskan ini di atas sirkuit biasa."};
+var OFFPAGI = {b:"Belum ramai &mdash; santai dulu",s:"Dekat rumah saja, jangan muter",
+  i:"Tidak ada peak pagi; ramai baru menjelang siang.",
+  k:"Hari libur tidak punya arus berangkat kerja. Muter cari order sekarang cuma km kosong; ngecas dulu kalau perlu, serius mulai jam 10."};
+var EVEPETANG = {b:"Kejar orang keluar kota",s:"Bandara &middot; Batu Ceper &middot; Terminal Poris",
+  i:"Besok libur: penumpang berkoper, tujuan jauh.",
+  k:"Malam sebelum tanggal merah salah satu malam terkuat dalam sebulan. Tiga tempat itu lebih ramai daripada muter mal biasa."};
 
 var RUMAH = { lat:-6.1973, lon:106.6362 };
 
@@ -768,19 +849,19 @@ var KRLL = [0.5,0,0,0,0.55,0.5,0,0,0,0,0,0,0,0,0,0.5,0.5,0,0,0,0,0,0.75,0,0,0.75
 ];
 
 var WATAK_ARTI = {
-  h:["Hunian","Ini asal komuter pagi. Berdiri <b>di dalam perumahannya</b>, bukan di jalan besar di depannya &mdash; jarak jemputnya nyaris nol dan tujuannya jauh."],
-  a:["Apartemen","Lobi apartemen ramai 06:00&ndash;08:30 dan lagi 18:00&ndash;21:00. Tunggu di drop-off, bukan di pinggir jalan."],
-  t:["Hotel","Tamu hotel jalan sepanjang hari. Yang paling berharga antar ke bandara <b>subuh 03:30&ndash;05:00</b> &mdash; trip panjang, tanpa pesaing."],
-  i:["Industri","Ramainya ikut <b>pergantian sif</b>, bukan jam kantor: sekitar 07:00, 15:00, dan 23:00. Di luar jam itu sepi sekali."],
-  s:["Pasar","Pasar sudah hidup <b>04:00&ndash;07:00</b>, jauh sebelum blok lain bangun. Trip pendek tapi rapat."],
-  k:["Kantor","Berdiri di drop-off gedungnya 20&ndash;30 menit sebelum bubaran, bukan sesudah antrean terbentuk."],
-  b:["Belanja","Ambil posisi di pintu keluar parkir <b>15 menit sebelum mal tutup</b> pukul 21:00."],
-  r:["Transit","Stasiun dan terminal: dua gelombang, berangkat pagi dan pulang sore. Jarak jemput kecil."]
+  h:["Hunian","Pagi, tunggu <b>di dalam komplek</b> &mdash; jemput dekat, tujuan jauh."],
+  a:["Apartemen","Ramai 06:00&ndash;08:30 dan 18:00&ndash;21:00, tunggu di lobi."],
+  t:["Hotel","Tamu ke bandara <b>subuh 03:30&ndash;05:00</b>, order panjang."],
+  i:["Industri","Ramai saat ganti shift &plusmn;07:00, 15:00, 23:00."],
+  s:["Pasar","Hidup <b>04:00&ndash;07:00</b>, order pendek tapi banyak."],
+  k:["Kantor","Berdiri di lobi 20&ndash;30 menit sebelum bubaran."],
+  b:["Belanja","Di pintu parkir <b>15 menit sebelum mal tutup</b> (21:00)."],
+  r:["Transit","Ramai pagi berangkat dan sore pulang."]
 };
 
 var PRESETS = [
   {n:"8 jam · dua peak",k:5.25,p:20.5,r:"duapeak"},
-  {n:"Split dua peak",k:5.25,p:21.5,r:"full"}, {n:"Pagi saja",k:5.25,p:11,r:"none"},
-  {n:"Sore–malam",k:15,p:23,r:"none"}, {n:"Penuh tanpa jeda",k:5.25,p:21.5,r:"none"},
+  {n:"Split dua peak",k:5.25,p:21.5,r:"duapeak"}, {n:"Pagi + sore, istirahat siang",k:5.25,p:21.5,r:"full"}, {n:"Pagi saja",k:5.25,p:11,r:"none"},
+  {n:"Sore–malam",k:15,p:23,r:"none"}, {n:"Penuh tanpa istirahat",k:5.25,p:21.5,r:"none"},
   {n:"Siang–malam",k:11,p:23,r:"none"}, {n:"Subuh + split",k:3.5,p:21.5,r:"full"}
 ];
