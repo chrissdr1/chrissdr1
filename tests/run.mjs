@@ -61,7 +61,9 @@ function firstDiff(a, b){
   return `...${a.slice(Math.max(0, i - 60), i + 120)}\n       vs ...${b.slice(Math.max(0, i - 60), i + 120)}`;
 }
 
-const NOW_IDS = ["dayflag", "cuaca", "verdict", "plancheck", "batwarn", "n-net", "n-vs", "n-side", "n-steps", "n-notes", "calmode"];
+/* "cuaca" sengaja tidak dibandingkan: teks keadaan "belum terambil" memang diganti
+   sejak prakiraan diambil dari internet. Angka-angkanya tetap dibandingkan lewat n-notes. */
+const NOW_IDS = ["dayflag", "verdict", "plancheck", "batwarn", "n-net", "n-vs", "n-side", "n-steps", "n-notes", "calmode"];
 const PLAN_IDS = ["p-net", "p-vs", "p-side", "p-steps", "p-notes", "cmphead", "cmp"];
 const LOG_IDS = ["calbasis", "caltiles", "calnote", "mnet", "pace", "histcount", "hist", "pv-net", "pv-jam", "pv-kmj", "pv-util", "pv-eff"];
 
@@ -142,11 +144,49 @@ function toolStream(name, input){
     { type:"message_delta", delta:{ stop_reason:"tool_use", stop_sequence:null }, usage:{ output_tokens:9 } },
     { type:"message_stop" }]);
 }
-window.__mode = "tool";
+function json(o, status){ return new Response(JSON.stringify(o), { status:status || 200, headers:{ "content-type":"application/json" } }); }
+/* GitHub Contents API tiruan: satu berkas, sha berganti tiap PUT. */
+window.__gh = { sha:null, content:null, puts:[] };
+function github(u, init){
+  const m = (init && init.method) || "GET";
+  if (/\\/repos\\/[^/]+\\/[^/]+$/.test(u)) return json({ full_name:"x/y", private:true });
+  if (u.includes("/contents/")){
+    if (m === "GET") return window.__gh.content == null ? new Response("nf", { status:404 })
+      : json({ content: btoa(unescape(encodeURIComponent(window.__gh.content))), sha: window.__gh.sha });
+    if (m === "PUT"){
+      const b = JSON.parse(init.body);
+      if (window.__gh.sha && b.sha !== window.__gh.sha) return json({ message:"sha mismatch" }, 409);
+      window.__gh.puts.push(b);
+      window.__gh.content = decodeURIComponent(escape(atob(b.content)));
+      window.__gh.sha = "sha" + window.__gh.puts.length;
+      return json({ content:{ sha: window.__gh.sha } });
+    }
+  }
+  return new Response("?", { status:500 });
+}
+window.__mode = "tool"; window.__paused = false;
 window.fetch = async function(url, init){
   const u = String(url);
-  const body = init && init.body ? JSON.parse(init.body) : null;
-  window.__calls.push({ url:u, headers:Object.fromEntries(new Headers(init && init.headers || {}).entries()), body });
+  const body = init && init.body && String(init.body)[0] === "{" ? JSON.parse(init.body) : null;
+  window.__calls.push({ url:u, method:(init && init.method) || "GET", headers:Object.fromEntries(new Headers(init && init.headers || {}).entries()), body });
+  if (u.includes("api.github.com")) return github(u, init);
+  if (window.__mode === "acara") return textStream("Ini hasilnya:\\n" + JSON.stringify({ acara:[
+    { tanggal:"2099-01-05", nama:"Konser Uji", tempat:"ICE BSD", zona:"lokal" },
+    { tanggal:"2099-01-06", nama:"Expo Uji", tempat:"JIExpo Kemayoran", zona:"jkt" },
+    { tanggal:"2000-01-01", nama:"Sudah lewat", tempat:"", zona:"jkt" },
+    { tanggal:"bukan-tanggal", nama:"Rusak", tempat:"", zona:"jkt" } ] }));
+  if (window.__mode === "pause"){
+    if (!window.__paused){
+      window.__paused = true;
+      return sse([msgStart(),
+        { type:"content_block_start", index:0, content_block:{ type:"server_tool_use", id:"srvtoolu_1", name:"web_search", input:{} } },
+        { type:"content_block_delta", index:0, delta:{ type:"input_json_delta", partial_json:"{\\"query\\":\\"macet\\"}" } },
+        { type:"content_block_stop", index:0 },
+        { type:"message_delta", delta:{ stop_reason:"pause_turn", stop_sequence:null }, usage:{ output_tokens:3 } },
+        { type:"message_stop" }]);
+    }
+    return textStream("Lanjut setelah jeda.");
+  }
   if (u.includes("/v1/models")) return new Response(JSON.stringify({ data:[{ id:"claude-opus-5", type:"model" }], has_more:false }), { status:200, headers:{ "content-type":"application/json" } });
   if (window.__mode === "429") return new Response(JSON.stringify({ type:"error", error:{ type:"rate_limit_error", message:"slow down" } }), { status:429, headers:{ "content-type":"application/json" } });
   if (window.__mode === "401") return new Response(JSON.stringify({ type:"error", error:{ type:"authentication_error", message:"bad key" } }), { status:401, headers:{ "content-type":"application/json" } });
@@ -162,6 +202,9 @@ async function main(){
   const { srv, url } = await serve(APP);
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ locale:"id-ID", timezoneId:"Asia/Jakarta", serviceWorkers:"allow" });
+  /* Internet luar dimatikan supaya hasilnya pasti: cuaca jatuh ke cadangan, ubin peta kosong. */
+  await ctx.route("**/api.open-meteo.com/**", r => r.abort());
+  await ctx.route("**/tile.openstreetmap.org/**", r => r.abort());
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", e => errors.push("pageerror: " + e.message));
@@ -171,7 +214,8 @@ async function main(){
   await page.goto(url + "index.html", { waitUntil:"load" });
   await page.waitForFunction(() => document.querySelector("#n-steps .step"));
   /* Font Google diambil lewat internet; di sandbox tanpa CA proxy Chromium menolak sertifikatnya. Bukan galat aplikasi. */
-  const fontErr = e => /fonts\.g(oogleapis|static)\.com|ERR_CERT_AUTHORITY_INVALID|ERR_INTERNET_DISCONNECTED|ERR_NAME_NOT_RESOLVED/.test(e);
+  /* ERR_FAILED / ERR_BLOCKED_BY_CLIENT: permintaan ke Open-Meteo dan ubin peta yang sengaja diputus lewat route() di atas. */
+  const fontErr = e => /fonts\.g(oogleapis|static)\.com|ERR_CERT_AUTHORITY_INVALID|ERR_INTERNET_DISCONNECTED|ERR_NAME_NOT_RESOLVED|ERR_FAILED|ERR_BLOCKED_BY_CLIENT/.test(e);
   ok(errors.filter(e => !fontErr(e)).length === 0, "tanpa galat konsol", errors.join("\n"));
   const tabs = await page.$$eval(".tabs .tab", t => t.map(x => x.textContent.trim()));
   ok(tabs.join(",") === "Sekarang,Catatan,Rencana,Tanya", "empat tab", tabs);
@@ -195,7 +239,7 @@ async function main(){
   console.log("3. versi, manifest, service worker");
   const terbit = /TERBIT = "([^"]+)"/.exec(fs.readFileSync(path.join(APP, "js/data.js"), "utf8"))[1];
   const swv = /VERSION = "([^"]+)"/.exec(fs.readFileSync(path.join(APP, "sw.js"), "utf8"))[1];
-  ok(terbit === swv, `TERBIT (${terbit}) == sw VERSION (${swv})`);
+  ok(swv.startsWith(terbit), `sw VERSION (${swv}) diawali TERBIT (${terbit})`);
   const man = JSON.parse(fs.readFileSync(path.join(APP, "manifest.webmanifest"), "utf8"));
   ok(man.icons.every(i => fs.existsSync(path.join(APP, i.src))), "semua ikon manifest ada");
   const swAssets = /ASSETS = \[([\s\S]*?)\];/.exec(fs.readFileSync(path.join(APP, "sw.js"), "utf8"))[1].match(/"[^"]+"/g).map(s => s.slice(1, -1));
@@ -263,8 +307,106 @@ async function main(){
   const bubble = await page.$$eval("#chatlog .bubble.ai", b => b.map(x => x.textContent).pop());
   ok(/belum tersambung/i.test(bubble || ""), "jawaban menunjuk ke panel kunci", bubble);
 
+  console.log("6. peta");
+  await page.click("#t-now");
+  await page.evaluate(() => document.getElementById("peta-toggle").click());
+  await page.waitForFunction(() => document.querySelectorAll("#peta .pin").length > 0);
+  const peta = await page.evaluate(() => ({
+    pins: document.querySelectorAll("#peta .pin").length,
+    spklu: document.querySelectorAll("#peta path.leaflet-interactive").length,
+    leaflet: !!document.querySelector("#peta.leaflet-container"),
+    href: document.getElementById("peta-macet").getAttribute("href"),
+    status: document.getElementById("peta-status").textContent,
+    toggle: document.getElementById("peta-toggle").textContent,
+  }));
+  ok(peta.leaflet && peta.pins === 22, "peta Leaflet dengan rumah + 21 titik terukur", JSON.stringify(peta));
+  ok(peta.spklu === 19, "19 SPKLU digambar", peta.spklu);
+  ok(/google\.com\/maps\/@-6\.\d+,106\.\d+,14z\/data=!5m1!1e1/.test(peta.href), "tautan Google Maps berlapis kemacetan", peta.href);
+  await setField(page, "n-lok", "bsd");
+  const hrefBsd = await page.$eval("#peta-macet", a => a.getAttribute("href"));
+  ok(hrefBsd.includes("-6.30440,106.64420"), "tautan kemacetan ikut posisi terpilih", hrefBsd);
+  await page.evaluate(() => { POSISI_GPS = { lat:-6.25, lon:106.70, akurasi:40, at:Date.now() }; petaPosisi(); });
+  const hrefGps = await page.$eval("#peta-macet", a => a.getAttribute("href"));
+  ok(hrefGps.includes("-6.25000,106.70000"), "posisi GPS mengalahkan posisi terpilih", hrefGps);
+  await page.evaluate(() => document.getElementById("peta-toggle").click());
+  ok(await page.$eval("#peta", e => e.hidden), "peta bisa disembunyikan");
+
+  console.log("7. cuaca dari Open-Meteo (tiruan)");
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone:"Asia/Jakarta" });
+  const fixture = { hourly: {
+    time: Array.from({ length:24 }, (_, i) => `${today}T${String(i).padStart(2, "0")}:00`),
+    precipitation_probability: Array.from({ length:24 }, (_, i) => (i >= 13 && i <= 16) ? 70 : 10),
+    precipitation: Array.from({ length:24 }, (_, i) => (i >= 13 && i <= 16) ? 1.2 : 0) } };
+  await page.route("**/api.open-meteo.com/**", r => r.fulfill({ status:200, contentType:"application/json", body:JSON.stringify(fixture) }));
+  await page.evaluate(() => localStorage.removeItem("cuaca-openmeteo"));
+  await page.reload({ waitUntil:"load" });
+  await page.waitForFunction(() => /Open-Meteo/.test(document.getElementById("cuaca").textContent), null, { timeout:15000 });
+  const cu = await page.evaluate(() => ({ teks: document.getElementById("cuaca").textContent.replace(/\s+/g, " "),
+    hujan: document.getElementById("n-hujan").checked, cache: JSON.parse(localStorage.getItem("cuaca-openmeteo")),
+    notes: document.getElementById("n-notes").textContent }));
+  ok(/Diperkirakan hujan sekitar 13:00-17:00/.test(cu.teks) && /70%/.test(cu.teks), "kotak cuaca dari internet: jam dan peluang", cu.teks);
+  ok(cu.hujan === true && /Hujan sudah dihitung/.test(cu.notes) && /Open-Meteo/.test(cu.notes), "centang hujan terisi dan masuk hitungan", cu.notes.slice(0, 300));
+  ok(cu.cache && cu.cache.tanggal === today && cu.cache.jamHujan.join(",") === "13,14,15,16", "prakiraan disimpan 3 jam di HP", JSON.stringify(cu.cache));
+  await page.unroute("**/api.open-meteo.com/**");
+  await page.evaluate(() => localStorage.removeItem("cuaca-openmeteo"));
+
+  console.log("8. kalender acara dari web, pause_turn, sinkron GitHub (tiruan)");
+  await page.reload({ waitUntil:"load" });
+  await page.waitForFunction(() => document.querySelector("#n-steps .step"));
+  await page.evaluate(FAKE_FETCH);
+  const w = await page.evaluate(async () => {
+    const out = {};
+    AI.setKey("sk-ant-test");
+    const s = await AI.connect();
+    window.__mode = "acara";
+    out.r = await Acara.segarkan(s);
+    const call = window.__calls[window.__calls.length - 1].body;
+    out.model = call.model; out.toolTypes = (call.tools || []).map(t => t.type);
+    out.ev = EVENTS["2099-01-05"]; out.lama = !!EVENTS["2000-01-01"]; out.rusak = !!EVENTS["bukan-tanggal"];
+    out.tersimpan = JSON.parse(localStorage.getItem("acara-web")).daftar.length;
+    renderAcara(); renderSegar();
+    out.daftar = Acara.mendatang(80).map(x => x.nama + "|" + x.sumber).join(";");
+    out.daftarUI = document.querySelectorAll("#acara-daftar .acara-row").length;
+    out.segar = document.getElementById("segar").textContent;
+    /* pause_turn: alat server berhenti sejenak, adapter melanjutkan sendiri */
+    window.__mode = "pause"; window.__paused = false;
+    out.pause = (await s("ada macet?", { modelTier:"complex", tools:[{ type:"web_search_20260209", name:"web_search", max_uses:1 }] })).text;
+    const c2 = window.__calls[window.__calls.length - 1].body;
+    out.pauseEcho = c2.messages.length === 2 && c2.messages[1].role === "assistant" && c2.messages[1].content[0].type === "server_tool_use";
+    /* Tanya memakai web_search hanya di jalur API */
+    out.alatTanya = (function(){ var a = alatTanya(); return a.map(t => t.name); })();
+    /* sinkron GitHub */
+    Sinkron.setCfg({ repo:"x/y", path:"catatan/shanti.json", token:"tok-uji" });
+    out.uji = await Sinkron.uji();
+    const r1 = await Sinkron.sinkron([{ id:"2026-09-22", dpt:100, diubah:"2026-09-22T10:00:00Z" }], null);
+    out.r1 = { status:r1.status, n:r1.rows.length, puts:window.__gh.puts.length };
+    const remote = JSON.parse(window.__gh.content); remote.harian.push({ id:"2026-09-21", dpt:5 });
+    remote.harian[0].dpt = 999; remote.harian[0].diubah = "2026-09-21T00:00:00Z";  /* remote lebih lama */
+    window.__gh.content = JSON.stringify(remote); window.__gh.sha = "shaLain";
+    const r2 = await Sinkron.sinkron([{ id:"2026-09-22", dpt:200, diubah:"2026-09-23T10:00:00Z" }], { date:"2026-09-24" });
+    out.r2 = { status:r2.status, n:r2.rows.length, dpt:r2.rows.find(x => x.id === "2026-09-22").dpt, puts:window.__gh.puts.length,
+               rencana:JSON.parse(window.__gh.content).rencana.date };
+    const r3 = await Sinkron.sinkron(r2.rows, { date:"2026-09-24" });
+    out.r3 = { status:r3.status, puts:window.__gh.puts.length };
+    out.auth = window.__calls.find(c => c.url.includes("api.github.com")).headers.authorization;
+    tandaiSinkron(); out.stat = document.getElementById("sk-stat").textContent;
+    Sinkron.setCfg(null); AI.setKey("");
+    return out;
+  });
+  ok(w.r.total === 2 && w.r.jumlah === 2, "acara dari web: 2 sah dari 4 (lewat dan rusak dibuang)", JSON.stringify(w.r));
+  ok(w.model === "claude-opus-5" && w.toolTypes.join() === "web_search_20260209", "pencarian web dikirim sebagai alat server", JSON.stringify({ m:w.model, t:w.toolTypes }));
+  ok(w.ev && w.ev[0] === "Konser Uji" && w.ev[2] === "lokal" && w.ev[3] === "web" && !w.lama && !w.rusak, "masuk EVENTS dengan tanda sumber", JSON.stringify(w.ev));
+  ok(w.tersimpan === 2 && /Konser Uji\|web/.test(w.daftar) && w.daftarUI === 12, "tersimpan di HP, masuk daftar mendatang, 12 baris tampil", w.daftar.slice(0, 200) + " | " + w.daftarUI);
+  ok(/2 acara dari pencarian web/.test(w.segar), "kotak versi menyebut acara dari web", w.segar);
+  ok(w.pause === "Lanjut setelah jeda." && w.pauseEcho === true, "pause_turn dilanjutkan dengan mengembalikan blok assistant", JSON.stringify({ p:w.pause, e:w.pauseEcho }));
+  ok(w.uji && w.uji.privat === true, "uji token GitHub membaca repo privat", JSON.stringify(w.uji));
+  ok(w.r1.status === "tersinkron" && w.r1.n === 1 && w.r1.puts === 1, "sinkron pertama menulis berkas baru", JSON.stringify(w.r1));
+  ok(w.r2.status === "tersinkron" && w.r2.n === 2 && w.r2.dpt === 200 && w.r2.puts === 2 && w.r2.rencana === "2026-09-24", "gabung: baris remote masuk, yang lebih baru menang, rencana ikut", JSON.stringify(w.r2));
+  ok(w.r3.status === "tersinkron" && w.r3.puts === 2, "tanpa perubahan tidak menulis ulang", JSON.stringify(w.r3));
+  ok(w.auth === "Bearer tok-uji" && /Aktif · x\/y/.test(w.stat), "token dikirim sebagai Bearer, status panel", `${w.auth} | ${w.stat}`);
+
   if (process.env.ORIG_HTML){
-    console.log("6. uji emas terhadap artifact asli");
+    console.log("9. uji emas terhadap artifact asli");
     const orig = await ctx.newPage();
     await orig.goto("file://" + path.resolve(process.env.ORIG_HTML), { waitUntil:"load" });
     await orig.waitForFunction(() => document.querySelector("#n-steps .step"));

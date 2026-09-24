@@ -55,8 +55,11 @@ var AI = (function(){
     if (typeof input === "string") return [{ role:"user", content:input }];
     return (input || []).map(function(m){ return { role:m.role, content:m.content }; });
   }
+  /* Alat halaman (punya execute) diubah ke bentuk API; alat server seperti
+     web_search_20260209 (punya type, tanpa execute) diteruskan apa adanya. */
   function toolsParam(tools){
     return tools.map(function(t){
+      if (t.type && !t.execute) return t;
       return { name:t.name, description:t.description, input_schema:t.inputSchema };
     });
   }
@@ -81,7 +84,7 @@ var AI = (function(){
     var tier = MODEL[opts.modelTier] ? opts.modelTier : "default";
     var tools = opts.tools || [];
     var messages = normTurns(input);
-    var params = { model:MODEL[tier], max_tokens:4096, messages:messages };
+    var params = { model:MODEL[tier], max_tokens:8192, messages:messages };
     if (EFFORT[tier]) params.output_config = { effort:EFFORT[tier] };
     if (tools.length) params.tools = toolsParam(tools);
     var teks = "";
@@ -94,6 +97,12 @@ var AI = (function(){
         if (msg.stop_reason === "refusal"){
           if (!teks) throw { code:"refusal" };
           return { text:teks.trim() };
+        }
+        /* Alat server (pencarian web) bisa berhenti sejenak di tengah giliran:
+           kembalikan isi assistant apa adanya dan lanjutkan. */
+        if (msg.stop_reason === "pause_turn" && n < MAX_PUTARAN_ALAT){
+          messages.push({ role:"assistant", content:msg.content });
+          return putaran(n + 1);
         }
         var uses = msg.content.filter(function(b){ return b.type === "tool_use"; });
         /* Input alat yang terpotong di max_tokens bisa saja lolos parse -- jangan dijalankan. */
@@ -112,7 +121,7 @@ var AI = (function(){
      terakhir yang diambil. */
   function runJson(prompt, opts){
     opts = opts || {};
-    return run(prompt, { modelTier:opts.modelTier || "quick" }).then(function(res){
+    return run(prompt, { modelTier:opts.modelTier || "quick", tools:opts.tools }).then(function(res){
       var t = String(res.text || "").replace(/```(?:json)?/g, "").trim();
       var a = t.indexOf("{"), b = t.lastIndexOf("}");
       if (a < 0 || b <= a) throw { code:"bad_json", detail:t.slice(0, 120) };
