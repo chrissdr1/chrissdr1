@@ -536,11 +536,11 @@ async function main(){
     /* Jeda panjang boleh sampai 100% (colok di rumah), jeda pendek tetap 90% */
     const seratus = await fresh.evaluate(() => {
       const ctx = dayCtx("2026-09-24");
-      const a = simulate({ ctx, keluar:9.5, pulang:21.5, rehat:"full", zona:"mix", filter:2, bat:30.08, rumah:false, hujan:false, acara:false });
+      const a = simulate({ ctx, keluar:9.5, pulang:21.5, rehat:"full", zona:"mix", filter:2, bat:30.08, rumah:true, hujan:false, acara:false });
       const b = simulate({ ctx, keluar:5.25, pulang:21.5, rehat:[12, 13], zona:"mix", filter:2, bat:38.88, rumah:false, hujan:false, acara:false });
       return { a:a.sesi.map(x => [x.blok, Math.round(x.ke*100)]), b:b.sesi.map(x => [x.blok, Math.round(x.ke*100)]) };
     });
-    ok(seratus.a.some(x => x[0] === "Istirahat" && x[1] > 90) && seratus.b.every(x => x[1] <= 90), "jeda 4,5 jam boleh isi > 90%, jeda 1 jam maksimum 90%", JSON.stringify(seratus));
+    ok(seratus.a.some(x => x[0] === "Istirahat" && x[1] > 90) && seratus.b.every(x => x[1] <= 90), "jeda 4,5 jam dengan charger rumah boleh isi > 90% (AC), jeda 1 jam maksimum 90%", JSON.stringify(seratus));
 
     /* Jam nyata: kolom jam mengikuti jam sampai ke menit, bukan pembulatan 15 menit */
     const jam = await fresh.evaluate(() => {
@@ -581,7 +581,9 @@ async function main(){
     ok(sesudah.jangkar && sesudah.jangkar.soc === 72 && /perkiraan mesin/.test(sesudah.src) && /Perkiraan mesin/.test(sesudah.est), "jangkar baterai 72% dan keterangan perkiraan", JSON.stringify({ j:sesudah.jangkar, src:sesudah.src, est:sesudah.est }));
     const est2 = await ci.evaluate(() => { const j = Baterai.terakhir(); return Baterai.perkiraan(j.jam + 2, { bat:30.08, zona:"tng", rehat:"none" }); });
     ok(est2 && est2.soc < 72 && est2.soc > 40 && !est2.gps, "dua jam kemudian perkiraan turun menurut model blok jam", JSON.stringify(est2));
-    const est3 = await ci.evaluate(() => { const j = Baterai.terakhir(); Baterai.catatFix(-6.18, 106.62, 1); Baterai.catatFix(-6.18, 106.70, 2); Baterai.catatFix(-6.25, 106.70, 3);
+    /* titik GPS 10 menit terpisah, akurasi 20 m (laju masuk akal; goyangan < 1,5x akurasi diabaikan) */
+    const est3 = await ci.evaluate(() => { const j = Baterai.terakhir(); const t0 = Date.now(); Baterai.catatFix(-6.18, 106.62, t0, 20); Baterai.catatFix(-6.18, 106.70, t0 + 600000, 20); Baterai.catatFix(-6.25, 106.70, t0 + 1200000, 20);
+      Baterai.catatFix(-6.2503, 106.70, t0 + 1300000, 300);   /* fix kasar 300 m: diabaikan */
       return { km:Baterai.muat().gpsKm, p:Baterai.perkiraan(j.jam + 0.5, { bat:30.08, zona:"tng", rehat:"none" }) }; });
     ok(est3.km > 15 && est3.p.gps && est3.p.soc < 72, "odometer GPS menjumlahkan jarak antar titik dan dipakai perkiraan", JSON.stringify(est3));
     await setField(ci, "cas-ke", 85); await ci.click("#cas-selesai");
@@ -610,13 +612,17 @@ async function main(){
     await ci.waitForFunction(() => document.querySelector("#n-steps .step"));
     const tl = await ci.evaluate(() => ({ k:Peta.kunciTomTom(), hash:location.hash, flag:document.getElementById("tautan").innerText }));
     ok(tl.k === "abc123" && tl.hash === "" && /TomTom/.test(tl.flag), "tautan pengaturan #tomtom= menyimpan kunci", JSON.stringify(tl));
+    const CALIB_KECEPATAN = await ci.evaluate(() => CALIB.kecepatan);
     const rek = await ci.evaluate(() => {
       const ctx = dayCtx("2026-09-24"), L = LOKMAP.kota;
       const h = Rekomendasi.hitung({ ctx, keluar:17.25, pulang:21.5, rehat:"none", zona:"tng", filter:2, bat:30.08, rumah:false, hujan:false, acara:false, soc:70, deadKm:0 }, L, 70, false);
       const x = h.daftar.find(y => y.id === "cbd");
-      return x ? { macet:x.macet, menit:Math.round(x.jamPindah*60), km:Math.round(x.kmPindah) } : null;
+      const h2 = Rekomendasi.hitung({ ctx, keluar:11, pulang:21.5, rehat:"none", zona:"tng", filter:2, bat:30.08, rumah:false, hujan:false, acara:false, soc:70, deadKm:0 }, L, 70, false);
+      const y = h2.daftar.find(z => z.id === "cbd");
+      return x ? { macet:x.macet, menit:Math.round(x.jamPindah*60), km:Math.round(x.kmPindah), menitLancar:y ? Math.round(y.jamPindah*60) : null, macetLancar:y && y.macet } : null;
     });
-    ok(rek && rek.macet === 1.9 && rek.menit > rek.km / 26 * 60, "rekomendasi memakai faktor macet jam sibuk untuk waktu pindah", JSON.stringify(rek));
+    ok(rek && rek.macet === 1.9 && Math.abs(rek.menit - rek.km / CALIB_KECEPATAN * 60) <= 3 && rek.macetLancar === 1 && rek.menitLancar < rek.menit * 0.6,
+       "waktu pindah: jam sibuk = km / kecepatan kalibrasi (sudah macet), di luar jam sibuk 1,9x lebih cepat", JSON.stringify(rek));
     await ci.close();
   }
 

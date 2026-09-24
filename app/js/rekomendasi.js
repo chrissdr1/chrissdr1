@@ -41,9 +41,10 @@ var Rekomendasi = (function(){
         if (asal) kmPindah = jarakDatar(asal.lat, asal.lon, K.lat, K.lon) * LIKU;
         else kmPindah = Math.abs(((L && L.home) || 0) - K.home) + 3;   /* tanpa koordinat: tebakan kasar */
       }
-      /* Jam sibuk (06-09, 16:30-20) melambatkan perjalanan pindah: x1,6 Tangerang, x1,9 arah Jakarta. */
-      var macet = faktorMacet(o.keluar, K.z);
-      var jamPindah = kmPindah / CALIB.kecepatan * macet;
+      /* Kecepatan kalibrasi sudah kecepatan jam sibuk; di luar jam sibuk 1,6x
+         (Tangerang) / 1,9x (arah Jakarta) lebih cepat. macet > 1 hanya label. */
+      var macet = jamSibuk(o.keluar) ? ((K.z === "jkt" || K.z === "mix") ? 1.9 : 1.6) : 1;
+      var jamPindah = kmPindah / CALIB.kecepatan * faktorMacet(o.keluar, K.z);
       var socPindah = (kmPindah / CALIB.kmkwh) / o.bat * 100;
       var keluar = o.keluar + jamPindah;
       if (o.pulang - keluar < 0.5) return;   /* tidak sempat kerja di sana */

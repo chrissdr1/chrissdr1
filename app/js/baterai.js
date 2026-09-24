@@ -40,14 +40,21 @@ var Baterai = (function(){
 
   /* Titik GPS baru. Lompatan < 50 m diabaikan (gemetar GPS), > 30 km
      diabaikan (galat), sisanya dijumlahkan sebagai km tempuh. */
-  function catatFix(lat, lon, t){
+  /* akurasi (meter) dari GPS: perpindahan yang lebih kecil dari 1,5x akurasi
+     dianggap goyangan, bukan gerak; laju > 150 km/jam dianggap galat. Fix
+     yang ditolak TIDAK menggantikan fix terakhir, supaya jalan balik dari
+     fix kasar tidak ikut dijumlahkan. */
+  function catatFix(lat, lon, t, akurasi){
     if (!muat()) return 0;
-    var f = D.fix, tambah = 0;
+    t = t || Date.now();
+    var f = D.fix, tambah = 0, ambang = Math.max(0.05, 1.5 * (akurasi || 0) / 1000);
     if (f){
-      var d = jarakLurus(f.lat, f.lon, lat, lon);
-      if (d >= 0.05 && d < 30){ tambah = d * LIKU; D.gpsKm += tambah; }
+      var d = jarakLurus(f.lat, f.lon, lat, lon), dt = Math.max(1, t - (f.t || t)) / 3600000;
+      if (d < ambang) return 0;
+      if (d >= 30 || d / dt > 150) return 0;
+      tambah = d * LIKU; D.gpsKm += tambah;
     }
-    D.fix = { lat:lat, lon:lon, t:t || Date.now() }; simpan();
+    D.fix = { lat:lat, lon:lon, t:t }; simpan();
     return tambah;
   }
 
@@ -66,15 +73,19 @@ var Baterai = (function(){
   }
 
   /* Perkiraan sisa baterai pada jam tertentu. o = {bat, zona, rehat}. */
+  /* o = {bat, zona, rehat, keluar, pulang}: mobil dianggap diam sebelum jam
+     keluar dan sesudah jam pulang (check-in pukul 04:00 untuk keluar 05:15
+     tidak boleh "menurunkan" baterai). */
   function perkiraan(jam, o){
     var j = terakhir(); if (!j) return null;
     var kmPerFrac = o.bat * CALIB.kmkwh;
-    var kmM = kmModel(j.jam, jam, o.zona, o.rehat);
+    var dari = Math.max(j.jam, o.keluar || 0), sampai = Math.min(jam, o.pulang || 24);
+    var kmM = kmModel(dari, sampai, o.zona, o.rehat);
     /* GPS dipakai bila menutupi sebagian besar waktu sejak jangkar; kalau
        halaman lama tertutup, angkanya terlalu kecil dan model yang dipakai. */
     var pakaiGps = D.gpsKm > 0 && (kmM === 0 || D.gpsKm >= 0.6 * kmM);
     var km = pakaiGps ? D.gpsKm : kmM;
-    var turun = km / kmPerFrac * 100;
+    var turun = Math.min(j.soc, km / kmPerFrac * 100);
     var soc = Math.max(0, Math.min(100, j.soc - turun));
     return { soc:Math.round(soc), km:km, kmModel:kmM, kmGps:D.gpsKm, gps:pakaiGps,
              dariJam:j.jam, dariSoc:j.soc, sumber:j.sumber,
