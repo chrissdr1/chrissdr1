@@ -1,0 +1,17 @@
+{
+  "name": "Hallo Shanti — Buku Setoran",
+  "short_name": "Shanti",
+  "description": "Buku setoran, penunjuk arah, dan perencana hari untuk pengemudi GrabCar listrik di Tangerang.",
+  "lang": "id",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F3F5F0",
+  "theme_color": "#00713C",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

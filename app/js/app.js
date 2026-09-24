@@ -1,0 +1,1790 @@
+/* Antarmuka: tab Sekarang, Catatan, Rencana, Tanya, dan boot. */
+"use strict";
+
+function renderDayFlag(ctx, dateStr){
+  var n = el("dayflag");
+  if (ctx.ev){
+    var lokal = ctx.ev[2] === "lokal";
+    n.hidden = false; n.className = "flag" + (lokal ? "" : " warn");
+    n.innerHTML = '<span class="tag">Acara besar</span><span><b>' + ctx.ev[0] + "</b> di " + ctx.ev[1] + ". " +
+      (lokal
+        ? "Ini <b>di wilayah kerja Anda sendiri</b> &mdash; ICE BSD 16,7 km dari rumah. Bubaran acara memberi lonjakan permintaan yang searah pulang. Rencanakan berada di sekitar BSD saat acara bubar."
+        : "Di Jakarta, 26&ndash;30 km dari rumah. Bubarannya sekitar 22:30&ndash;23:30 dengan tarif dinamis tinggi, <b>tapi pulangnya jauh dan merusak peak pagi besok</b> &mdash; ambil hanya kalau besok Anda memang libur atau mulai siang.") +
+      (ctx.holi || ctx.eve ? " Perhatikan juga catatan tanggal merah di bawah." : "") + "</span>";
+    return;
+  }
+  if (ctx.holi){
+    n.hidden = false; n.className = "flag warn";
+    n.innerHTML = '<span class="tag">Tanggal merah</span><span><b>' + ctx.holi[0] +
+      (ctx.holi[1]==="C" ? " (cuti bersama)" : "") + ".</b> Tidak ada arus komuter hari ini &mdash; " +
+      "<b>peak pagi hilang</b>. Bobot pindah ke mal, kuliner, dan bandara, dan puncaknya siang sampai malam. " +
+      (ctx.runLen>=3 ? "Ini bagian dari libur panjang " + ctx.runLen + " hari; bandara dan terminal ramai di ujung-ujungnya." : "") +
+      " Mulai siang, selesai larut.</span>";
+  } else if (ctx.eve){
+    n.hidden = false; n.className = "flag";
+    n.innerHTML = '<span class="tag">Malam sebelum libur</span><span><b>Besok tanggal merah' +
+      (ctx.evePlus ? ", awal libur panjang" : "") + ".</b> Sore dan malam ini arus keluar kota: " +
+      "<b>bandara, Stasiun Batu Ceper, dan Terminal Poris Plawad</b> jauh lebih ramai dari biasanya, " +
+      "penumpang berkoper, tujuan jauh. " + (ctx.evePlus ? "Ini salah satu malam terkuat dalam sebulan &mdash; kerjakan penuh." : "Pertimbangkan memperpanjang sampai 23:00.") + "</span>";
+  } else if (ctx.dow===6 || ctx.dow===0){
+    n.hidden = false; n.className = "flag quiet";
+    n.innerHTML = '<span class="tag">Akhir pekan</span><span>Tidak ada peak pagi komuter. ' +
+      '<b>Mulai 07:30&ndash;09:00 saja</b>, dan geser bobot ke sore dan malam.</span>';
+  } else { n.hidden = true; }
+}
+
+function renderSteps(node, list, title){
+  var h='<div class="steps-head"><span class="eyebrow">'+title+
+        '</span><span class="eyebrow">Perkiraan &middot; kumulatif</span></div>';
+  list.forEach(function(s){
+    h+='<div class="step '+s.cls+'"><div class="t">'+s.t+"<em>"+s.dur+"</em></div>"+
+       '<div class="a"><b>'+s.b+"</b><span>"+s.s+"</span><i>"+s.i+"</i></div>"+
+       '<div class="v">'+s.v+"<em>"+s.cum+"</em></div></div>";
+  });
+  node.innerHTML=h;
+}
+
+/* ---------------- lokasi yang diketik sendiri ----------------
+   Halaman tidak boleh memanggil peta, jadi lokasi bebas dipetakan ke
+   titik terukur terdekat lewat capability sample. Hasilnya PERKIRAAN. */
+
+function simpanRegistri(){
+  try { localStorage.setItem("registri-lokasi", JSON.stringify(REGISTRI)); } catch (e) {}
+}
+function muatRegistri(){
+  try { REGISTRI = JSON.parse(localStorage.getItem("registri-lokasi") || "{}") || {}; }
+  catch (e) { REGISTRI = {}; }
+  naikkanRegistri();
+}
+
+/* Catatan lokasi yang tersimpan sebelum peta 183 kecamatan ada isinya
+   TEBAKAN -- dulu jaraknya dikira-kira dari garis lurus atau ditanyakan ke
+   Claude. Sekarang jarak jalannya sudah terukur, jadi catatan lama yang
+   namanya cocok dengan nama kecamatan diganti angka ukur. Tanpa ini,
+   catatan lama akan terus dipakai selamanya dan perbaikannya sia-sia.
+
+   Yang TIDAK disentuh: titik GPS (angkanya sudah dihitung dari 4 pusat
+   terdekat, lebih teliti daripada satu pusat kecamatan), dan nama yang
+   tidak cocok dengan kecamatan mana pun -- itu kemungkinan nama tempat
+   yang kilometernya Ibu isi sendiri. */
+function naikkanRegistri(){
+  var ubah = 0;
+  Object.keys(REGISTRI).forEach(function(k){
+    var r = REGISTRI[k];
+    /* ">= 3", bukan "=== 2". catatKecamatan menstempel v:3, jadi penjaga yang
+       cuma menolak v===2 membiarkan catatan yang SUDAH bermigrasi dimigrasi
+       lagi tiap halaman dibuka. Akibatnya tidak terlihat di localStorage --
+       karena kilometernya tidak berubah, ubah tetap 0 dan tidak ikut disimpan --
+       tapi salinan di memori sudah telanjur rusak, dan itulah yang dipakai
+       mesin dan dilihat Ibu di daftar.
+
+       Sempat dipasang ">= 2". Itu menghentikan migrasi ulang, tapi sekaligus
+       MENGUNCI catatan v:2 yang dibuat sebelum RKEC ada -- catatan itu tidak
+       punya jari-jari, jadi cadangannya selamanya jatuh ke x1,08 saja
+       (Teluknaga jadi 26% padahal ujung wilayahnya butuh 32%). Ambang 3
+       melepasnya. Ini aman HANYA karena pencocokan di bawah sudah dipotong
+       di koma; tanpa itu, seluruh catatan lama justru menjalankan ulang bug
+       Teluknaga -> Tangerang sekaligus. */
+    if (!r || r.v >= 3) return;
+    if (k.indexOf("gps:") === 0) { r.v = 3; return; }
+    /* Hanya bagian sebelum koma yang dicocokkan. Nama hasil migrasi berbentuk
+       "Teluknaga, Kab. Tangerang", dan "Tangerang" itu sendiri nama kecamatan
+       (2,2 km dari rumah) -- mencocokkan seluruh teks membuat Teluknaga
+       berubah jadi Tangerang, lengkap dengan jari-jari dan zona yang salah. */
+    var namaCari = String(r.nama || k.replace(/-/g, " ")).split(",")[0];
+    var temu = cariKecamatan(namaCari);
+    if (!temu) { r.v = 2; return; }
+    var lama = r.km;
+    var baru = catatKecamatan(temu.kec);
+    baru.dibuat = r.dibuat || baru.dibuat;
+    /* Kalau Ibu pernah mengisi kilometernya sendiri dan angkanya LEBIH BESAR
+       dari pusat kecamatan, itu bukan tebakan yang perlu dikoreksi. Pusat
+       kecamatan memang meremehkan di wilayah yang luas -- Teluknaga pusatnya
+       19,9 km sementara ujung wilayahnya terukur 35,0 km. Pengalaman Ibu
+       menang; dari peta hanya diambil zona dan jari-jarinya. */
+    if (lama > baru.km + 0.5){ baru.km = lama; baru.sendiri = true; }
+    REGISTRI[k] = baru;
+    /* Dihitung tiap catatan yang DIGANTI, bukan hanya yang kilometernya
+       bergeser. Dulu syaratnya selisih km >= 0,5, jadi catatan yang cuma
+       bertambah jari-jari atau naik versi tidak ikut tersimpan -- memori
+       benar, localStorage tertinggal, dan migrasinya terulang tiap halaman
+       dibuka. Selisih memori-vs-simpanan itu yang sempat menyesatkan saya
+       waktu memburu bug Teluknaga. */
+    ubah++;
+  });
+  if (ubah) simpanRegistri();
+  REGISTRI.__diperbarui = undefined; delete REGISTRI.__diperbarui;
+  naikkanRegistri.jumlah = ubah;
+}
+function slug(s){
+  return s.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,60);
+}
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
+
+/* Satu kolom, satu sumber kebenaran: nilai <select>. Lokasi ketikan
+   masuk sebagai pilihan sendiri, jadi tidak ada dua kolom yang bersaing. */
+function lokOptions(){
+  var h = '<optgroup label="Wilayah inti">' +
+    LOK.filter(function(l){ return !l.luar; })
+       .map(function(l){ return '<option value="'+l.id+'">'+l.n+"</option>"; }).join("") +
+    '</optgroup><optgroup label="Luar wilayah inti">' +
+    LOK.filter(function(l){ return l.luar; })
+       .map(function(l){ return '<option value="'+l.id+'">'+l.n+" · "+Math.round(l.home)+" km</option>"; }).join("") +
+    "</optgroup>";
+  var keys = Object.keys(REGISTRI).filter(function(k){ return REGISTRI[k] && REGISTRI[k].km > 0; });
+  if (keys.length){
+    h += '<optgroup label="Diketik sendiri">' + keys.map(function(k){
+      var r = REGISTRI[k];
+      return '<option value="custom:'+esc(k)+'">'+esc(r.nama)+" · "+Math.round(r.km)+" km"+
+             (r.sendiri ? " · angka Anda" : (r.terukur ? "" : " · perkiraan"))+"</option>";
+    }).join("") + "</optgroup>";
+  }
+  return h + '<optgroup label="Tidak ada di daftar?"><option value="__lain">Ketik lokasi lain…</option></optgroup>';
+}
+function renderLok(pilih){
+  var sel = el("n-lok"), want = pilih || sel.value || lastLok;
+  sel.innerHTML = lokOptions();
+  var ada = false;
+  for (var i=0;i<sel.options.length;i++) if (sel.options[i].value === want) ada = true;
+  sel.value = ada ? want : lastLok;
+  if (sel.value !== "__lain") lastLok = sel.value;
+}
+function currentLok(){
+  var v = el("n-lok").value;
+  if (v === "__lain") v = lastLok;
+  if (v.indexOf("custom:") === 0){
+    var r = REGISTRI[v.slice(7)];
+    if (r && r.km > 0){
+      var a = LOKMAP[r.anchor] || LOKMAP.kota;
+      /* Cadangan SELALU pakai margin -- termasuk untuk nama kecamatan yang
+         jaraknya terukur, karena yang terukur adalah PUSATNYA, bukan posisi
+         Ibu. Dasarnya +8%; kalau luas kecamatannya diketahui, dipakai yang
+         lebih besar antara itu dan pusat + 1,35 x jari-jari (lihat RKEC).
+         Angka tampilan dan hitungan uang tetap memakai r.km apa adanya. */
+      var kmAman = r.km * 1.08;
+      if (r.rmax > 0) kmAman = Math.max(kmAman, r.km + 1.35 * r.rmax);
+      return { id:v, n:r.nama, home:r.km, res:Math.round(kmAman/2+15),
+               z: r.zPaksa || a.z,
+               luar:r.km>10?1:0, jauh:r.km>34?1:0, anchor:a.n, perkiraan:!r.terukur };
+    }
+    return LOKMAP.kota;
+  }
+  return LOKMAP[v] || LOKMAP.kota;
+}
+
+function setHint(txt, cls){
+  var h = el("ketikhint"); h.textContent = txt;
+  h.style.color = cls==="ok" ? "var(--accent)" : (cls==="err" ? "var(--alert)" : "var(--muted)");
+}
+function pasangLokasi(key){
+  renderLok("custom:"+key);
+  setLokSumber("manual");
+  el("ketikwrap").hidden = true;
+  el("n-ketik").value = ""; el("n-ketikkm").value = "";
+  setHint("Ketik nama daerah. Kolom km opsional — isi kalau Anda tahu kira-kira jaraknya ke rumah.");
+  runNow();
+}
+
+function resolveKetik(){
+  var txt = el("n-ketik").value.trim();
+  if (!txt){ setHint("Isi nama daerahnya dulu.", "err"); return; }
+
+  /* Sudah pernah diketik? pakai langsung, tanpa menebak lagi. */
+  var s = slug(txt);
+  if (REGISTRI[s] && REGISTRI[s].km > 0){ pasangLokasi(s); return; }
+
+  /* Jalur 2 — Anda isi sendiri kilometernya. Tidak butuh Claude. */
+  var manual = parseFloat(el("n-ketikkm").value);
+  if (isFinite(manual) && manual > 0){
+    var dekat = LOK[0], beda = Infinity;
+    LOK.forEach(function(l){ var d = Math.abs(l.home - manual); if (d < beda){ beda = d; dekat = l; } });
+    var recM = { nama:txt, km:manual, anchor:dekat.id, terukur:false, dibuat:iso(new Date()) };
+    REGISTRI[s] = recM; pasangLokasi(s);
+    simpanRegistri();
+    return;
+  }
+
+  /* Jalur 3 — cocokkan dengan 183 nama kecamatan yang jarak pulangnya sudah
+     diukur peta. Tidak perlu internet dan tidak perlu menunggu. */
+  var temu = cariKecamatan(txt);
+  if (temu){
+    REGISTRI[s] = catatKecamatan(temu.kec);
+    simpanRegistri();
+    pasangLokasi(s);
+    /* Sengaja tanpa menit: angka menit hasil ukur OSRM adalah waktu jalan
+       LANCAR, sementara rencana di bawah memakai kecepatan Jabodetabek yang
+       sebenarnya. Menampilkan keduanya cuma membuat dua angka berbeda untuk
+       perjalanan yang sama. Yang dipakai Ibu adalah angka di rencana. */
+    setHint("Ketemu: " + REGISTRI[s].nama + " · pulang " + temu.kec[4] +
+            " km · jarak terukur peta" + temu.catatan, temu.catatan ? "" : "ok");
+    return;
+  }
+
+  /* Jalur 4 — tanpa Claude dan tanpa km: tidak ada yang bisa menebak jaraknya.
+     Dulu tertulis "akan diukur agen semalam" -- agen itu tidak pernah ada. */
+  if (!sampler){
+    var recQ = { nama:txt, km:0, anchor:"kota", terukur:false, dibuat:iso(new Date()) };
+    REGISTRI[s] = recQ;
+    simpanRegistri();
+    setHint("Nama itu tidak ada di 183 kecamatan terukur, dan tidak ada sambungan Claude untuk "+
+            "menebaknya. Isi kolom km, atau pilih wilayah terdekat dari daftar.", "err");
+    return;
+  }
+
+  /* Jalur 5 — di luar Jabodetabek: Claude memetakan supaya bisa langsung dipakai sekarang. */
+  setHint("Memetakan…");
+  var daftar = LOK.map(function(l){ return l.id+" = "+l.n+" ("+l.home+" km)"; }).join("; ");
+  sampler.json(
+    "Kamu memetakan lokasi di Jabodetabek untuk seorang pengemudi yang tinggal di Modernland, "+
+    "Kelapa Indah, Kota Tangerang, Banten.\n\nTitik yang sudah terukur jarak jalannya ke rumah itu: "+
+    daftar+"\n\nPengguna menyebut lokasinya sekarang: \""+txt+"\"\n\n"+
+    "Jawab HANYA JSON tanpa penjelasan lain, bentuknya: "+
+    "{\"anchor\":\"<id titik terdekat dari daftar>\",\"km\":<perkiraan jarak jalan dari lokasi itu ke Modernland Tangerang, angka desimal>,"+
+    "\"nama\":\"<nama lokasi yang dirapikan>\",\"catatan\":\"<satu kalimat sangat singkat>\"}\n"+
+    "Kalau lokasinya tidak dikenali atau di luar Jabodetabek, pakai anchor \"kota\", km 0, "+
+    "dan catatan yang menjelaskan bahwa lokasi tidak dikenali.",
+    { modelTier:"quick", cache:true }
+  ).then(function(res){
+    var a = LOKMAP[res && res.anchor] || LOKMAP.kota;
+    var km = (res && typeof res.km === "number" && res.km > 0) ? res.km : a.home;
+    if (!res || !res.km){
+      setHint("Tidak dikenali — coba nama daerah yang lebih umum.", "err"); return;
+    }
+    var rec = { nama:(res.nama||txt), km:km, anchor:a.id, terukur:false,
+                dibuat:iso(new Date()) };
+    REGISTRI[s] = rec;
+    pasangLokasi(s);
+    /* Titipkan ke agen supaya diukur peta semalam dan jadi permanen. */
+    simpanRegistri();
+  })["catch"](function(err){
+    var c=(err&&err.code)||"error";
+    setHint(c==="rate_limited" ? "Terlalu sering, coba lagi sebentar." : "Gagal memetakan ("+c+").", "err");
+  });
+}
+
+/* ---------------- deteksi lokasi ----------------
+   Memakai API lokasi browser — bukan pengambilan data internet, jadi
+   tidak terhalang aturan yang memblokir peta. Koordinatnya tidak pernah
+   dikirim ke mana pun: hanya dipakai memilih titik terdekat dari 17
+   lokasi yang jaraknya sudah terukur. */
+
+function setGpsHint(t, cls){
+  var h = el("gpshint"); h.textContent = t;
+  h.style.color = cls==="ok" ? "var(--accent)" : (cls==="err" ? "var(--alert)" : "var(--muted)");
+}
+var gpsTerakhir = 0;
+/* Dari mana nilai kolom posisi berasal: "auto" kalau GPS yang menaruhnya,
+   "manual" kalau Ibu memilih atau mengetik sendiri, "gagal" kalau deteksi
+   otomatis dicoba tapi tidak berhasil. Dipakai supaya kolom itu tidak pernah
+   menyatakan sebuah tempat tanpa menyebut siapa yang menentukannya. */
+var lokSumber = "";
+function setLokSumber(v){ lokSumber = v; tandaiLok(); }
+function tandaiLok(){
+  var e = el("src-lok"); if (!e) return;
+  if (lokSumber === "auto"){ e.textContent = "otomatis"; e.className = ""; }
+  else if (lokSumber === "manual"){ e.textContent = "dipilih sendiri"; e.className = "man"; }
+  else if (lokSumber === "gagal"){ e.textContent = "belum terbaca"; e.className = "err"; }
+  else { e.textContent = ""; e.className = ""; }
+}
+function deteksiLokasi(otomatis){
+  if (!navigator.geolocation){
+    if (!otomatis) setGpsHint("Perangkat ini tidak mendukung deteksi lokasi. Pilih dari daftar.", "err");
+    return;
+  }
+  /* Jangan mengulang terlalu sering saat berpindah-pindah tab. */
+  var now = Date.now();
+  if (otomatis && now - gpsTerakhir < 120000) return;
+  gpsTerakhir = now;
+  setGpsHint(otomatis ? "Memeriksa lokasi…" : "Mencari lokasi…");
+  navigator.geolocation.getCurrentPosition(function(pos){
+    var la = pos.coords.latitude, lo = pos.coords.longitude;
+    var best = null, bestD = Infinity;
+    LOK.forEach(function(l){
+      if (l.lat == null) return;
+      var d = jarakLurus(la, lo, l.lat, l.lon);
+      if (d < bestD){ bestD = d; best = l; }
+    });
+    var akurasi = pos.coords.accuracy ? " ±" + Math.round(pos.coords.accuracy) + " m" : "";
+
+    /* Persis di salah satu titik terukur — pakai angka ukurnya, itu jarak
+       jalan sungguhan dari titik itu. Radiusnya sengaja rapat: dulu 4 km,
+       dan itu membuat posisi 4 km dari patokan "Bekasi" ikut memakai 52,9 km.
+       Bandara dapat radius lebih lebar karena kompleksnya memang seluas itu. */
+    /* Bandara 2 km: sejauh itu hukuman akses tolnya masih berlaku, lebih jauh
+       sudah tidak. Kalau ragu di batas itu, angka bandara yang kelebihan
+       lebih aman daripada angka biasa yang kekurangan. */
+    var radius = (best && best.id === "bandara") ? 2 : 2.5;
+    if (best && bestD <= radius){
+      renderLok(best.id);
+      setLokSumber("auto");
+      setGpsHint("Terdeteksi di " + best.n + " · " + bestD.toFixed(1) + " km dari titiknya" +
+                 akurasi + " · jarak terukur peta", "ok");
+      runNow(); return;
+    }
+
+    /* Di mana pun selain itu — cari dari 183 kecamatan yang jarak pulangnya
+       sudah diukur. Halaman tidak perlu internet untuk ini. */
+    var h = hampiranPulang(la, lo);
+    var kmJalan = Math.round(h.km * 10) / 10;
+    var kunci = "gps:" + la.toFixed(3) + "," + lo.toFixed(3);
+    REGISTRI[kunci] = {
+      nama: h.kec + ", " + h.induk,
+      km: kmJalan, menit: h.menit, anchor: (best ? best.id : "kota"), terukur: false,
+      dibuat: iso(new Date())
+    };
+    simpanRegistri();
+    renderLok("custom:" + kunci);
+    /* Zona ikut kecamatan tempat Ibu berdiri, bukan titik terdekat. */
+    REGISTRI[kunci].zPaksa = h.zona;
+    setLokSumber("auto");
+    setGpsHint("Terdeteksi di " + h.kec + ", " + h.induk + " · pulang ≈ " + kmJalan +
+               " km" + akurasi, "ok");
+    runNow();
+  }, function(err){
+    if (otomatis){
+      /* Dulu baris ini mengosongkan petunjuk supaya tidak berisik. Akibatnya
+         kalau izin belum diberikan, GPS mati, atau Ibu di dalam gedung, kolom
+         posisi diam-diam tetap menunjuk Modernland -- dan seluruh rencana
+         dihitung untuk tempat yang bukan posisinya, tanpa satu pun tanda.
+         Sekarang kolomnya menyebut siapa yang menentukan, dan menawarkan
+         jalan keluarnya. Tetap tidak mengganggu: warnanya redam. */
+      if (lokSumber !== "manual"){
+        setLokSumber("gagal");
+        var pakai = currentLok();
+        setGpsHint("Lokasi belum terbaca — sementara memakai " + pakai.n +
+                   ". Tekan “Lokasi saya”, atau pilih sendiri di atas.");
+      }
+      return;
+    }
+    var pesan = err && err.code === 1
+      ? "Izin lokasi ditolak. Aktifkan di pengaturan browser, atau pilih dari daftar."
+      : "Lokasi tidak bisa dibaca di sini. Pilih dari daftar saja.";
+    setLokSumber("gagal");
+    setGpsHint(pesan, "err");
+  }, { enableHighAccuracy:true, timeout:10000, maximumAge:60000 });
+}
+
+/* Deteksi sendiri saat halaman dibuka dan tiap kali dilihat lagi — tapi
+   HANYA kalau izinnya sudah pernah diberikan, supaya tidak tiba-tiba
+   memunculkan dialog izin yang mengagetkan. */
+function gpsOtomatisAktif(){
+  try { return localStorage.getItem("gps-otomatis") !== "0"; } catch (e) { return true; }
+}
+function pasangGpsOtomatis(){
+  if (!navigator.geolocation || !gpsOtomatisAktif()) return;
+  function coba(){
+    if (document.hidden) return;
+    if (el("n-lok").value === "__lain") return;   /* sedang mengetik lokasi */
+    deteksiLokasi(true);
+  }
+  if (navigator.permissions && navigator.permissions.query){
+    navigator.permissions.query({name:"geolocation"}).then(function(p){
+      if (p.state === "granted"){
+        coba();
+        document.addEventListener("visibilitychange", coba);
+      }
+      p.onchange = function(){ if (p.state === "granted") coba(); };
+    })["catch"](function(){});
+  }
+}
+
+/* ---------------- jam yang ikut jalan ----------------
+   Kolom "Jam sekarang" dulu diisi SEKALI saat halaman dibuka lalu diam.
+   Untuk pengemudi yang membiarkan halamannya terbuka di HP sepanjang hari,
+   itu berarti seluruh tab Sekarang membeku di jam pembukaan: kartu langkah,
+   proyeksi, urutan sampai pulang, dan jawaban Tanya. Posisinya diperbarui
+   sendiri lewat GPS, jamnya tidak -- timpang, dan yang membeku justru yang
+   paling menentukan.
+
+   Sekarang jamnya ikut jalan sendiri, KECUALI kalau Ibu memilih sendiri --
+   misalnya ingin melihat "kalau saya keluar jam 15:00 nanti bagaimana".
+   Pilihannya dihormati, dan ada jalan kembali yang terlihat. */
+var jamManual = false, jamLuar = false;
+function tandaiJam(){
+  var e = el("src-jam"), b = el("jam-auto");
+  if (!e) return;
+  /* Di luar 03:30-23:30 kolom jam TIDAK BISA mengikuti -- tidak ada pilihan
+     yang sah di sana. Itu harus terlihat, bukan disembunyikan. */
+  if (jamLuar && !jamManual){
+    e.textContent = "di luar jam"; e.className = "err"; if (b) b.hidden = true; return;
+  }
+  if (jamManual){ e.textContent = "dipilih sendiri"; e.className = "man"; if (b) b.hidden = false; }
+  else { e.textContent = "ikut jam"; e.className = ""; if (b) b.hidden = true; }
+}
+function jamSekarangBulat(){
+  var d = new Date();
+  return Math.round((d.getHours() + d.getMinutes()/60) * 4) / 4;
+}
+function ikutJam(paksa){
+  if (jamManual && !paksa) return;
+  var t = jamSekarangBulat();
+  /* Di luar 03:30-23:30 tidak ada pilihan jam yang sah, jadi kolomnya tidak
+     bisa mengikuti. Dulu fungsi ini diam-diam keluar di sini dan penandanya
+     TETAP berbunyi "ikut jam" -- jadi pukul 01:00 halaman masih menghitung
+     untuk 23:30: blok jam, kartu langkah, proyeksi, protokol pulang, dan
+     jawaban Tanya. Semuanya untuk jam yang sudah lewat satu setengah jam.
+     Dan itu jatuh persis di malam yang halaman ini sendiri sebut paling
+     berharga -- bubaran konser 22:30-23:30, malam sebelum libur panjang.
+     Keluarga bug yang sama dengan GPS gagal diam-diam dan cuaca basi. */
+  if (t < 3.5 || t > 23.5){
+    if (!jamLuar){ jamLuar = true; tandaiJam(); runNow(); }
+    return;
+  }
+  jamLuar = false;
+  if (paksa) jamManual = false;
+  var sel = el("n-jam");
+  if (parseFloat(sel.value) === t){ tandaiJam(); return; }
+  sel.value = t;
+  tandaiJam();
+  /* Jam pulang tidak boleh tertinggal di belakang jam sekarang. */
+  if (parseFloat(el("n-pulang").value) <= t){
+    el("n-pulang").value = Math.min(24, t + 0.5);
+  }
+  runNow();
+}
+
+/* ---------------- plan of the day (the loop) ---------------- */
+var PLAN = null, AKTUAL = null, LSP = "buku-setoran-plan";
+function loadPlan(){ try{ PLAN = JSON.parse(localStorage.getItem(LSP)||"null"); }catch(e){ PLAN=null; } }
+function savePlan(p){
+  PLAN = p;
+  try{ localStorage.setItem(LSP, JSON.stringify(p)); }catch(e){}
+
+}
+
+function renderPlanCheck(nowT, dpt, lokZ){
+  var n = el("plancheck");
+  var today = iso(new Date());
+  if (!PLAN || PLAN.date !== today){ n.hidden = true; return; }
+  n.hidden = false;
+
+  var ctx = dayCtx(today);
+  var upto = Math.max(PLAN.keluar, Math.min(nowT, PLAN.pulang));
+  var sofar = simulate({ ctx:ctx, keluar:PLAN.keluar, pulang:upto, rehat:PLAN.rehat,
+    zona:PLAN.zona, filter:PLAN.filter, bat:PLAN.bat, rumah:PLAN.rumah,
+    hujan:PLAN.hujan, acara:PLAN.acara });
+  var full = simulate({ ctx:ctx, keluar:PLAN.keluar, pulang:PLAN.pulang, rehat:PLAN.rehat,
+    zona:PLAN.zona, filter:PLAN.filter, bat:PLAN.bat, rumah:PLAN.rumah,
+    hujan:PLAN.hujan, acara:PLAN.acara });
+
+  var seharusnya = sofar.blockNet;
+  var selisih = dpt - seharusnya;
+  var cls = selisih >= 0 ? "up" : "dn";
+  var drift = lokZ !== PLAN.zona;
+  var jeda = rehatRange(PLAN.rehat);
+  var sedangJeda = jeda && nowT >= jeda[0] && nowT < jeda[1];
+
+  var msg;
+  if (sedangJeda){
+    msg = "<b>Menurut rencana, jam ini waktunya istirahat</b> (" + hhmm(jeda[0]) + "&ndash;" +
+          hhmm(jeda[1]) + "). Blok ini memang paling sepi &mdash; kalau Ibu tetap jalan, "+
+          "hasilnya kecil dan peak sore jadi lebih berat. Urutan di bawah sudah menghormati jeda itu.";
+  } else if (nowT < PLAN.keluar){
+    msg = "Rencana hari ini mulai pukul <b>" + hhmm(PLAN.keluar) + "</b> dengan wilayah <b>" +
+          ZONA[PLAN.zona].label + "</b>, sasaran <b>" + rp(full.net) + "</b>. Belum mulai.";
+  } else {
+    msg = (selisih >= 0
+      ? "<b>Anda di depan rencana " + rp(selisih) + ".</b> "
+      : "<b>Tertinggal " + rp(-selisih) + " dari rencana.</b> ") +
+      (drift
+        ? "Dan posisi Anda sekarang di luar wilayah yang direncanakan (<b>" + ZONA[PLAN.zona].label +
+          "</b>). "
+        : "") +
+      "Urutan langkah di bawah <b>sudah disusun ulang dari posisi dan jam Anda sekarang</b> &mdash; bukan dari rencana awal.";
+  }
+
+  n.innerHTML =
+    '<div class="pc"><span class="lbl">Menurut rencana</span><span class="v">' + rp(seharusnya) + "</span></div>" +
+    '<div class="pc"><span class="lbl">Aktual</span><span class="v">' + rp(dpt) + "</span></div>" +
+    '<div class="pc"><span class="lbl">Selisih</span><span class="v ' + cls + '">' +
+      (selisih>=0?"+":"") + rp(selisih).replace("Rp ","") + "</span></div>" +
+    '<div class="pc"><span class="lbl">Sasaran rencana</span><span class="v">' + rp(full.net) + "</span></div>" +
+    '<div class="msg">' + msg + "</div>";
+}
+
+/* ---------------- NOW ---------------- */
+function runNow(){
+  var dateStr = iso(new Date());
+  var ctx = dayCtx(dateStr);
+  renderDayFlag(ctx, dateStr);
+
+  var L = currentLok(), lok = L.id;
+  /* Kalau ada rencana hari ini, tab Sekarang mengikuti jeda istirahatnya —
+     jangan sampai menyuruh kerja di jam yang sudah Ibu rencanakan libur. */
+  var planAktif = PLAN && PLAN.date === iso(new Date());
+  var o = { ctx:ctx, keluar:parseFloat(el("n-jam").value), pulang:parseFloat(el("n-pulang").value),
+    rehat: planAktif ? PLAN.rehat : "none", zona:L.z, filter:parseInt(el("n-filter").value,10),
+    bat:parseFloat(el("n-bat").value), rumah:el("n-rumah").checked,
+    hujan:el("n-hujan").checked, acara:el("n-acara").checked };
+  if (o.pulang<=o.keluar){ o.pulang=Math.min(24,o.keluar+0.5); el("n-pulang").value=o.pulang; }
+
+  var soc = Math.max(1,Math.min(100, parseFloat(el("n-soc").value)||0));
+  var dpt = Math.max(0, parseFloat(el("n-dpt").value)||0);
+  o.soc = soc;   /* rencana ngecas harus memakai daya nyata, bukan 90% */
+  var stay = el("n-tujuan").value === "stay";
+  var kmHome = stay ? 0 : L.home;
+  /* Kalau Anda jauh tapi sifnya masih panjang, perjalanan pulang dari
+     luar wilayah sudah selesai jauh sebelum jam pulang — jadi protokol
+     pulangnya dihitung dari wilayah inti, bukan dari titik terjauh. */
+  var kmProtokol = kmHome;
+  if (!stay && L.jauh && (o.pulang - o.keluar) > (L.home / CALIB.kecepatan) + 1.5) kmProtokol = 9;
+  /* Jam pulang nanti Ibu tidak akan persis di titik ini — pakai jarak
+     khas wilayah inti, jangan nol. */
+  if (!stay) kmProtokol = Math.max(kmProtokol, 6);
+
+  var r = simulate(o);
+  /* Insentif itu capaian SEHARI PENUH, bukan milik jam sisa saja. Kalau
+     hanya diambil porsi sisanya, bagian yang sudah Ibu kumpulkan sejak
+     pagi hilang dari proyeksi. */
+  var insentifHarian = CALIB.ins * ctx.mult;
+  var sisa = r.blockNet - r.feeCharge;
+  var proyeksi = dpt + sisa + insentifHarian - PARKIR;
+  renderPlanCheck(o.keluar, dpt, L.z);
+  AKTUAL = { jam:o.keluar, dpt:dpt, lok:L.n, home:Math.round(kmHome*10)/10,
+             tanggal:iso(new Date()) };
+  try { localStorage.setItem("sekarang-terakhir", JSON.stringify(AKTUAL)); } catch (e) {}
+
+  el("n-net").textContent = rp(proyeksi);
+  el("n-net").className = "big " + (proyeksi>=TARGET_DAY?"ok":(proyeksi>=TARGET_DAY*0.75?"mid":"bad"));
+  el("n-bar").style.width = Math.max(0,Math.min(100,(proyeksi/TARGET_DAY)*100)).toFixed(1)+"%";
+  var gap = TARGET_DAY - proyeksi;
+  el("n-vs").innerHTML = gap>5000
+    ? "Kurang <b>"+rp(gap)+"</b> dari rata-rata harian Rp 515.000"
+    : "<b>Sudah di atas rata-rata harian.</b> Kelebihan "+rp(-gap)+" masuk saldo bulanan";
+
+  var usableKm = ((soc-10)/100)*o.bat*CALIB.kmkwh;
+  var butuh = r.km + kmHome;
+  var blk = blockAt(o.keluar, ctx.shapeDay);
+
+  el("n-side").innerHTML = [
+    ["Blok sekarang", blk.n], ["Sisa jam", (o.pulang-o.keluar).toFixed(1)+" j"],
+    ["Perkiraan sisa", rp(sisa)], ["Insentif harian", rp(insentifHarian)],
+    ["Km sampai pulang", Math.round(butuh)+" km"],
+    ["Daya tersedia", Math.round(usableKm)+" km"], ["Pulang dari sini", Math.round(kmHome)+" km"],
+    ["Sisa daya minimum", L.res+"%"]
+  ].map(function(x){ return "<div><span>"+x[0]+"</span><b>"+x[1]+"</b></div>"; }).join("");
+
+  /* Baterai jadi banner terpisah, supaya judul kartu selalu mencerminkan
+     lokasi dan blok jam — bukan tertimpa peringatan daya. */
+  var bw = el("batwarn");
+  if (soc < L.res && !stay){
+    bw.hidden = false; bw.className = "batwarn";
+    bw.innerHTML = '<span class="tag">Daya kritis</span><span><b>Ngecas sekarang, sebelum menerima order lagi.</b> '+
+      "Dari "+L.n+" Anda butuh minimal <b>"+L.res+"%</b> untuk pulang dengan cadangan &mdash; sekarang "+soc+
+      "%. Tolak order berikutnya, atau pulang sekarang juga." +
+      (spkluTeks(spkluUntuk(L)) ? " Terdekat dari sini: " + spkluTeks(spkluUntuk(L)) +
+        " <span style=\"opacity:.75\">(jarak jalan)</span>." : "") + "</span>";
+  } else if (usableKm < butuh && !o.rumah){
+    bw.hidden = false; bw.className = "batwarn mild";
+    bw.innerHTML = '<span class="tag">Perlu 1 sesi</span><span>Sampai pulang perlu sekitar <b>'+
+      Math.round(butuh)+" km</b>, daya sekarang cukup untuk <b>"+Math.round(usableKm)+
+      " km</b>. Sisipkan satu sesi ngecas di blok termurah &mdash; sudah ditandai oranye di urutan langkah di bawah." +
+      (spkluTeks(spkluUntuk(L)) ? " Terdekat dari sini: " + spkluTeks(spkluUntuk(L)) +
+        " <span style=\"opacity:.75\">(jarak jalan)</span>." : "") + "</span>";
+  } else { bw.hidden = true; }
+
+  /* Tandai centang mana yang terisi sendiri, mana yang Anda ubah. */
+  function srcTag(id, auto){
+    var e = el("src-"+id), inp = el("n-"+id);
+    if (inp.dataset.touched){ e.textContent = "manual"; e.className = "man"; }
+    else if (auto){ e.textContent = "otomatis"; e.className = ""; }
+    else { e.textContent = ""; }
+  }
+  srcTag("hujan", !!(WEATHER && WEATHER.hujan && WEATHER.tanggal === iso(new Date())));
+  srcTag("acara", !!ctx.ev);
+
+  var v;
+  var jedaPlan = planAktif ? rehatRange(PLAN.rehat) : null;
+  if (jedaPlan && o.keluar >= jedaPlan[0] && o.keluar < jedaPlan[1]){
+    /* Rencana Ibu sendiri bilang jam ini istirahat — kartu tidak boleh
+       menyuruh kerja dan menabrak rencananya. */
+    v = { k:"warn", h:"Menurut rencana, jam ini istirahat",
+          r:"Pulang, makan, tidur sebentar &middot; sampai "+hhmm(jedaPlan[1]),
+          p:"Blok ini paling sepi dalam sehari, dan rencana hari ini memang mengosongkannya. "+
+            "Kalau Ibu tetap jalan, hasilnya kecil dan peak sore jadi lebih berat. "+
+            "<b>Kalau memang ingin lanjut, ubah dulu rencananya di tab Rencana</b> supaya angkanya ikut menyesuaikan." };
+  } else {
+    v = advise(blk, L, o);
+  }
+  el("verdict").className = "verdict"+(v.k?" "+v.k:"");
+  el("verdict").innerHTML = '<span class="n">Langkah berikutnya &middot; '+hhmm(o.keluar)+" &middot; "+
+    L.n+(L.perkiraan?" &middot; perkiraan":"")+"</span><h3>"+v.h+
+    '</h3><p class="route">'+v.r+"</p><p>"+v.p+"</p>";
+
+  var langkah = buildSteps(o, r,
+    { cum:dpt, markNow:true, kmHome:kmProtokol, stay:stay, L:L, verdict:v });
+  renderSteps(el("n-steps"), langkah, "Urutan dari " + L.n);
+  catatProyeksi(dateStr, proyeksi);
+  SEKARANG = { v:v, langkah:langkah, proyeksi:proyeksi, sisa:sisa, gap:gap,
+               insentif:insentifHarian, blok:blk, r:r, L:L, o:o,
+               usableKm:usableKm, butuh:butuh, soc:soc, stay:stay };
+
+  var nn=[];
+  /* Didahulukan dari semua catatan lain: kalau jamnya salah, semua angka di
+     atasnya salah, dan tidak ada gunanya membaca sisanya. */
+  if (jamLuar && !jamManual){
+    var jn = new Date();
+    nn.push(note("bad","Jam sekarang di luar jangkauan halaman",
+      "Sekarang pukul <b>"+String(jn.getHours()).padStart(2,"0")+":"+
+      String(jn.getMinutes()).padStart(2,"0")+"</b>, di luar 03:30&ndash;23:30 yang dicakup "+
+      "halaman ini. Kolom jam berhenti di <b>"+hhmm(o.keluar)+"</b>, jadi <b>semua angka di "+
+      "atas dihitung untuk jam itu, bukan untuk sekarang</b>. Jam segini tarifnya memang "+
+      "tidak pernah diukur dan tidak ada di model. <b>Kalau Ibu masih di jalan: pulang.</b>"));
+  }
+  nn.push(note("","Protokol pulang","Mulai mengarah pulang pukul <b>"+
+    hhmm(o.pulang-Math.max(0.5,kmHome/CALIB.kecepatan+0.25))+"</b> &mdash; "+Math.round(kmHome)+
+    " km dari sini, plus cadangan."));
+  /* Kalau sesi ngecas terpaksa jatuh di blok peak, penyebabnya hampir
+     selalu berangkat dengan baterai rendah — sebutkan, jangan dibiarkan. */
+  var ngecasDiPeak = Array.prototype.some.call(
+    el("n-steps").querySelectorAll(".step.charge"), function(s){
+      var b = s.querySelector(".a b");
+      return b && /Panen komuter|Panen bubaran|Panen koridor|Panen arus|keberangkatan pagi|Kedatangan sore/.test(b.textContent);
+    });
+  if (ngecasDiPeak && soc < 85) nn.push(note("bad","Ngecas di jam peak",
+    "Sesi ngecas terpaksa jatuh di blok peak karena berangkat dengan baterai <b>"+soc+
+    "%</b>. Blok itu bernilai sekitar "+rp(blockRate(BASE[1], ctx.shapeDay))+" per jam &mdash; "+
+    "<b>berangkat di atas 85% menggesernya ke jam murah</b> dan menambah sekitar "+
+    rp(blockRate(BASE[1], ctx.shapeDay)*0.6)+" ke hari Ibu."));
+  if (o.keluar < 5.25) nn.push(note("warn","Blok subuh belum terbukti",
+    "Angka blok 03:30&ndash;05:15 adalah <b>hipotesis</b>, bukan hasil ukur &mdash; saya menduga tarifnya tinggi karena "+
+    "penerbangan pertama dan hampir tanpa pesaing, tapi belum ada datanya. Coba tiga hari, catat di tab Catatan, "+
+    "lalu bandingkan Rp per jamnya dengan blok peak pagi biasa."));
+  if (L.perkiraan) nn.push(note("warn","Lokasi perkiraan",
+    "<b>"+L.n+"</b> tidak ada di daftar terukur, jadi jaraknya (<b>"+Math.round(L.home)+
+    " km</b>) adalah perkiraan, bukan hasil ukur peta &mdash; anggap meleset sampai 20%. "+
+    "Perilakunya disamakan dengan <b>"+L.anchor+"</b>. Kalau lokasi ini sering Anda datangi, "+
+    "sebutkan ke saya dan akan saya ukur lalu masukkan ke daftar tetap."));
+  nn.push(note(CALIB.kecUkur ? "good" : "warn",
+    CALIB.kecUkur ? "Kecepatan pulang terukur" : "Kecepatan pulang masih tebakan",
+    CALIB.kecUkur
+      ? ("Perjalanan pulang dihitung <b>" + Math.round(CALIB.kecepatan) + " km/jam</b>, dari " +
+         CALIB.kecN + " hari yang menit pulangnya Ibu catat sendiri. Itu yang menentukan jam berapa " +
+         "kartu di atas menyuruh mulai merapat.")
+      : ("Perjalanan pulang dihitung <b>26 km/jam</b> &mdash; itu <b>tebakan saya</b>, belum pernah " +
+         "diuji. Angka itu menentukan kapan Ibu disuruh mulai pulang, dan dari Bekasi selisih " +
+         "10 km/jam berarti beda lebih dari satu jam. <b>Sekali saja catat menit perjalanan " +
+         "pulang</b> di tab Catatan, dan tebakan ini berhenti jadi tebakan.")));
+  var sp = spkluUntuk(L);
+  if (sp && sp.length) nn.push(note("","SPKLU terdekat",
+    spkluTeks(sp) + " &mdash; <b>jarak jalan</b>, diukur lewat peta, bukan garis lurus. " +
+    "<b>Jenis colokan dan dayanya belum tercatat</b> di sumber mana pun yang terbuka, jadi " +
+    "daftar ini menjawab <i>di mana</i>, bukan <i>apakah cocok</i>. Cek sekali di aplikasi " +
+    "PLN Mobile atau BYD, lalu sebutkan ke saya supaya saya catat permanen."));
+  var wk = watakLok(L);
+  if (wk){
+    var isi = wk.kode.split("").map(function(c){
+      var a = WATAK_ARTI[c]; return a ? "<b>"+a[0]+".</b> "+a[1] : ""; })
+      .filter(function(x){ return x; }).join(" ");
+    /* Kalau kecamatan ini punya stasiun berjadwal, sebut dalamnya lembah
+       tengah hari -- itu satu-satunya bagian jadwal KRL yang lolos uji. */
+    var lem = (wk.i >= 0) ? KRLL[wk.i] : 0;
+    if (lem){
+      isi += (isi ? " " : "") + "<b>Stasiunnya tengah hari.</b> Antara 10:00 dan 15:00 keretanya tinggal <b>" +
+             Math.round(lem*100) + "%</b> dari jam ramainya" +
+             (lem <= 0.6 ? " &mdash; praktis separuh. <b>Jangan menunggu di stasiun jam segitu.</b>"
+                         : ", jadi masih lumayan dibanding stasiun lain.");
+    }
+    if (isi) nn.push(note("","Watak wilayah ini",
+      "Yang ada di sekitar " + wk.kec + ": " + isi +
+      " <span style=\"opacity:.75\">Ini dari <b>apa yang ada</b> di sana menurut peta, bukan dari " +
+      "jumlah order yang terukur &mdash; jamnya penalaran, bukan pengamatan.</span>"));
+  }
+  if (CALIB.live) nn.push(note("good","Kalibrasi hidup",
+    "Perhitungan ini memakai <b>angka Anda sendiri</b> dari "+CALIB.n+" hari terakhir: Rp "+
+    Math.round(CALIB.rpkm).toLocaleString("id-ID")+"/km, insentif "+rp(CALIB.ins)+", "+
+    dec(CALIB.kmkwh,1)+" km/kWh."));
+  else nn.push(note("warn","Belum terkalibrasi",
+    "Masih memakai asumsi bawaan. <b>Isi 3 hari di tab Catatan</b> dan seluruh angka di halaman ini berganti jadi milik Anda."));
+  if (gap>5000 && o.pulang<21.5){
+    /* Dihitung sebagai HARI YANG SAMA diperpanjang, bukan sebagai sif baru
+       yang berdiri sendiri mulai jam pulang. Dulu begitu -- dan karena soc
+       tidak ikut diteruskan, sif baru itu selalu dianggap berangkat dengan
+       baterai penuh, jadi tidak pernah menanggung sesi ngecas tambahan yang
+       justru dipicu oleh km perpanjangan itu sendiri.
+
+       Akibatnya pada 14 dari 60 kasus yang benar-benar tampil, angkanya
+       lebih dari dua kali terlalu besar, dan beberapa SALAH TANDA: halaman
+       menyuruh Ibu narik 1,5 jam lagi untuk sesuatu yang sebenarnya
+       mengurangi uangnya (mix 15:00 "+Rp 33.136" padahal -Rp 6.453). Itu
+       jam hidupnya, ditukar dengan angka yang arahnya terbalik. */
+    var tj = tambahanJam(o, r, 1.5);
+    var sampai = tj.sampai, tambah = tj.tambah;
+    if (tambah > 10000) nn.push(note("warn","Kalau mau mengejar",
+      "Menambah 1,5 jam sampai <b>"+hhmm(sampai)+"</b> menambah sekitar <b>"+
+      rp(tambah)+"</b> &mdash; menutup "+Math.round(Math.min(100,tambah/gap*100))+"% kekurangan."));
+    else if (tambah < -2000) nn.push(note("bad","Jangan diperpanjang",
+      "Menambah 1,5 jam sampai <b>"+hhmm(sampai)+"</b> justru <b>mengurangi</b> sekitar "+
+      rp(-tambah)+". Km tambahannya memaksa satu sesi ngecas lagi &mdash; "+rp(SESSION_FEE)+
+      " ditambah waktu mencoloknya. <b>Kekurangan hari ini lebih murah ditutup besok.</b>"));
+  }
+  /* Insentif di halaman ini dihitung RATA menurut jam (CALIB.ins x jam/10,5).
+     Kalau insentif Grab sebenarnya BERTINGKAT -- "sekian trip dapat sekian" --
+     bentuknya sama sekali lain, dan bedanya jatuh persis di keputusan yang
+     paling menentukan: kapan berhenti. Contoh dengan tingkatan 8/12/18 trip:
+     berhenti di jam ke-10 dengan 17 trip, model rata mengaku insentif
+     Rp 123.810 padahal yang didapat Rp 75.000 -- kelebihan Rp 48.810 -- dan
+     36 menit berikutnya yang sebenarnya bernilai Rp 55.000 ditampilkan cuma
+     Rp 6.190. Terbalik.
+
+     Tidak saya tambal dengan tingkatan karangan: model bertingkat yang salah
+     angkanya lebih berbahaya daripada model rata, karena terlihat presisi.
+     Yang bisa dilakukan sekarang adalah mengatakannya, dan hanya saat
+     keputusan berhentinya memang sedang hidup -- dua jam terakhir. */
+  if ((o.pulang - o.keluar) <= 2.5) nn.push(note("warn","Insentif belum tentu rata",
+    "Angka insentif di atas (<b>"+rp(insentifHarian)+"</b>) dihitung <b>rata menurut jam</b>. "+
+    "Kalau insentif Grab hari ini bertingkat &mdash; misalnya target sekian trip &mdash; maka "+
+    "<b>trip terakhir menjelang target jauh lebih berharga</b> daripada yang ditampilkan di sini, "+
+    "dan berhenti sedikit sebelum target berarti kehilangan seluruh bonusnya. "+
+    "<b>Cek sisa target di aplikasi Grab sebelum memutuskan berhenti.</b> "+
+    "Kalau Ibu sebutkan bentuk insentifnya ke saya, saya bisa memasukkannya ke hitungan."));
+  if (gap>100000 && (ctx.dow===2||ctx.dow===3)) nn.push(note("","Jangan dipaksa",
+    "Ini hari lemah dalam minggu. <b>Kekurangan hari ini lebih murah ditutup hari Jumat</b> daripada dengan jam ke-13 &mdash; target Anda bulanan."));
+  if (o.filter===0 && L.z==="jkt") nn.push(note("bad","Filter habis",
+    "Anda di Jakarta tanpa jatah filter. <b>Pulangnya berisiko "+Math.round(kmHome)+" km kosong.</b> Prioritaskan order apa pun ke arah barat mulai sekarang."));
+  if (o.hujan){
+    var dh = dampak(o, {hujan:false});
+    var dariBMKG = WEATHER && WEATHER.hujan && WEATHER.tanggal === iso(new Date());
+    nn.push(note("warn","Hujan sudah dihitung",
+      (dariBMKG ? "Prakiraan "+(WEATHER.sumber||"BMKG")+(WEATHER.jam?" ("+WEATHER.jam+")":"")+
+                  " masuk otomatis pagi tadi. " : "")+
+      "Proyeksi di atas <b>sudah termasuk</b> kenaikan permintaan: <b>+"+rp(dh)+
+      "</b> dibanding hari kering. Tapi hindari titik banjir di Periuk, Ciledug, dan sebagian Jakarta Barat &mdash; "+
+      "<b>jangan menembus genangan lebih dari 15 cm.</b>"));
+  }
+  if (ctx.ev){
+    nn.push(note("good","Acara sudah dihitung",
+      "<b>"+ctx.ev[0]+"</b> di "+ctx.ev[1]+" masuk dari kalender otomatis, dan sudah tercermin di proyeksi serta urutan langkah di atas. "+
+      (ctx.ev[2]==="lokal"
+        ? "Venue ini di wilayah Anda &mdash; rencanakan berada di sekitar BSD saat acara bubar."
+        : "Venue di Jakarta &mdash; bubarannya larut dan pulangnya jauh; ambil hanya kalau besok Anda libur atau mulai siang.")));
+  } else if (o.acara){
+    var da = dampak(o, {acara:false});
+    nn.push(note("good","Acara sudah dihitung",
+      "Anda menandai ada acara besar. Proyeksi di atas sudah termasuk kenaikannya: <b>+"+rp(da)+"</b>."));
+  }
+  el("n-notes").innerHTML = nn.join("");
+}
+
+/* ---------------- PLAN ---------------- */
+
+function segColor(rate,on){
+  if (!on) return "var(--t-off)";
+  if (rate>=40000) return "var(--t-hi)";
+  if (rate>=28000) return "var(--t-mid)";
+  return "var(--t-lo)";
+}
+function runPlan(){
+  var dateStr = el("p-tgl").value || iso(new Date());
+  var ctx = dayCtx(dateStr);
+  var o = { ctx:ctx, keluar:parseFloat(el("p-keluar").value), pulang:parseFloat(el("p-pulang").value),
+    rehat:el("p-rehat").value, zona:el("p-zona").value, filter:parseInt(el("p-filter").value,10),
+    bat:parseFloat(el("p-bat").value), rumah:el("p-rumah").checked,
+    hujan:el("p-hujan").checked, acara:el("p-acara").checked };
+  if (o.pulang<=o.keluar){ o.pulang=Math.min(24,o.keluar+1); el("p-pulang").value=o.pulang; }
+  var r = simulate(o);
+
+  el("p-net").textContent = rp(r.net);
+  el("p-net").className = "big "+(r.net>=TARGET_DAY?"ok":(r.net>=TARGET_DAY*0.75?"mid":"bad"));
+  el("p-bar").style.width = Math.max(0,Math.min(100,(r.net/TARGET_DAY)*100)).toFixed(1)+"%";
+
+  var from=3.5,to=24,span=to-from,h="";
+  r.segs.forEach(function(s){
+    var w=((s.e-s.s)/span)*100, lbl=(s.e-s.s)>=1.4?s.n:"";
+    h+='<div class="seg'+(s.on?"":" off")+'" style="width:'+w.toFixed(2)+"%;background:"+
+       segColor(s.rate,s.on)+'"><span>'+lbl+"</span></div>";
+  });
+  el("p-tl").innerHTML=h;
+
+  el("p-side").innerHTML = [
+    ["Jam efektif", r.effHours.toFixed(1)+" j"], ["Per jam", rp(r.perHour)],
+    ["Km tempuh", Math.round(r.km)+" km"], ["Listrik", dec(r.kwh,1)+" kWh"],
+    ["Pendapatan blok", rp(r.blockNet)], ["Insentif", rp(r.insentif)],
+    ["Sesi SPKLU", r.sessions+"&times;"]
+  ].map(function(x){ return "<div><span>"+x[0]+"</span><b>"+x[1]+"</b></div>"; }).join("");
+
+  renderSteps(el("p-steps"), buildSteps(o, r,
+    { kmHome:ZONA[o.zona].pulang, L:{ z:o.zona, jauh:false }, rencana:true }), "Urutan hari itu");
+
+  var nn=[];
+  if (ctx.holi) nn.push(note("warn","Tanggal merah",
+    "<b>"+ctx.holi[0]+".</b> Peak pagi tidak ada. Mulai siang, kerjakan mal, kuliner, dan bandara sampai larut."));
+  if (ctx.eve) nn.push(note("good","Malam sebelum libur",
+    "Besok tanggal merah"+(ctx.evePlus?", awal libur panjang":"")+". <b>Sore dan malam ini arus keluar kota</b> &mdash; bandara, Batu Ceper, Terminal Poris."));
+  if (o.keluar>=10.5 && o.keluar<14.5) nn.push(note("bad","Jam termurah",
+    "Mulai di blok siang berarti membeli jam paling murah. <b>Lebih untung tidur lagi dan keluar pukul 15:00.</b>"));
+  if (r.effHours>12) nn.push(note("bad","Jam kerja",
+    "<b>"+r.effHours.toFixed(1)+" jam</b> melewati batas 12 jam pengemudi angkutan umum."));
+  else if (r.effHours<=8.4) nn.push(note("good","Sesuai batas kerja",
+    "<b>"+r.effHours.toFixed(1)+" jam</b> &mdash; masih di dalam batas 8 jam mengemudi menurut UU Lalu Lintas dan Angkutan Jalan. "+
+    "Hasil per jamnya <b>"+rp(r.perHour)+"</b>, biasanya yang tertinggi dari semua pola sif, karena hanya jam peak yang dikerjakan."));
+  if (r.sessions>=2 && !o.rumah) nn.push(note("warn","Ngecas",
+    "<b>"+r.sessions+" sesi SPKLU</b> memakan "+Math.round(r.chargeHours*60)+" menit dan "+
+    rp(r.sessions*SESSION_FEE)+" biaya layanan."));
+  /* Arah balik: apa yang terjadi di lapangan masuk ke tab Rencana. */
+  if (AKTUAL && AKTUAL.tanggal === dateStr){
+    var sampai = simulate({ ctx:ctx, keluar:o.keluar, pulang:Math.max(o.keluar,AKTUAL.jam),
+      rehat:o.rehat, zona:o.zona, filter:o.filter, bat:o.bat, rumah:o.rumah,
+      hujan:o.hujan, acara:o.acara });
+    var beda = AKTUAL.dpt - sampai.blockNet;
+    nn.push(note(beda>=0?"good":"warn","Dari lapangan",
+      "Pukul <b>"+hhmm(AKTUAL.jam)+"</b> di <b>"+AKTUAL.lok+"</b>, tab Sekarang mencatat aktual <b>"+
+      rp(AKTUAL.dpt)+"</b>. Menurut rencana ini seharusnya <b>"+rp(sampai.blockNet)+"</b> &mdash; "+
+      (beda>=0 ? "<b>unggul "+rp(beda)+"</b>." : "<b>tertinggal "+rp(-beda)+"</b>.")+
+      " Sisa harinya tetap dihitung dari posisi nyata di tab Sekarang, bukan dari rencana ini."));
+  }
+  if (ctx.ev) nn.push(note("good","Acara sudah dihitung",
+    "<b>"+ctx.ev[0]+"</b> di "+ctx.ev[1]+" masuk dari kalender otomatis dan sudah tercermin di angka serta urutan langkah di atas."));
+  if (o.hujan){
+    var dhp = dampak(o, {hujan:false});
+    nn.push(note("warn","Hujan sudah dihitung",
+      ((WEATHER && WEATHER.hujan && WEATHER.tanggal===dateStr)
+        ? "Prakiraan "+(WEATHER.sumber||"BMKG")+(WEATHER.jam?" ("+WEATHER.jam+")":"")+" masuk otomatis. " : "")+
+      "Angka di atas sudah termasuk kenaikannya: <b>+"+rp(dhp)+"</b> dibanding hari kering."));
+  }
+  el("p-notes").innerHTML = nn.join("");
+
+  var best=-1, res=PRESETS.map(function(p){
+    var rr=simulate({ctx:ctx,keluar:p.k,pulang:p.p,rehat:p.r,zona:o.zona,filter:o.filter,
+      bat:o.bat,rumah:o.rumah,hujan:o.hujan,acara:o.acara});
+    if (rr.net>best) best=rr.net; return {p:p,r:rr};
+  });
+  el("cmphead").textContent = ctx.name+(ctx.holi?" · tanggal merah":"")+" · "+ZONA[o.zona].label;
+  el("cmp").innerHTML = res.map(function(x){
+    return '<tr'+(x.r.net===best?' class="best"':"")+'><td class="n">'+x.p.n+"</td><td>"+
+      hhmm(x.p.k)+"&ndash;"+hhmm(x.p.p)+"</td><td>"+x.r.effHours.toFixed(1)+" j</td><td>"+
+      rp(x.r.net)+"</td><td>"+rp(x.r.perHour)+"</td></tr>";
+  }).join("");
+  var gap=best-r.net;
+  el("p-vs").innerHTML = gap>5000
+    ? "Target Rp 515.000 &middot; sif terbaik <b>"+rp(best)+"</b>, selisih "+rp(gap)
+    : "Target Rp 515.000 &middot; <b>ini sif terbaik untuk kondisi itu</b>";
+}
+
+/* ---------------- TANYA ----------------
+   Asisten di dalam aplikasi. Ia hanya menerima apa yang ada di halaman ini
+   — catatan Ibu, rencana hari ini, cuaca, tarif blok. Tidak punya jalan ke
+   data lain mana pun. Percakapan disimpan di HP ini saja. */
+/* Apa yang SEDANG ditampilkan halaman. Tanpa ini Tanya menyimpulkan ulang
+   dari fakta mentah sementara di sebelahnya kartu langkah sudah dihitung --
+   dua otak yang tidak saling bicara, dan jawabannya terasa seperti template
+   karena memang tidak punya apa-apa untuk ditanggapi. */
+var SEKARANG = null;
+
+/* Proyeksi halaman disimpan per hari, lalu dipasangkan dengan hasil nyata
+   yang Ibu catat malamnya. Gunanya bukan hiasan: tarif blok jam masih
+   tebakan saya, dan satu-satunya cara mengetahui SEBERAPA meleset tebakan
+   itu adalah membandingkan proyeksi dengan kenyataan berulang kali.
+   Tanya diberi tahu selisihnya supaya jawabannya bisa mengoreksi sendiri.
+
+   TIDAK dipakai untuk mengubah angka proyeksi secara otomatis: begitu Ibu
+   punya 3 hari catatan, CALIB sudah mengoreksi dari arah lain (Rp/km,
+   km/kWh, insentif). Mengoreksi dua kali dari data yang sama akan
+   menghitung ganti rugi yang sama dua kali. */
+var LSPROY = "riwayat-proyeksi";
+function catatProyeksi(tanggal, nilai){
+  try {
+    var m = JSON.parse(localStorage.getItem(LSPROY) || "{}") || {};
+    if (!m[tanggal]) m[tanggal] = { awal: Math.round(nilai), jam: hhmm(parseFloat(el("n-jam").value)) };
+    m[tanggal].akhir = Math.round(nilai);
+    var kunci = Object.keys(m).sort();
+    while (kunci.length > 40) { delete m[kunci.shift()]; }   /* simpan 40 hari saja */
+    localStorage.setItem(LSPROY, JSON.stringify(m));
+  } catch (e) {}
+}
+function bandingProyeksi(){
+  var out = [], rasio = [];
+  try {
+    var m = JSON.parse(localStorage.getItem(LSPROY) || "{}") || {};
+    rows.slice(0, 14).forEach(function(r){
+      var p = m[r.id]; if (!p || !p.awal) return;
+      var nyata = derive(r).net;
+      if (!(nyata > 0)) return;
+      out.push({ id:r.id, jam:p.jam, proy:p.awal, nyata:Math.round(nyata) });
+      rasio.push(nyata / p.awal);
+    });
+  } catch (e) {}
+  rasio.sort(function(a,b){ return a-b; });
+  return { baris: out, tengah: rasio.length ? rasio[Math.floor(rasio.length/2)] : null };
+}
+var CHAT = [], LSC = "tanya-riwayat";
+var CONTOH = ["Sekarang enaknya ke mana?", "Pulang sekarang atau lanjut?",
+              "Kenapa langkahnya begitu?", "Masih kuat nggak baterainya?",
+              "Hari ini kejar berapa?"];
+
+function muatChat(){
+  try { CHAT = JSON.parse(localStorage.getItem(LSC) || "[]") || []; } catch (e) { CHAT = []; }
+}
+function simpanChat(){
+  try { localStorage.setItem(LSC, JSON.stringify(CHAT.slice(-40))); } catch (e) {}
+}
+function renderChat(){
+  var n = el("chatlog");
+  if (!CHAT.length){
+    n.innerHTML = '<div class="chat-empty">Belum ada pertanyaan. Coba salah satu di bawah, atau ketik sendiri.</div>';
+  } else {
+    n.innerHTML = CHAT.map(function(m){
+      return '<div class="bubble '+(m.role==="user"?"me":"ai")+'">'+
+             String(m.content).replace(/&/g,"&amp;").replace(/</g,"&lt;")+"</div>";
+    }).join("");
+    n.scrollTop = n.scrollHeight;
+  }
+  el("chatchips").innerHTML = CONTOH.map(function(c){
+    return "<button type=\"button\">"+c+"</button>"; }).join("");
+  Array.prototype.forEach.call(el("chatchips").children, function(b){
+    b.addEventListener("click", function(){ el("chatinput").value = b.textContent; kirimChat(); });
+  });
+}
+
+/* Teks di halaman penuh entitas HTML dan tag tebal; dibersihkan dulu supaya
+   yang sampai ke Tanya kalimat biasa, bukan markup. */
+function rapi(x){
+  return String(x == null ? "" : x)
+    .replace(/<[^>]*>/g, "")
+    .replace(/&middot;/g, "·").replace(/&rarr;/g, "->").replace(/&mdash;/g, "--")
+    .replace(/&ndash;/g, "-").replace(/&amp;/g, "&").replace(/&le;/g, "<=")
+    .replace(/&ldquo;|&rdquo;/g, '"').replace(/<br\s*\/?>/g, " ").trim();
+}
+/* Semua yang diketahui asisten, dirakit dari halaman ini saja. */
+function konteksTanya(){
+  var d = new Date(), ctx = dayCtx(iso(d));
+  var L = currentLok();
+  var jam = parseFloat(el("n-jam").value), pulang = parseFloat(el("n-pulang").value);
+  var soc = parseFloat(el("n-soc").value)||0, dpt = parseFloat(el("n-dpt").value)||0;
+  var baris = ["=== HARI INI ===",
+    "Tanggal " + iso(d) + ", " + ctx.name + (ctx.holi ? " (TANGGAL MERAH: "+ctx.holi[0]+")" : ""),
+    ctx.eve ? "Besok tanggal merah - malam ini arus keluar kota." : "",
+    ctx.ev ? ("Acara besar: "+ctx.ev[0]+" di "+ctx.ev[1]) : "",
+    WEATHER && WEATHER.tanggal===iso(d) ? ("Cuaca: "+(WEATHER.hujan?("hujan "+(WEATHER.jam||"")):"tidak hujan")) : "",
+    "",
+    "=== POSISI DAN KEADAAN ===",
+    "Posisi: " + L.n + ", " + Math.round(L.home) + " km dari rumah (Modernland, Kota Tangerang)",
+    "Jam sekarang " + hhmm(jam) + ", rencana pulang " + hhmm(pulang),
+    "Sisa baterai " + soc + "%, minimum untuk pulang dari sini " + L.res + "%",
+    "Sudah dapat hari ini Rp " + Math.round(dpt).toLocaleString("id-ID"),
+    "Mobil BYD Atto 1 listrik, " + el("n-bat").value + " kWh, isi cepat maksimum 40 kW",
+    "",
+    "=== TARIF TIAP BLOK JAM (bersih per jam) ===",
+    BASE.map(function(b){
+      return hhmm(b.s)+"-"+hhmm(b.e)+" "+b.n+": "+rp(blockRate(b, ctx.shapeDay));
+    }).join("\n"),
+    "",
+    "=== ANGKA IBU ===",
+    CALIB.live ? ("Terkalibrasi dari "+CALIB.n+" hari: Rp "+Math.round(CALIB.rpkm)+
+                  "/km berpenumpang, insentif "+rp(CALIB.ins)+", "+dec(CALIB.kmkwh,1)+" km/kWh")
+               : "Belum terkalibrasi - masih memakai asumsi: Rp 2.900/km, insentif Rp 130.000, 6,7 km/kWh",
+    "Target: Rp 515.000 per hari, Rp 13,4 juta per bulan dari sekitar 26 hari kerja",
+    "Ambang sehat: 15 km berbayar per jam untuk Rp 500rb, 22 untuk Rp 700rb"
+  ];
+
+  /* Apa yang halaman SUDAH simpulkan. Tanya bertugas menilai ini, bukan
+     menyusun ulang dari nol. */
+  if (SEKARANG){
+    baris.push("", "=== YANG SUDAH DIHITUNG HALAMAN (nilai ini, jangan diulang) ===",
+      "Kartu langkah berikutnya: " + rapi(SEKARANG.v.h),
+      "  rutenya: " + rapi(SEKARANG.v.r),
+      "  alasannya: " + rapi(SEKARANG.v.p),
+      "Proyeksi sampai pulang Rp " + Math.round(SEKARANG.proyeksi).toLocaleString("id-ID") +
+        " (target harian Rp 515.000, " +
+        (SEKARANG.gap > 0 ? "kurang Rp " + Math.round(SEKARANG.gap).toLocaleString("id-ID")
+                          : "sudah lewat Rp " + Math.round(-SEKARANG.gap).toLocaleString("id-ID")) + ")",
+      "Sesi ngecas yang direncanakan: " + SEKARANG.r.sessions + "x",
+      "Daya cukup untuk " + Math.round(SEKARANG.usableKm) + " km, sampai pulang butuh " +
+        Math.round(SEKARANG.butuh) + " km");
+    baris.push("Urutan langkah sampai pulang:");
+    SEKARANG.langkah.forEach(function(x){
+      baris.push("  " + rapi(x.t).replace(/\s+/g," ") + " | " + rapi(x.b) + " | " + rapi(x.s) + " | " + x.v);
+    });
+  }
+
+  /* Watak dan stasiun di kecamatan tempat dia berdiri. */
+  var wkT = SEKARANG ? watakLok(SEKARANG.L) : null;
+  if (wkT){
+    var isiT = wkT.kode.split("").map(function(c){
+      return WATAK_ARTI[c] ? WATAK_ARTI[c][0] : ""; }).filter(function(x){return x;}).join(", ");
+    var lemT = (wkT.i >= 0) ? KRLL[wkT.i] : 0;
+    baris.push("", "=== WATAK TEMPAT INI (" + wkT.kec + ") ===",
+      isiT ? ("Yang ada di sekitar sini: " + isiT) : "Belum ada data jenis tempat di sini.",
+      lemT ? ("Stasiun di sini: tengah hari (10:00-15:00) keretanya tinggal " +
+              Math.round(lemT*100) + "% dari jam ramai. Ini dari jadwal resmi KRL.")
+           : "Tidak ada stasiun KRL berjadwal di kecamatan ini.");
+  }
+
+  /* PILIHAN LAIN, dengan angkanya. Tanpa ini Tanya cuma tahu keadaan di
+     tempat Ibu berdiri -- kalau ditanya "ke BSD atau bandara?" dia hanya
+     bisa berpendapat, tidak bisa menghitung. Sekarang dia punya jarak
+     terukur, ambang daya, watak, dan lembah stasiun untuk tiap tempat yang
+     memang punya nama di daftar Ibu. */
+  baris.push("", "=== TEMPAT LAIN YANG BISA DIBANDINGKAN ===",
+    "(km = jarak pulang terukur ke rumah; daya min = sisa baterai yang dibutuhkan dari situ)");
+  LOK.forEach(function(l){
+    if (l.lat == null) return;
+    var w = watakDi(l.lat, l.lon);
+    var kode = w && w.kode ? w.kode.split("").map(function(c){
+      return WATAK_ARTI[c] ? WATAK_ARTI[c][0].toLowerCase() : ""; })
+      .filter(function(x){return x;}).join("/") : "";
+    var lem = (w && w.i >= 0) ? KRLL[w.i] : 0;
+    baris.push("  " + l.n + ": " + Math.round(l.home) + " km, daya min " + l.res + "%" +
+      (kode ? ", " + kode : "") +
+      (lem ? ", stasiunnya tengah hari tinggal " + Math.round(lem*100) + "%" : "") +
+      (l.id === (SEKARANG && SEKARANG.L.id) ? "   <- posisi Ibu sekarang" : ""));
+  });
+
+  /* SKENARIO PULANG, dihitung betulan oleh mesin yang sama. "Pulang sekarang
+     atau lanjut" itu pertanyaan tersering dan paling mahal; Tanya tidak
+     boleh menjawabnya dengan perasaan kalau angkanya bisa dihitung. */
+  if (SEKARANG){
+    var o0 = SEKARANG.o, r0 = SEKARANG.r;
+    baris.push("", "=== KALAU PULANGNYA DIGESER (hitungan mesin, bukan perkiraan kasar) ===");
+    var terakhirP = -1;
+    [0, 1, 2, 3].forEach(function(tambah){
+      var p2 = Math.min(23.5, o0.pulang + tambah);
+      if (tambah > 0 && p2 <= o0.pulang) return;
+      /* Dijepit di 23:30, jadi dua langkah terakhir bisa jatuh ke jam yang
+         sama; jangan disebut dua kali. */
+      if (p2 === terakhirP) return;
+      terakhirP = p2;
+      var o2 = {}; Object.keys(o0).forEach(function(k){ o2[k] = o0[k]; });
+      o2.pulang = p2;
+      var r2 = simulate(o2);
+      var selisih = r2.net - r0.net;
+      baris.push("  pulang " + hhmm(p2) + ": bersih Rp " +
+        Math.round(r2.net).toLocaleString("id-ID") +
+        (tambah === 0 ? "   (rencana sekarang)"
+                      : "   selisih " + (selisih>=0?"+":"") + "Rp " +
+                        Math.round(selisih).toLocaleString("id-ID")) +
+        ", sesi ngecas " + r2.sessions + "x, jam efektif " + r2.effHours.toFixed(1));
+    });
+    baris.push("  Catatan: selisih itu sudah termasuk biaya sesi ngecas tambahan " +
+               "kalau km-nya memicu satu sesi lagi.");
+  }
+
+  /* SPKLU terdekat dari posisinya sekarang. */
+  var spT = SEKARANG ? spkluUntuk(SEKARANG.L) : null;
+  if (spT && spT.length){
+    baris.push("", "=== SPKLU TERDEKAT DARI POSISI IBU (jarak jalan terukur) ===");
+    spT.forEach(function(x){ baris.push("  " + x.nama + ": " + x.km + " km"); });
+    baris.push("  Jenis colokan dan dayanya TIDAK diketahui -- belum tercatat di sumber " +
+               "terbuka mana pun. Jangan menjanjikan bahwa salah satunya cocok untuk Atto 1.");
+  }
+
+  /* Rekam jejak proyeksi halaman ini sendiri. */
+  var bp = bandingProyeksi();
+  if (bp.baris.length){
+    baris.push("", "=== SEBERAPA TEPAT PROYEKSI HALAMAN INI SELAMA INI ===");
+    bp.baris.forEach(function(x){
+      baris.push("  " + x.id + " (dilihat " + x.jam + "): halaman memproyeksikan Rp " +
+        x.proy.toLocaleString("id-ID") + ", hasil nyatanya Rp " + x.nyata.toLocaleString("id-ID") +
+        " (" + Math.round(x.nyata/x.proy*100) + "%)");
+    });
+    if (bp.tengah){
+      var pct = Math.round((bp.tengah - 1) * 100);
+      baris.push("  Median: hasil nyata " +
+        (Math.abs(pct) < 5 ? "kira-kira sama dengan proyeksi"
+         : (pct > 0 ? pct + "% DI ATAS proyeksi" : Math.abs(pct) + "% DI BAWAH proyeksi")) +
+        ". Pakai ini untuk menimbang, dan sebutkan ke Ibu kalau relevan. " +
+        "Jangan mengalikan ulang angka proyeksi dengan rasio ini: kalau catatan Ibu " +
+        "sudah 3 hari, mesin sudah dikoreksi dari arah lain dan itu jadi dobel.");
+    }
+  }
+
+  /* Batas pengetahuan, ditulis terus terang supaya Tanya tidak menyajikan
+     tebakan saya seolah-olah hasil ukur. */
+  baris.push("", "=== MANA YANG TERUKUR, MANA YANG ASUMSI ===",
+    "TERUKUR (boleh dipakai dengan yakin):",
+    "  - Jarak pulang tiap kecamatan: diukur lewat peta jalan, meleset median 3,2%",
+    "  - Ambang sisa daya: dari jarak itu, sudah ditambah margin luas kecamatan",
+    "  - Jadwal KRL: dari jadwal resmi. TAPI menghitung kereta, bukan penumpang",
+    "  - Tanggal merah dan kalender acara besar",
+    "ASUMSI SAYA (sebutkan kalau jawaban bertumpu pada ini):",
+    "  - Tarif tiap blok jam di atas: perkiraan, BUKAN hasil ukur",
+    "  - Pengali hari (Jumat 1,15 dsb) dan pengali wilayah: perkiraan",
+    "  - Blok subuh 03:30-05:15: hipotesis murni, belum ada datanya sama sekali",
+    (CALIB.kecUkur
+      ? ("  - Kecepatan pulang " + Math.round(CALIB.kecepatan) + " km/jam: TERUKUR dari " +
+         CALIB.kecN + " catatan Ibu sendiri.")
+      : "  - Kecepatan pulang 26 km/jam: tebakan, belum diuji. Ia menentukan kapan Ibu " +
+        "disuruh mulai pulang, jadi sebutkan kalau jawabanmu bergantung pada waktu tempuh."),
+    "  - Insentif dihitung RATA menurut jam. Kalau insentif Grab bertingkat",
+    "    (target sekian trip), bentuknya beda jauh: trip terakhir menjelang",
+    "    target jauh lebih berharga, dan berhenti sedikit sebelum target",
+    "    kehilangan seluruh bonus. Halaman belum tahu bentuk aslinya.",
+    (CALIB.live ? "  - Rp/km, insentif, km/kWh SUDAH dari catatan Ibu sendiri, bukan asumsi."
+                : "  - Rp/km, insentif, km/kWh masih asumsi. Ibu belum mencatat 3 hari."));
+  var recent = rows.slice(0, 10);
+  if (recent.length){
+    baris.push("", "=== CATATAN 10 HARI TERAKHIR ===");
+    recent.forEach(function(r){
+      var dv = derive(r), dt = new Date(r.id+"T00:00:00");
+      baris.push(r.id+" "+DAYNAME[dt.getDay()]+" jam="+num(r.jam)+" trip="+num(r.trip)+
+        " km="+num(r.kmt)+" kmBayar="+num(r.kmp)+
+        " kmBayarPerJam="+(dv.kmjam==null?"?":dv.kmjam.toFixed(1))+
+        " bersih=Rp"+Math.round(dv.net)+(r.cat?(" catatan="+r.cat):""));
+    });
+  }
+  if (PLAN && PLAN.date === iso(d)){
+    baris.push("", "=== RENCANA HARI INI ===",
+      "Keluar "+hhmm(PLAN.keluar)+", pulang "+hhmm(PLAN.pulang)+
+      ", wilayah "+ZONA[PLAN.zona].label+", istirahat "+PLAN.rehat);
+  }
+  return baris.filter(function(x){ return x !== ""; }).join("\n");
+}
+
+/* Fungsi halaman yang boleh dipanggil Claude sendiri saat menjawab.
+   Sebelumnya Tanya hanya menerima teks: kalau Ibu bertanya sesuatu yang
+   tidak saya duga -- "kalau saya mulai jam 4 subuh dan pulang jam 2 siang?"
+   -- dia harus mengarang perkiraan. Sekarang dia bisa MENJALANKAN mesin
+   yang sama dengan halaman ini dan menjawab dengan angka sungguhan.
+
+   Ongkosnya nyata: tiap putaran alat itu satu permintaan terpisah, dan
+   jawaban bisa jadi lebih lambat. Karena itu skenario yang paling sering
+   ditanya tetap dihitung di muka dan ikut di konteks -- alat cuma dipakai
+   untuk yang di luar itu. */
+function alatTanya(){
+  return [
+    {
+      name: "hitung_skenario",
+      description: "Hitung hasil bersih satu hari kerja memakai mesin yang sama dengan halaman ini. " +
+        "Pakai untuk menjawab pertanyaan 'bagaimana kalau' dengan angka sungguhan, bukan perkiraan. " +
+        "Mengembalikan bersih, jam efektif, Rp per jam, jumlah sesi ngecas, dan km tempuh.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          keluar: { type:"number", description:"jam mulai dalam desimal, mis. 5.25 = 05:15, 3.5 = 03:30" },
+          pulang: { type:"number", description:"jam pulang dalam desimal, mis. 21.5 = 21:30" },
+          zona:   { type:"string", description:"tng (Tangerang saja), mix (Tangerang+Jakarta peak), jkt (Jakarta dominan), apt (fokus bandara)" },
+          rehat:  { type:"string", description:"none, full (10:30-15:00), short (13:00-15:00), duapeak (09:30-16:45)" },
+          soc:    { type:"number", description:"sisa baterai persen saat mulai; kosongkan kalau tidak disebut" },
+          hujan:  { type:"boolean", description:"anggap hujan" }
+        },
+        required: ["keluar", "pulang"]
+      },
+      execute: function(inp){
+        var keluar = Number(inp.keluar), pulang = Number(inp.pulang);
+        if (!isFinite(keluar) || !isFinite(pulang)) throw new Error("jam keluar dan pulang harus angka desimal");
+        if (pulang <= keluar) throw new Error("jam pulang harus lebih besar dari jam keluar");
+        var z = String(inp.zona || (SEKARANG ? SEKARANG.L.z : "tng"));
+        if (!ZONA[z]) z = "tng";
+        var rh = String(inp.rehat || "none");
+        if (["none","full","short","duapeak"].indexOf(rh) < 0) rh = "none";
+        var o2 = { ctx: dayCtx(iso(new Date())), keluar:keluar, pulang:pulang, rehat:rh, zona:z,
+                   filter: SEKARANG ? SEKARANG.o.filter : 2,
+                   bat: parseFloat(el("n-bat").value), rumah: el("n-rumah").checked,
+                   hujan: inp.hujan === true || (inp.hujan == null && el("n-hujan").checked),
+                   acara: el("n-acara").checked };
+        if (inp.soc != null && isFinite(Number(inp.soc))) o2.soc = Number(inp.soc);
+        var r2 = simulate(o2);
+        return {
+          jam: hhmm(keluar) + "-" + hhmm(pulang), wilayah: ZONA[z].label, istirahat: rh,
+          bersih_rp: Math.round(r2.net), jam_efektif: Number(r2.effHours.toFixed(1)),
+          rp_per_jam: Math.round(r2.perHour), sesi_ngecas: r2.sessions,
+          km_tempuh: Math.round(r2.km),
+          catatan: "Tarif blok jam yang dipakai mesin ini perkiraan, bukan hasil ukur."
+        };
+      }
+    },
+    {
+      name: "cari_daerah",
+      description: "Cari satu kecamatan di Jabodetabek dari namanya. Mengembalikan jarak pulang " +
+        "terukur ke rumah, sisa baterai minimum yang dibutuhkan dari sana, wataknya, dan " +
+        "seberapa sepi stasiunnya tengah hari. Pakai kalau Ibu menyebut tempat yang tidak " +
+        "ada di daftar tempat pembanding.",
+      inputSchema: { type:"object", properties:{ nama:{ type:"string", description:"nama kecamatan, mis. Cikarang Utara" } }, required:["nama"] },
+      execute: function(inp){
+        var t = cariKecamatan(String(inp.nama || ""));
+        if (!t) throw new Error("tidak ada kecamatan bernama itu di 183 yang terukur");
+        var i = KEC.indexOf(t.kec);
+        var kmAman = Math.max(t.kec[4] * 1.08, t.kec[4] + 1.35 * (i >= 0 ? RKEC[i] : 0));
+        var kode = (i >= 0 && WATAK[i]) ? WATAK[i] : "";
+        var lem = (i >= 0) ? KRLL[i] : 0;
+        return {
+          nama: t.kec[0] + ", " + INDUK[t.kec[1]],
+          km_pulang_terukur: t.kec[4],
+          daya_minimum_persen: Math.round(kmAman/2 + 15),
+          wilayah_tarif: ZONA[t.kec[6]] ? ZONA[t.kec[6]].label : t.kec[6],
+          watak: kode ? kode.split("").map(function(c){
+            return WATAK_ARTI[c] ? WATAK_ARTI[c][0] : ""; }).filter(function(x){return x;}).join(", ")
+            : "belum ada data jenis tempat di sana",
+          stasiun_tengah_hari: lem ? (Math.round(lem*100) + "% dari jam ramai") : "tidak ada stasiun KRL berjadwal",
+          catatan_ambigu: t.catatan ? rapi(t.catatan) : ""
+        };
+      }
+    }
+  ];
+}
+
+function kirimChat(){
+  var q = el("chatinput").value.trim();
+  if (!q) return;
+  if (!sampler){
+    el("tanyastatus").textContent = "Belum tersambung ke Claude";
+    CHAT.push({role:"user", content:q});
+    CHAT.push({role:"assistant", content:"Saya belum tersambung ke Claude di HP ini. "+
+      "Isi kunci API sekali di bagian \"Sambungan ke Claude\" di bawah, lalu tanyakan lagi."});
+    el("chatinput").value = "";
+    renderChat(); simpanChat();
+    var pnl = el("ai-panel"); if (pnl) pnl.scrollIntoView({behavior:"smooth", block:"start"});
+    return;
+  }
+  el("chatinput").value = "";
+  CHAT.push({role:"user", content:q});
+  CHAT.push({role:"assistant", content:"Sedang berpikir…"});
+  renderChat(); simpanChat();
+  el("chatsend").disabled = true; el("tanyastatus").textContent = "Menjawab…";
+
+  /* Prompt ini pernah mengunci jawaban di 120 kata dan cuma menyodorkan
+     fakta mentah. Hasilnya terasa seperti template: benar tapi tidak
+     menimbang apa pun, dan tidak pernah menanggapi apa yang sudah
+     ditampilkan halaman di sebelahnya. Sekarang tugasnya dinaikkan --
+     BERNALAR dengan data yang ada, bukan membacakannya. */
+  var sistem =
+    "Kamu asisten pribadi Shanti, pengemudi GrabCar yang tinggal di Modernland, Kota Tangerang. " +
+    "Panggil dia Ibu. Bahasa Indonesia yang hangat dan sederhana, seperti orang yang duduk di " +
+    "sebelahnya dan ikut memikirkan harinya -- bukan seperti aplikasi yang membacakan angka.\n\n" +
+
+    "CARA MENJAWAB:\n" +
+    "1. Jawab pertanyaannya dulu, satu kalimat, tanpa pembuka.\n" +
+    "2. Lalu tunjukkan alasannya pakai angka yang ada di bawah. Kamu BOLEH DAN HARUS " +
+    "menghitung sendiri: kurangi, bagi, bandingkan. Contoh: sisa jam dikali tarif blok, " +
+    "km pulang dibanding daya tersisa, selisih dua pilihan dalam rupiah.\n" +
+    "3. Kalau ada lebih dari satu pilihan masuk akal, sebutkan keduanya dengan angkanya, " +
+    "lalu bilang mana yang kamu pilih dan kenapa. Jangan menyodorkan daftar tanpa pendapat.\n" +
+    "4. Tutup dengan apa yang bisa membuat jawabanmu salah, kalau memang ada.\n\n" +
+
+    "PANJANGNYA mengikuti pertanyaannya. Pertanyaan pendek -- \"masih kuat nggak baterainya?\" -- " +
+    "dijawab pendek. Pertanyaan yang menentukan -- \"pulang sekarang atau lanjut?\" -- layak " +
+    "beberapa paragraf. Jangan memotong penalaran cuma demi ringkas.\n\n" +
+
+    "MENILAI HALAMAN, BUKAN MENGULANGNYA. Di bawah ada bagian YANG SUDAH DIHITUNG HALAMAN. " +
+    "Itu kesimpulan mesinnya. Tugasmu menanggapi: jelaskan kenapa begitu kalau Ibu bertanya, " +
+    "atau BANTAH kalau menurut data ada yang lebih masuk akal. Kamu boleh tidak setuju dengan " +
+    "kartu langkah -- sebutkan alasannya. Yang dilarang cuma mengulanginya kata per kata.\n\n" +
+
+    "JUJUR SOAL BATAS. Bagian MANA YANG TERUKUR, MANA YANG ASUMSI itu penting. " +
+    "Kalau jawabanmu bertumpu pada angka terukur, jawab dengan yakin. Kalau bertumpu pada " +
+    "asumsi -- tarif blok, pengali hari, bentuk insentif, blok subuh -- katakan itu dalam " +
+    "satu kalimat singkat. Jangan menyajikan tebakan seperti hasil ukur, dan jangan juga " +
+    "meragukan segalanya sampai jawabannya jadi tidak berguna.\n\n" +
+
+    "KAMU PUNYA DUA ALAT. hitung_skenario menjalankan mesin hitung halaman ini dengan jam, " +
+    "wilayah, atau istirahat apa pun yang kamu mau -- pakai kalau Ibu bertanya 'bagaimana kalau' " +
+    "dan jawabannya belum ada di daftar skenario di bawah. cari_daerah memberi jarak terukur, " +
+    "ambang daya, dan watak untuk kecamatan mana pun di Jabodetabek. Panggil alat kalau itu " +
+    "membuat jawabanmu berdiri di atas angka; jangan panggil kalau angkanya sudah ada di bawah, " +
+    "karena tiap panggilan membuat Ibu menunggu lebih lama.\n\n" +
+
+    "KALAU DATANYA TIDAK ADA, bilang tidak tahu, lalu sebutkan apa yang perlu dicatat atau " +
+    "dicek supaya lain kali bisa dijawab. Jangan mengarang angka, sekali pun.\n\n" +
+
+    "DUA HAL YANG TIDAK BISA DITAWAR:\n" +
+    "- Kalau sisa baterai di bawah ambang aman untuk pulang, itu yang pertama disebut, " +
+    "sebelum urusan uang.\n" +
+    "- Jangan pernah menyarankan kerja melewati 12 jam. Target Ibu bulanan, bukan harian; " +
+    "kekurangan hari ini lebih murah ditutup di hari yang kuat.\n\n" +
+    konteksTanya();
+
+  var turns = [{role:"user", content: sistem + "\n\n=== PERTANYAAN IBU ===\n" + q}];
+  CHAT.slice(0,-2).slice(-6).forEach(function(m, i){ /* riwayat singkat */ });
+  var riwayat = CHAT.slice(0,-2).slice(-6);
+  if (riwayat.length){
+    turns = riwayat.concat([{role:"user", content: sistem + "\n\n=== PERTANYAAN IBU ===\n" + q}]);
+    if (turns[0].role !== "user") turns.shift();
+  }
+
+  /* modelTier "complex": penalarannya lebih dalam, tapi jawabannya lebih
+     lama -- dan Ibu membacanya sambil di jalan. Kalau terasa lambat,
+     turunkan ke "default"; nilainya cuma satu kata di baris ini. */
+  sampler(turns, { modelTier:"complex", tools:alatTanya(), onText:function(ev){
+    CHAT[CHAT.length-1].content = ev.text; renderChat();
+  }}).then(function(res){
+    CHAT[CHAT.length-1].content = res.text;
+    renderChat(); simpanChat();
+    el("chatsend").disabled = false; el("tanyastatus").textContent = "";
+  })["catch"](function(err){
+    var c = (err && err.code) || "error";
+    CHAT[CHAT.length-1].content = c==="rate_limited"
+      ? "Terlalu sering bertanya. Tunggu sebentar, lalu coba lagi."
+      : "Maaf, gagal menjawab (" + c + "). Coba lagi sebentar lagi.";
+    renderChat(); simpanChat();
+    el("chatsend").disabled = false; el("tanyastatus").textContent = "";
+  });
+}
+
+function renderUji(){
+  var t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+  var h = ujiMandiri();
+  var t1 = (window.performance && performance.now) ? performance.now() : Date.now();
+  var unik = {}; h.langgar.forEach(function(x){ unik[x.split(" — ")[0]] = (unik[x.split(" — ")[0]]||0)+1; });
+  var kunci = Object.keys(unik);
+  var n = el("ujihasil");
+  if (!h.langgar.length){
+    n.className = "uji ok";
+    n.innerHTML = "<b>"+h.n.toLocaleString("id-ID")+" kombinasi diperiksa, semua aturan terpenuhi.</b> "+
+      (ATURAN.length+2)+" aturan &middot; "+Math.round(t1-t0)+" md.";
+  } else {
+    n.className = "uji bad";
+    n.innerHTML = "<b>"+h.langgar.length+" pelanggaran dari "+h.n.toLocaleString("id-ID")+" kombinasi.</b><br>"+
+      kunci.map(function(k){ return "&bull; "+k+" ("+unik[k]+"&times;)"; }).join("<br>")+
+      "<br><span style='opacity:.75'>Contoh: "+h.langgar.slice(0,3).join(" | ")+"</span>";
+  }
+}
+
+/* ---------------- LOG ---------------- */
+var F=["tgl","jam","trip","dpt","ins","kmt","kmp","kwh","biaya","mnt","cat"];
+function preview(){
+  var r={}; F.forEach(function(k){ r[k]=el(k).value; });
+  var d=derive(r), any=num(r.dpt)>0||num(r.kmt)>0;
+  function set(id,txt,good){ el(id).textContent=txt; el(id).className="v"+(txt==="—"?"":(good?" good":" warn")); }
+  set("pv-net", any?rp(d.net):"—", d.net>=TARGET_DAY);
+  set("pv-jam", d.perjam==null?"—":rp(d.perjam), d.perjam>=42000);
+  set("pv-kmj", d.kmjam==null?"—":dec(d.kmjam,1), d.kmjam>=15);
+  set("pv-util",d.util==null?"—":dec(d.util,0)+"%", d.util>=75);
+  set("pv-eff", d.eff==null?"—":dec(d.eff,1), d.eff>=6.7);
+}
+function tile(l,v,c,s){ return '<div class="tile '+s+'"><span class="lbl">'+l+
+  '</span><span class="val">'+v+'</span><span class="cmp">'+c+"</span></div>"; }
+function renderCal(){
+  var recent=rows.slice(0,14);
+  el("calbasis").textContent = recent.length ? "Rata-rata "+recent.length+" hari" : "Belum ada data";
+  var a=avgOf(recent,function(d){return d.rpkm;}), b=avgOf(recent,function(d){return d.eff;});
+  var c=avgOf(recent,function(d){return d.util;}), e=avgOf(recent,function(d){return d.kmjam;});
+  el("caltiles").innerHTML =
+    tile("Rp / km penumpang", a?Math.round(a.v).toLocaleString("id-ID"):"—","asumsi <b>2.900</b>",
+      a?(a.v>=2900?"ok":(a.v>=2465?"low":"bad")):"") +
+    tile("km / kWh", b?dec(b.v,1):"—","asumsi <b>6,7</b>",
+      b?(b.v>=6.7?"ok":(b.v>=5.7?"low":"bad")):"") +
+    tile("Utilisasi", c?dec(c.v,0)+"%":"—","target <b>75%</b>",
+      c?(c.v>=75?"ok":(c.v>=62?"low":"bad")):"") +
+    tile("Km bayar / jam", e?dec(e.v,1):"—","ambang <b>15</b> &middot; <b>22</b>",
+      e?(e.v>=15?"ok":"low"):"");
+  if (a){
+    var dl=Math.round(((a.v-BASE_RPKM)/BASE_RPKM)*100);
+    el("calnote").innerHTML = "Rp per km Anda <b>"+(dl>=0?dl+"% di atas":Math.abs(dl)+"% di bawah")+
+      "</b> asumsi rencana"+(CALIB.live?" &mdash; dan sudah dipakai mesin di tab Sekarang dan Rencana.":".");
+  }
+}
+function weekMonth(){
+  var now=new Date(), y=now.getFullYear(), m=now.getMonth();
+  var pre=y+"-"+String(m+1).padStart(2,"0")+"-", sum=0, worked=0;
+  rows.forEach(function(r){ if (String(r.id).indexOf(pre)===0){ sum+=derive(r).net; worked++; } });
+  el("monthname").textContent = now.toLocaleDateString("id-ID",{month:"long",year:"numeric"});
+  el("mnet").textContent = rp(sum);
+  el("mbar").style.width = Math.max(0,Math.min(100,(sum/TARGET_MONTH)*100)).toFixed(1)+"%";
+  var dim=new Date(y,m+1,0).getDate(), left=dim-now.getDate();
+  var lw=Math.max(0,Math.round(left*6/7)), rem=TARGET_MONTH-sum, msg;
+  if (!worked) msg="Belum ada catatan bulan ini. Target <b>"+rp(TARGET_MONTH)+"</b> dari sekitar <b>"+
+    Math.round(dim*6/7)+"</b> hari kerja.";
+  else if (rem<=0) msg='<span class="up">Target bulan ini sudah tercapai.</span> Kelebihan <b>'+rp(-rem)+"</b>.";
+  else if (lw<=0) msg="Bulan hampir habis. Kurang <b>"+rp(rem)+"</b>.";
+  else { var need=rem/lw, cls=need<=515000?"up":(need<=620000?"":"dn");
+    msg=worked+" hari tercatat &middot; sisa sekitar <b>"+lw+"</b> hari kerja &middot; perlu <b class=\""+
+      cls+"\">"+rp(need)+"</b> per hari"+(cls==="up"?" &mdash; Anda sedang unggul":(cls==="dn"?" &mdash; kejar di hari kuat":"")); }
+  el("pace").innerHTML=msg;
+}
+function renderHist(){
+  el("histcount").textContent = rows.length ? rows.length+" hari tercatat" : "";
+  el("histempty").style.display = rows.length ? "none" : "block";
+  el("hist").innerHTML = rows.slice(0,30).map(function(r){
+    var d=derive(r), dt=new Date(r.id+"T00:00:00"), hd=HOLI[r.id];
+    return "<tr><td class=\"n\">"+r.id+(r.cat?' <span style="color:var(--muted)">· '+r.cat+"</span>":"")+
+      "</td><td>"+DAYNAME[dt.getDay()].slice(0,3)+(hd?" ●":"")+"</td><td>"+(num(r.jam)||"—")+
+      "</td><td>"+(num(r.trip)||"—")+"</td><td>"+(num(r.kmt)||"—")+"</td><td>"+
+      (d.util==null?"—":dec(d.util,0)+"%")+"</td><td>"+(d.kmjam==null?"—":dec(d.kmjam,1))+
+      "</td><td class=\"n\">"+rp(d.net)+"</td></tr>";
+  }).join("");
+  el("ask").disabled = !(sampler && rows.length>=3);
+}
+function petunjukMenit(){
+  var e = el("mnthint"); if (!e) return;
+  var tgl = el("tgl").value || iso(new Date());
+  if (AKTUAL && AKTUAL.tanggal === tgl && AKTUAL.home > 0){
+    e.innerHTML = "Dari <b>" + esc(AKTUAL.lok) + "</b>, " + Math.round(AKTUAL.home) + " km";
+  } else {
+    e.textContent = "Isi hanya kalau tab Sekarang dipakai hari itu — km-nya diambil dari sana.";
+  }
+}
+function renderAll(){ recalibrate(); renderCal(); weekMonth(); renderHist(); runNow(); runPlan(); petunjukMenit(); }
+
+el("save").addEventListener("click", function(){
+  var tgl = el("tgl").value || iso(new Date());
+  var rec = { id:tgl };
+  F.forEach(function(k){ if (k!=="tgl") rec[k] = (k==="cat") ? el(k).value : num(el(k).value); });
+  /* Menit pulang tidak ada artinya tanpa tahu berapa km yang ditempuh. Km-nya
+     diambil dari posisi terakhir yang tercatat di tab Sekarang hari itu, jadi
+     Ibu cukup mengetik satu angka. */
+  if (rec.mnt > 0 && AKTUAL && AKTUAL.tanggal === tgl && AKTUAL.home > 0) rec.pkm = AKTUAL.home;
+  if (!rec.dpt && !rec.kmt){ el("status").textContent="Isi minimal pendapatan atau km."; el("status").className="status err"; return; }
+  rows = rows.filter(function(r){ return r.id!==rec.id; }); rows.push(rec); sortRows();
+  lsWrite(rows); renderAll();
+  el("status").textContent="Tersimpan."; el("status").className="status ok";
+});
+F.forEach(function(k){ el(k).addEventListener("input", preview); });
+
+/* ---------- cadangan: salin ke papan klip, pulihkan dari tempelan ---------- */
+function teksCadangan(){
+  return "BUKU SETORAN SHANTI - " + iso(new Date()) + " - " + rows.length + " hari\n" +
+         JSON.stringify({ v:1, dibuat:iso(new Date()), harian:rows });
+}
+function setCad(t, cls){
+  var s = el("cadstatus"); s.textContent = t;
+  s.className = "status" + (cls ? " " + cls : "");
+}
+el("salin").addEventListener("click", function(){
+  if (!rows.length){ setCad("Belum ada catatan untuk disalin.", "err"); return; }
+  var teks = teksCadangan();
+  function manual(){
+    el("cadwrap").hidden = false;
+    el("cadteks").value = teks;
+    el("cadteks").select();
+    setCad("Tidak bisa menyalin sendiri — tekan lama di kotak bawah, lalu pilih Salin.", "err");
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(teks).then(function(){
+      setCad(rows.length + " hari tersalin. Tinggal tempel ke WhatsApp.", "ok");
+    })["catch"](manual);
+  } else manual();
+});
+
+el("pulihkan").addEventListener("click", function(){
+  var w = el("cadwrap");
+  if (w.hidden){
+    w.hidden = false; el("cadteks").value = ""; el("cadteks").focus();
+    setCad("Tempel salinannya di kotak bawah, lalu tekan Pulihkan lagi.");
+    return;
+  }
+  var t = el("cadteks").value.trim();
+  if (!t){ setCad("Kotaknya masih kosong.", "err"); return; }
+  var mulai = t.indexOf("{");
+  if (mulai < 0){ setCad("Tidak menemukan data di teks itu.", "err"); return; }
+  var data;
+  try { data = JSON.parse(t.slice(mulai)); }
+  catch (e){ setCad("Salinannya tidak lengkap atau rusak. Minta dikirim ulang.", "err"); return; }
+  if (!data || !data.harian || !data.harian.length){ setCad("Tidak ada catatan di dalamnya.", "err"); return; }
+
+  /* Gabungkan: catatan yang sudah ada di HP ini tidak ditimpa. */
+  var ada = {}; rows.forEach(function(r){ ada[r.id] = true; });
+  var tambah = 0;
+  data.harian.forEach(function(r){ if (r && r.id && !ada[r.id]){ rows.push(r); tambah++; } });
+  sortRows(); lsWrite(rows); renderAll();
+  w.hidden = true; el("cadteks").value = "";
+  setCad(tambah ? (tambah + " hari dipulihkan, total sekarang " + rows.length + " hari.")
+                : "Semua catatan di salinan itu sudah ada di sini.", "ok");
+});
+
+el("p-save").addEventListener("click", function(){
+  savePlan({ date: el("p-tgl").value || iso(new Date()),
+    keluar:parseFloat(el("p-keluar").value), pulang:parseFloat(el("p-pulang").value),
+    rehat:el("p-rehat").value, zona:el("p-zona").value,
+    filter:parseInt(el("p-filter").value,10), bat:parseFloat(el("p-bat").value),
+    rumah:el("p-rumah").checked, hujan:el("p-hujan").checked, acara:el("p-acara").checked });
+  el("p-status").textContent = "Tersimpan. Tab Sekarang akan membandingkan ke rencana ini.";
+  el("p-status").className = "status ok";
+  runNow();
+});
+
+el("ask").addEventListener("click", function(){
+  if (!sampler) return;
+  var btn=el("ask"); btn.disabled=true;
+  el("aistatus").textContent="Menganalisa…"; el("aistatus").className="status"; el("aiout").textContent="";
+  var lines = rows.slice(0,14).map(function(r){
+    var d=derive(r), dt=new Date(r.id+"T00:00:00");
+    return [r.id, DAYNAME[dt.getDay()], "jam="+num(r.jam), "trip="+num(r.trip), "km="+num(r.kmt),
+      "kmBayar="+num(r.kmp), "util="+(d.util==null?"?":Math.round(d.util)+"%"),
+      "kmBayarPerJam="+(d.kmjam==null?"?":d.kmjam.toFixed(1)),
+      "bersih="+Math.round(d.net), r.cat?("catatan="+r.cat):""].join(" ");
+  }).join("\n");
+  sampler("Anda menganalisa catatan harian pengemudi GrabCar di Tangerang dengan BYD Atto 1 listrik. "+
+    "Target bulanan Rp 13,4 juta dari sekitar 26 hari kerja, rata-rata Rp 515rb per hari. "+
+    "Ambang sehat 15 km berbayar per jam (22 untuk Rp 700rb), utilisasi 75%, 6,7 km/kWh. "+
+    "Blok termahal: peak pagi 05:15-09:30 dan peak sore 17:00-20:00 (~Rp 45rb/jam); blok siang 11:00-15:15 hanya Rp 20-24rb/jam.\n\n"+
+    "Catatan (terbaru dulu):\n"+lines+"\n\nJawab dalam Bahasa Indonesia, maksimal 200 kata. "+
+    "Beri TEPAT TIGA saran konkret berdasarkan angka di atas, sebut angkanya. "+
+    "Kalau ada pola hari tertentu, sebutkan. Langsung tiga poin bernomor, tanpa pembuka.",
+    { modelTier:"default", onText:function(ev){ el("aiout").textContent=ev.text; } })
+    .then(function(res){ el("aiout").textContent=res.text; el("aistatus").textContent=""; btn.disabled=false; })
+    ["catch"](function(err){
+      var c=(err&&err.code)||"error";
+      el("aistatus").textContent = c==="rate_limited" ? "Terlalu sering. Coba lagi nanti." : "Gagal ("+c+").";
+      el("aistatus").className="status err"; btn.disabled=false;
+    });
+});
+
+/* ---------------- boot ---------------- */
+var now = new Date();
+el("today").innerHTML = DAYNAME[now.getDay()] + ", " +
+  now.toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"}) +
+  "<em id='todaysub'></em>";
+var hd = HOLI[iso(now)];
+document.getElementById("todaysub").textContent = hd ? hd[0] : "";
+
+renderLok("kota");
+fillTimes(el("n-jam"),3.5,23.5,9.5);
+fillTimes(el("n-pulang"),9,24,21.5);
+fillTimes(el("p-keluar"),3.5,17,5.25);
+fillTimes(el("p-pulang"),9,24,21.5);
+var t = Math.round((now.getHours()+now.getMinutes()/60)*4)/4;
+if (t>=3.5 && t<=23.5) el("n-jam").value = t;
+el("tgl").value = iso(now); el("p-tgl").value = iso(now);
+
+["n-jam","n-lok","n-soc","n-dpt","n-pulang","n-tujuan","n-bat","n-filter","n-hujan","n-acara","n-rumah"]
+  .forEach(function(id){ el(id).addEventListener("change",runNow); el(id).addEventListener("input",runNow); });
+el("n-lok").addEventListener("change", function(){
+  if (this.value === "__lain"){
+    el("ketikwrap").hidden = false;
+    setHint("Ketik nama daerah, lalu tekan Petakan");
+    el("n-ketik").focus();
+  } else {
+    lastLok = this.value;
+    el("ketikwrap").hidden = true;
+    el("n-ketik").value = "";
+    /* renderLok menyetel .value lewat program dan itu tidak memicu "change",
+       jadi sampai di sini artinya Ibu sendiri yang memilih. */
+    setLokSumber("manual");
+    setGpsHint("");
+  }
+}, true);
+/* Fase capture, supaya tercatat sebelum runNow menggambar. renderLok dan
+   ikutJam menyetel .value lewat program dan itu tidak memicu "change",
+   jadi sampai di sini artinya Ibu sendiri yang memilih. */
+el("n-jam").addEventListener("change", function(){ jamManual = true; tandaiJam(); }, true);
+el("jam-auto").addEventListener("click", function(){ ikutJam(true); });
+tandaiJam();
+/* Diperiksa tiap 30 detik: cukup rapat untuk kotak seperempat jam, dan
+   tidak melakukan apa pun kalau jamnya belum berpindah. */
+setInterval(function(){ if (!document.hidden) ikutJam(false); }, 30000);
+document.addEventListener("visibilitychange", function(){ if (!document.hidden) ikutJam(false); });
+el("n-ketik").addEventListener("keydown", function(e){
+  if (e.key === "Enter"){ e.preventDefault(); resolveKetik(); }
+});
+el("n-petakan").addEventListener("click", resolveKetik);
+el("n-gps").addEventListener("click", function(){ deteksiLokasi(false); });
+el("n-gpsauto").checked = gpsOtomatisAktif();
+el("n-gpsauto").addEventListener("change", function(){
+  try { localStorage.setItem("gps-otomatis", this.checked ? "1" : "0"); } catch (e) {}
+  if (this.checked){ gpsTerakhir = 0; pasangGpsOtomatis(); }
+  else { setLokSumber("manual");
+    setGpsHint("Deteksi otomatis dimatikan. Tekan Lokasi saya kalau perlu."); }
+});
+tandaiLok();
+if (gpsOtomatisAktif()) setGpsHint("Memeriksa lokasi…");
+pasangGpsOtomatis();
+["p-tgl","p-keluar","p-pulang","p-rehat","p-zona","p-filter","p-bat","p-rumah","p-hujan","p-acara"]
+  .forEach(function(id){ el(id).addEventListener("change",runPlan); });
+/* Ganti tanggal rencana: acara dan cuaca ikut menyesuaikan sendiri. */
+el("p-tgl").addEventListener("change", function(){
+  var d = el("p-tgl").value;
+  el("p-acara").checked = !!EVENTS[d];
+  if (WEATHER && WEATHER.tanggal === d && !el("p-hujan").dataset.touched)
+    el("p-hujan").checked = !!WEATHER.hujan;
+  runPlan();
+});
+
+function tab(which){
+  ["now","log","plan","tanya"].forEach(function(k){
+    el("t-"+k).className = "tab" + (which===k ? " on" : "");
+    el("v-"+k).hidden = which!==k;
+  });
+}
+["now","log","plan","tanya"].forEach(function(k){
+  el("t-"+k).addEventListener("click", function(){ tab(k); });
+});
+el("chatsend").addEventListener("click", kirimChat);
+el("chatinput").addEventListener("keydown", function(e){
+  if (e.key === "Enter"){ e.preventDefault(); kirimChat(); }
+});
+el("chatclear").addEventListener("click", function(){
+  CHAT = []; simpanChat(); renderChat();
+});
+muatChat(); renderChat();
+
+/* Panduan: terbuka saat pertama kali dibuka, lalu diingat pilihannya. */
+(function(){
+  var sudah = false;
+  try { sudah = localStorage.getItem("panduan-dibaca") === "1"; } catch (e) {}
+  el("panduan").hidden = sudah;
+  function tutup(){
+    el("panduan").hidden = true;
+    try { localStorage.setItem("panduan-dibaca","1"); } catch (e) {}
+  }
+  el("panduan-tutup").addEventListener("click", tutup);
+  el("panduan-btn").addEventListener("click", function(){
+    var p = el("panduan");
+    p.hidden = !p.hidden;
+    if (!p.hidden) p.scrollIntoView({behavior:"smooth", block:"start"});
+  });
+})();
+
+loadPlan(); muatRegistri();
+/* Daftar lokasi dibangun di renderLok("kota") di atas, SEBELUM catatan
+   lokasi dimuat -- jadi tanpa baris ini semua tempat yang pernah Ibu
+   simpan hilang dari daftar tiap kali halaman dibuka lagi. Datanya tidak
+   hilang, cuma tidak ikut tampil. Bug ini sudah ada sejak lama. */
+renderLok(el("n-lok").value || "kota");
+/* Rencana hari ini mengisi tab Sekarang, supaya tidak perlu diketik dua kali. */
+if (PLAN && PLAN.date === iso(now)){
+  el("n-pulang").value = PLAN.pulang;
+  el("n-bat").value    = PLAN.bat;
+  el("n-filter").value = PLAN.filter;
+  el("n-rumah").checked = !!PLAN.rumah;
+  ["p-keluar","p-pulang","p-rehat","p-zona","p-filter","p-bat"].forEach(function(id){
+    var v = { "p-keluar":PLAN.keluar, "p-pulang":PLAN.pulang, "p-rehat":PLAN.rehat,
+              "p-zona":PLAN.zona, "p-filter":PLAN.filter, "p-bat":PLAN.bat }[id];
+    if (v != null) el(id).value = v;
+  });
+  el("p-rumah").checked = !!PLAN.rumah;
+  el("p-hujan").checked = !!PLAN.hujan;
+  el("p-acara").checked = !!PLAN.acara;
+}
+if (EVENTS[iso(now)]) el("n-acara").checked = true;
+/* Fase capture: penanda "manual" harus tercatat sebelum runNow menggambar. */
+el("n-acara").addEventListener("change", function(){ this.dataset.touched = "1"; }, true);
+el("n-hujan").addEventListener("change", function(){ this.dataset.touched = "1"; }, true);
+rows = lsRead(); sortRows(); renderAll(); preview();
+/* Pemeriksaan TIDAK berjalan sendiri: di HP ia menghentikan tampilan
+   sampai belasan detik, dan halaman terlihat seperti tidak mau terbuka. */
+el("ujijalan").addEventListener("click", function(){
+  el("ujistatus").textContent = "Memeriksa…";
+  el("ujijalan").disabled = true;
+  setTimeout(function(){
+    renderUji();
+    el("ujistatus").textContent = "";
+    el("ujijalan").disabled = false;
+  }, 30);
+});
+
+/* Versi aplikasi, dan kapan kalendernya habis. */
+(function(){
+  var n = el("segar"); if (!n) return;
+  var hariIni = iso(new Date());
+  function selisihHari(a, b){
+    return Math.round((new Date(b+"T00:00:00") - new Date(a+"T00:00:00")) / 86400000);
+  }
+  var umur = selisihHari(TERBIT, hariIni);
+  var pesan = [], kelas = "quiet";
+
+  if (umur < -1){
+    /* Tanggal HP lebih awal dari tanggal terbit -- jamnya yang salah, dan itu
+       merusak tanggal merah, kalender acara, dan seluruh saldo bulanan. */
+    n.hidden = false; n.className = "flag warn";
+    n.innerHTML = '<span class="tag">Tanggal HP</span><span><b>Tanggal di HP ini ('+hariIni+
+      ') lebih awal daripada tanggal halaman dibuat ('+TERBIT+').</b> Berarti jam atau tanggal '+
+      'HP-nya salah &mdash; dan itu membuat hari, tanggal merah, dan saldo bulanan di halaman ini '+
+      'ikut salah. <b>Betulkan tanggal HP dulu</b>, baru angka di bawah bisa dipercaya.</span>';
+    return;
+  }
+
+  pesan.push("Aplikasi versi <b>"+TERBIT+"</b>"+(umur>0?" &middot; "+umur+" hari lalu":" &middot; hari ini")+
+    ". Versi baru diambil sendiri saat aplikasi dibuka dengan sambungan internet.");
+
+  if (hariIni > EVENTS_SAMPAI){ kelas = "warn";
+    pesan.push("<b>Kalender acara besar sudah habis</b> &mdash; isinya berhenti di "+
+      EVENTS_SAMPAI+". Konser dan pameran setelah tanggal itu tidak akan muncul sendiri; "+
+      "pakai centang &ldquo;Acara besar&rdquo; kalau Ibu tahu ada.");
+  }
+  if (hariIni > HOLI_SAMPAI){ kelas = "warn";
+    pesan.push("<b>Kalender tanggal merah juga tinggal tanggal yang pasti saja</b> untuk "+
+      "tahun depan, karena SKB-nya belum terbit waktu halaman ini dibuat.");
+  }
+
+  n.hidden = false;
+  n.className = "flag " + kelas;
+  n.innerHTML = '<span class="tag">Umur halaman</span><span>' + pesan.join(" ") + "</span>";
+})();
+
+/* Cuaca: ditanam lewat baris CUACA di js/data.js, bukan diambil halaman.
+
+   Satu baris dulu menelan TIGA keadaan yang sangat berbeda -- belum pernah
+   diisi, diisi tapi tanggalnya sudah lewat, dan diisi untuk hari ini -- lalu
+   menyembunyikan kotaknya pada dua yang pertama. Ibu tidak punya cara tahu
+   bahwa fitur cuacanya sedang mati; dia hanya melihat halaman yang tampak
+   baik-baik saja. Keluarga bug yang sama dengan GPS yang gagal diam-diam.
+
+   Ini penting karena penerbitan ulang TIDAK sampai sendiri ke pembaca:
+   tautan berbagi dipatok ke satu versi, dan patokan itu harus digeser
+   manual tiap kali. Jadi cuaca basi bukan kemungkinan langka -- itu keadaan
+   bawaannya sampai ada yang menggeser patokan. Kalau begitu keadaannya,
+   satu-satunya jalan yang jujur adalah mengatakannya dan menunjuk ke
+   centang Hujan, bukan diam. */
+(function(){
+  var c = CUACA, n = el("cuaca"), hariIni = iso(new Date());
+  if (c && c.tanggal === hariIni){
+    WEATHER = c;
+    n.hidden = false;
+    n.className = "flag" + (c.hujan ? " warn" : " quiet");
+    n.innerHTML = '<span class="tag">Cuaca hari ini</span><span>' +
+      (c.hujan
+        ? "<b>Diperkirakan hujan" + (c.jam ? " sekitar " + c.jam : "") + ".</b> " +
+          "Permintaan dan tarif dinamis naik &mdash; tapi hindari titik banjir di Periuk, Ciledug, dan sebagian Jakarta Barat, dan <b>jangan menembus genangan lebih dari 15 cm</b>."
+        : "<b>Diperkirakan tidak hujan.</b>") +
+      (c.ringkas ? " " + c.ringkas : "") +
+      ' <span style="opacity:.7">&mdash; ' + (c.sumber || "BMKG") + "</span></span>";
+    if (c.hujan){
+      if (!el("n-hujan").dataset.touched) el("n-hujan").checked = true;
+      if (!el("p-hujan").dataset.touched && el("p-tgl").value === c.tanggal) el("p-hujan").checked = true;
+      runNow(); runPlan();
+    }
+    return;
+  }
+  n.hidden = false;
+  n.className = "flag quiet";
+  n.innerHTML = '<span class="tag">Cuaca hari ini</span><span>' +
+    (c && c.tanggal
+      ? "<b>Prakiraan untuk hari ini belum masuk.</b> Yang tersimpan di halaman ini tertanggal " +
+        c.tanggal + " &mdash; sudah lewat, jadi tidak dipakai."
+      : "<b>Prakiraan cuaca belum pernah masuk ke halaman ini.</b>") +
+    " Halaman ini tidak bisa mengambilnya sendiri. <b>Lihat langitnya, lalu centang " +
+    "&ldquo;Hujan&rdquo; sendiri</b> kalau mendung &mdash; seluruh hitungan di bawah langsung ikut menyesuaikan." +
+    "</span>";
+})();
+el("n-hujan").addEventListener("change", function(){ this.dataset.touched = "1"; });
+el("p-hujan").addEventListener("change", function(){ this.dataset.touched = "1"; });
+
+/* ---------------- sambungan ke Claude ---------------- */
+function tandaiAI(){
+  var st = AI.status(), e = el("aistat"), k = AI.getKey();
+  /* Label mengikuti sampler yang benar-benar ada, bukan dugaan: di claude.ai
+     window.claude bisa ada tanpa izin "sample" -- itu tetap "belum ada kunci". */
+  var teks = (sampler && sampler.sumber === "artifact") ? "Lewat claude.ai" :
+             sampler ? "Kunci tersimpan" :
+             k ? "Kunci ada, belum tersambung" :
+             st === "no_sdk" ? "SDK tidak termuat" : "Belum ada kunci";
+  if (e) e.textContent = teks;
+  el("tanyastatus").textContent = sampler ? "" : "Belum tersambung";
+  el("ai-key").placeholder = k ? "tersimpan · ····" + k.slice(-4) : "sk-ant-…";
+  el("ai-clear").hidden = !k;
+}
+function setAiStatus(t, cls){ var s = el("ai-status"); s.textContent = t; s.className = "status" + (cls ? " " + cls : ""); }
+function pasangAI(){
+  AI.connect().then(function(ns){
+    sampler = ns || null;
+    el("ask").disabled = !(sampler && rows.length >= 3);
+    tandaiAI();
+  })["catch"](function(){ sampler = null; tandaiAI(); });
+}
+el("ai-save").addEventListener("click", function(){
+  var k = el("ai-key").value.trim();
+  if (!k){ setAiStatus("Tempel kuncinya dulu.", "err"); return; }
+  AI.setKey(k); el("ai-key").value = "";
+  setAiStatus("Memeriksa kunci…");
+  AI.uji().then(function(){ setAiStatus("Tersambung. Tab Tanya dan Analisa sudah bisa dipakai.", "ok"); pasangAI(); },
+    function(err){
+      var c = err && err.code;
+      setAiStatus(c === "unauthorized" ? "Kunci ditolak Anthropic. Periksa lagi, lalu simpan ulang." :
+                  c === "offline" ? "Kunci tersimpan, tapi tidak ada sambungan internet untuk memeriksanya." :
+                  "Kunci tersimpan, tapi pemeriksaan gagal (" + c + ").", c === "offline" ? "" : "err");
+      pasangAI();
+    });
+});
+el("ai-key").addEventListener("keydown", function(e){ if (e.key === "Enter"){ e.preventDefault(); el("ai-save").click(); } });
+el("ai-test").addEventListener("click", function(){
+  setAiStatus("Memeriksa…");
+  AI.uji().then(function(){ setAiStatus("Tersambung.", "ok"); },
+    function(err){ var c = err && err.code;
+      setAiStatus(c === "no_key" ? "Belum ada kunci." : c === "unauthorized" ? "Kunci ditolak Anthropic." :
+                  c === "offline" ? "Tidak ada sambungan internet." : "Gagal (" + c + ").", "err"); });
+});
+el("ai-clear").addEventListener("click", function(){
+  AI.setKey(""); sampler = null; el("ask").disabled = true;
+  setAiStatus("Kunci dihapus dari HP ini."); tandaiAI();
+});
+pasangAI();

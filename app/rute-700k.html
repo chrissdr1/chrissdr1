@@ -1,0 +1,1430 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rute 700K Modernland</title>
+<meta name="description" content="Rencana kerja GrabCar untuk BYD Atto 1 dari Modernland: jadwal jam per jam, koridor rute terukur, filter keputusan, aturan baterai.">
+<meta name="theme-color" content="#00713C">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<style>
+*,*::before,*::after{box-sizing:border-box}
+[hidden]:not([hidden=until-found i]){display:none!important}
+img{max-width:100%}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#F3F5F0; --surface:#FFFFFF; --surface-2:#E9EEE6;
+  --ink:#12211B; --ink-2:#3D4E46; --muted:#6E7F76;
+  --line:#D5DDD4; --line-strong:#B6C2B6;
+  --accent:#00713C; --accent-soft:#DDEBE1; --accent-ink:#FFFFFF;
+  --signal:#9C6206; --signal-soft:#F6EAD2;
+  --alert:#9E2A1E; --alert-soft:#F6DFDB;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0C1411; --surface:#141F1A; --surface-2:#1B2822;
+    --ink:#E7EEE9; --ink-2:#B2C1B9; --muted:#84958B;
+    --line:#25322C; --line-strong:#38483F;
+    --accent:#4FD189; --accent-soft:#172E23; --accent-ink:#07150E;
+    --signal:#E5B160; --signal-soft:#2C2314;
+    --alert:#F08A7A; --alert-soft:#331A15;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0C1411; --surface:#141F1A; --surface-2:#1B2822;
+  --ink:#E7EEE9; --ink-2:#B2C1B9; --muted:#84958B;
+  --line:#25322C; --line-strong:#38483F;
+  --accent:#4FD189; --accent-soft:#172E23; --accent-ink:#07150E;
+  --signal:#E5B160; --signal-soft:#2C2314;
+  --alert:#F08A7A; --alert-soft:#331A15;
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size:15px; line-height:1.6; margin:0;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:940px; margin:0 auto; padding:28px 20px 80px}
+
+h1,h2,h3{font-family:"Barlow Condensed","Barlow",Impact,system-ui,sans-serif; font-weight:700; text-wrap:balance}
+h1{font-size:clamp(38px,7vw,60px); line-height:.96; letter-spacing:.005em; margin:0}
+h2{font-size:clamp(24px,3.6vw,31px); line-height:1.06; margin:0; letter-spacing:.01em}
+h3{font-size:19px; line-height:1.15; margin:0; letter-spacing:.015em}
+p{margin:0}
+
+.eyebrow{
+  font-family:"IBM Plex Mono",monospace; font-size:11px; font-weight:600;
+  letter-spacing:.16em; text-transform:uppercase; color:var(--muted);
+}
+
+header.mast{
+  display:flex; flex-direction:column; gap:16px;
+  border-bottom:2px solid var(--ink); padding-bottom:20px; margin-bottom:32px;
+}
+.mast-top{display:flex; justify-content:space-between; align-items:baseline; gap:16px; flex-wrap:wrap}
+.mast h1 span{color:var(--accent)}
+.standfirst{max-width:60ch; color:var(--ink-2); font-size:16px}
+.plate{
+  font-family:"IBM Plex Mono",monospace; font-size:11px; font-weight:600;
+  letter-spacing:.1em; text-transform:uppercase; color:var(--ink);
+  border:1.5px solid var(--line-strong); border-radius:3px; padding:5px 9px;
+  white-space:nowrap;
+}
+
+.strip{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(148px,1fr));
+  border-top:1px solid var(--line); border-left:1px solid var(--line);
+  margin:0 0 40px;
+}
+.strip div{
+  border-right:1px solid var(--line); border-bottom:1px solid var(--line);
+  padding:13px 15px; background:var(--surface);
+}
+.strip dt{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.11em;
+  text-transform:uppercase; color:var(--muted); margin:0 0 4px}
+.strip dd{margin:0; font-family:"Barlow Condensed",sans-serif; font-weight:700;
+  font-size:27px; line-height:1; font-variant-numeric:tabular-nums}
+.strip dd small{font-size:13px; font-weight:600; color:var(--ink-2); font-family:"IBM Plex Sans",sans-serif}
+
+section{margin:0 0 46px}
+.sec-head{display:flex; align-items:baseline; gap:14px; margin-bottom:18px;
+  border-bottom:1px solid var(--line-strong); padding-bottom:9px; flex-wrap:wrap}
+.sec-head .eyebrow{margin-left:auto}
+.lead{color:var(--ink-2); max-width:66ch; margin-bottom:20px}
+
+.ledger{background:var(--surface); border:1px solid var(--line); border-radius:4px; overflow:hidden}
+.ledger-row{
+  display:grid; grid-template-columns:1fr auto; gap:12px; align-items:baseline;
+  padding:11px 16px; border-bottom:1px solid var(--line);
+}
+.ledger-row:last-child{border-bottom:0}
+.ledger-row span:first-child{color:var(--ink-2); font-size:14px}
+.ledger-row .amt{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:14px; font-weight:600; white-space:nowrap}
+.ledger-row.minus .amt{color:var(--alert)}
+.ledger-row.total{background:var(--surface-2); border-top:2px solid var(--ink)}
+.ledger-row.total span:first-child{color:var(--ink); font-weight:600; font-size:15px}
+.ledger-row.total .amt{font-size:19px; font-family:"Barlow Condensed",sans-serif; font-weight:700}
+.ledger-note{padding:13px 16px; background:var(--signal-soft); color:var(--ink-2);
+  font-size:13.5px}
+.ledger-note b{color:var(--ink)}
+
+.tl{display:flex; flex-direction:column}
+.blk{
+  display:grid; grid-template-columns:96px 1fr;
+  border-left:2px solid var(--line-strong);
+}
+.blk-time{
+  padding:20px 14px 20px 0; position:relative;
+  font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+}
+.blk-time b{display:block; font-size:14px; font-weight:600; letter-spacing:-.02em; margin-left:14px}
+.blk-time em{display:block; font-style:normal; font-size:11px; color:var(--muted); margin-left:14px; margin-top:2px}
+.blk-time::before{
+  content:""; position:absolute; left:-7px; top:24px;
+  width:12px; height:12px; border-radius:50%;
+  background:var(--ground); border:2.5px solid var(--line-strong);
+}
+.blk.peak{border-left-color:var(--accent)}
+.blk.peak .blk-time::before{background:var(--accent); border-color:var(--accent)}
+.blk.charge{border-left-color:var(--signal)}
+.blk.charge .blk-time::before{background:var(--signal); border-color:var(--signal)}
+.blk-body{padding:18px 0 26px}
+.blk h3{margin-bottom:3px}
+.blk .zone{font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--accent);
+  letter-spacing:.03em; margin-bottom:10px; font-weight:600}
+.blk.charge .zone{color:var(--signal)}
+.blk ul{margin:0; padding-left:17px; display:flex; flex-direction:column; gap:5px}
+.blk li{font-size:14.3px; color:var(--ink-2)}
+.blk li b{color:var(--ink); font-weight:600}
+.tag{
+  display:inline-block; font-family:"IBM Plex Mono",monospace; font-size:10.5px; font-weight:600;
+  letter-spacing:.07em; text-transform:uppercase; padding:3px 7px; border-radius:3px;
+  background:var(--surface-2); color:var(--ink-2); margin:0 6px 6px 0;
+}
+.tag.hit{background:var(--accent-soft); color:var(--accent)}
+.tag.warn{background:var(--signal-soft); color:var(--signal)}
+.tag.stop{background:var(--alert-soft); color:var(--alert)}
+.tags{margin-top:11px}
+
+.mapbox{background:var(--surface); border:1px solid var(--line); border-radius:4px;
+  padding:18px 10px 12px; overflow-x:auto}
+.mapbox svg{display:block; min-width:660px; width:100%; height:auto}
+.map-cap{font-size:12.5px; color:var(--muted); padding:8px 8px 0; text-align:center}
+
+.tblwrap{overflow-x:auto; border:1px solid var(--line); border-radius:4px; background:var(--surface)}
+table{border-collapse:collapse; width:100%; min-width:640px; font-size:14px}
+th,td{text-align:left; padding:11px 14px; border-bottom:1px solid var(--line); vertical-align:top}
+thead th{
+  font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.11em;
+  text-transform:uppercase; color:var(--muted); font-weight:600;
+  background:var(--surface-2); border-bottom:1px solid var(--line-strong); white-space:nowrap;
+}
+tbody tr:last-child td{border-bottom:0}
+td{color:var(--ink-2)}
+td b{color:var(--ink)}
+td.day{font-family:"Barlow Condensed",sans-serif; font-weight:700; font-size:17px;
+  letter-spacing:.02em; white-space:nowrap; color:var(--ink)}
+td.num{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; white-space:nowrap}
+
+.rules{display:grid; grid-template-columns:repeat(auto-fit,minmax(258px,1fr)); gap:14px}
+.rule{background:var(--surface); border:1px solid var(--line); border-radius:4px; padding:16px 17px;
+  display:flex; flex-direction:column; gap:8px}
+.rule .n{font-family:"IBM Plex Mono",monospace; font-size:10.5px; font-weight:600;
+  letter-spacing:.11em; text-transform:uppercase; color:var(--muted)}
+.rule h3{font-size:17.5px}
+.rule p{font-size:14px; color:var(--ink-2)}
+.rule p b{color:var(--ink)}
+.rule.hot{border-left:3px solid var(--signal)}
+.rule.no{border-left:3px solid var(--alert)}
+.rule.go{border-left:3px solid var(--accent)}
+
+.call{border:1px solid var(--line); border-left:3px solid var(--signal); background:var(--surface);
+  border-radius:4px; padding:16px 18px; display:flex; flex-direction:column; gap:7px}
+.call .n{font-family:"IBM Plex Mono",monospace; font-size:10.5px; font-weight:600;
+  letter-spacing:.11em; text-transform:uppercase; color:var(--muted)}
+.call p{font-size:14.3px; color:var(--ink-2)}
+.call p b{color:var(--ink)}
+
+.calc{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,258px); gap:20px;
+  background:var(--surface); border:1px solid var(--line); border-radius:4px; padding:20px}
+@media (max-width:680px){ .calc{grid-template-columns:1fr} }
+.fields{display:grid; grid-template-columns:repeat(auto-fit,minmax(138px,1fr)); gap:12px 14px; align-content:start}
+.f label{display:block; font-family:"IBM Plex Mono",monospace; font-size:10.5px; font-weight:600;
+  letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-bottom:4px}
+.f input{
+  width:100%; font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:14px; padding:8px 10px; border:1px solid var(--line-strong); border-radius:3px;
+  background:var(--ground); color:var(--ink);
+}
+.f input:focus-visible{outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent)}
+.readout{border-left:1px solid var(--line); padding-left:20px; display:flex; flex-direction:column; gap:12px}
+@media (max-width:680px){ .readout{border-left:0; border-top:1px solid var(--line); padding-left:0; padding-top:16px} }
+.big{font-family:"Barlow Condensed",sans-serif; font-weight:700; font-size:42px; line-height:.95;
+  font-variant-numeric:tabular-nums}
+.big.under{color:var(--signal)}
+.big.over{color:var(--accent)}
+.bar{height:9px; background:var(--surface-2); border-radius:99px; overflow:hidden; border:1px solid var(--line)}
+.bar i{display:block; height:100%; background:var(--accent); transition:width .25s ease}
+@media (prefers-reduced-motion:reduce){ .bar i{transition:none} }
+.mini{display:flex; flex-direction:column; gap:5px}
+.mini div{display:flex; justify-content:space-between; gap:10px; font-size:13px; color:var(--ink-2)}
+.mini div b{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-weight:600; color:var(--ink)}
+
+footer{border-top:1px solid var(--line-strong); padding-top:18px; margin-top:12px;
+  color:var(--muted); font-size:13px; max-width:72ch}
+footer b{color:var(--ink-2)}
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <div class="mast-top">
+    <h1>Rute <span>700K</span></h1>
+    <div class="plate">Modernland &middot; Cluster Gracia</div>
+  </div>
+  <p class="standfirst">Rencana kerja GrabCar untuk BYD Atto 1 tanpa charger di rumah &mdash; jadwal jam per jam, koridor rute terukur, lima filter keputusan yang bisa dihitung di layar, aturan baterai, dan protokol pulang supaya trip terakhir selalu mengarah ke rumah.</p>
+  <p class="standfirst" style="font-size:14.5px"><b>Patokan resminya bulanan: Rp 13,4 juta dari sekitar 26 hari kerja</b>, rata-rata Rp 515.000 sehari. Angka harian di halaman ini adalah papan skor, bukan perintah &mdash; catat saldonya di <a href="index.html">Buku Setoran</a>.</p>
+</header>
+
+<dl class="strip">
+  <div><dt>Target bulanan</dt><dd>Rp 13,4<small> jt</small></dd></div>
+  <div><dt>Rata-rata / hari</dt><dd>Rp 515<small>rb</small></dd></div>
+  <div><dt>Sif terbaik</dt><dd>Rp 47,7<small>rb/jam</small></dd></div>
+  <div><dt>Jarak tempuh</dt><dd>230&ndash;260<small> km</small></dd></div>
+  <div><dt>Isi daya</dt><dd>1&ndash;2&times;<small> &middot; maks 40 kW</small></dd></div>
+  <div><dt>Batas pulang</dt><dd>22:00</dd></div>
+</dl>
+
+<section>
+  <div class="sec-head">
+    <h2>Angka yang harus dikejar</h2>
+    <span class="eyebrow">Hitungan satu hari kerja</span>
+  </div>
+  <p class="lead">Versi pertama halaman ini memakai angka tebakan. Sekarang saya ganti dengan tarif resmi, potongan komisi resmi, dan struktur biaya SPKLU yang sebenarnya &mdash; dan hasilnya harus saya sampaikan terus terang: <b>rencana ini tidak sampai Rp 700rb bersih. Sekitar Rp 390rb.</b> Berikut hitungannya, lalu cara menutup selisihnya.</p>
+
+  <div class="ledger">
+    <div class="ledger-row"><span>245 km tempuh, utilisasi 62% &rarr; <b>152 km berpenumpang</b></span><span class="amt">152 km</span></div>
+    <div class="ledger-row"><span>Tarif Jabodetabek &plusmn; Rp 3.150/km &times; 152 km &mdash; yang dibayar penumpang</span><span class="amt">Rp 478.800</span></div>
+    <div class="ledger-row"><span>Bagian Anda setelah komisi 8%</span><span class="amt">Rp 440.500</span></div>
+    <div class="ledger-row"><span>Insentif harian &mdash; masih perkiraan, satu-satunya angka yang belum bisa saya pastikan</span><span class="amt">Rp 130.000</span></div>
+    <div class="ledger-row minus"><span>Listrik &mdash; 36,6 kWh &times; Rp 2.470/kWh</span><span class="amt">&minus; Rp 90.400</span></div>
+    <div class="ledger-row minus"><span><b>Biaya layanan SPKLU &mdash; Rp 25.000 per sesi, 2 sesi</b></span><span class="amt">&minus; Rp 50.000</span></div>
+    <div class="ledger-row minus"><span>Parkir mal &mdash; <b>tol tidak dihitung, ditanggung penumpang</b></span><span class="amt">&minus; Rp 15.000</span></div>
+    <div class="ledger-row total"><span>Bersih di tangan</span><span class="amt">Rp 415.100</span></div>
+    <div class="ledger-note"><b>Kenapa versi pertama meleset hampir dua kali lipat.</b> Saya memakai Rp 37.000 per trip &mdash; itu mengandaikan rata-rata trip 15 km, jauh lebih panjang dari kerja kota sebenarnya. Yang benar bukan menghitung per trip, melainkan <b>per kilometer berpenumpang</b>, karena tarif memang dihitung begitu. Saya juga melewatkan <b>biaya layanan SPKLU per sesi</b>, yang menambah Rp 50.000 sehari di luar harga listriknya.</div>
+  </div>
+
+  <div class="call" style="margin-top:16px">
+    <span class="n">Apa artinya untuk target Anda</span>
+    <p>Untuk menyentuh <b>Rp 700rb bersih</b> Anda perlu sekitar <b>257 km berpenumpang</b> &mdash; dengan utilisasi wajar itu berarti 400&ndash;430 km tempuh, tiga sesi ngecas, dan 16&ndash;18 jam kerja. <b>Dengan baterai 30 kWh tanpa colokan rumah, itu tidak bisa dijalankan.</b> Saya tidak akan menuliskan jadwal yang saya tahu tidak bisa dipenuhi.</p>
+    <p>Yang realistis: <b>Rp 480&ndash;560rb bersih per hari</b> dengan eksekusi baik, dan <b>Rp 650&ndash;700rb di hari kuat</b> &mdash; Jumat, hujan, dan musim gajian. Rp 700rb sebagai rata-rata harian butuh salah satu dari: colokan di rumah, varian baterai Premium, atau tarif dinamis yang lebih sering naik daripada yang saya perhitungkan. Tiga sisanya di bawah ini adalah cara menutup selisih itu, diurutkan dari yang paling besar dampaknya.</p>
+  </div>
+
+  <div class="rules" style="margin-top:18px">
+    <div class="rule go">
+      <span class="n">Pengungkit 1 &middot; +Rp 93.000 sehari</span>
+      <h3>Utilisasi: naikkan 62% jadi 75%</h3>
+      <p>Utilisasi adalah <b>berapa persen kilometer Anda yang dijalani dengan penumpang di dalam mobil.</b> Sisanya adalah kilometer kosong: menjemput, dan berpindah zona. Anda dibayar hanya untuk yang berpenumpang, tapi membayar listrik untuk keduanya.</p>
+      <p>Ini angka besar yang <b>sepenuhnya di bawah kendali Anda dan tidak butuh jam tambahan</b>. Naik dari 62% ke 75% pada jarak tempuh yang sama persis menambah 32 km berpenumpang &mdash; sekitar <b>Rp 93.000 sehari, Rp 2,4 juta sebulan.</b></p>
+      <p>Satu catatan penting: utilisasi hanyalah setengah cerita. Ukuran yang sebenarnya menentukan adalah <b>km dibayar per jam</b>, karena kecepatan ikut berperan &mdash; lihat bagian Peringkat rute. Naikkan utilisasi <em>dan</em> perbanyak trip panjang; keduanya menaikkan angka yang sama.</p>
+    </div>
+    <div class="rule hot">
+      <span class="n">Pengungkit 2 &middot; +Rp 80.000 sehari</span>
+      <h3>Colokan 220V di rumah</h3>
+      <p>Tidak perlu wallbox mahal. Stop kontak khusus 16A dengan MCB sendiri, dipasang instalatir resmi, sudah cukup untuk charger bawaan &plusmn;2,2 kW: 8 jam semalam &asymp; 17 kWh &mdash; lebih dari separuh baterai Dynamic, hampir separuh Premium. Dengan tarif listrik rumah, apalagi bila memakai skema diskon pengisian malam PLN, biayanya jauh di bawah SPKLU.</p>
+      <p><b>Hemat sekitar Rp 40&ndash;60rb per hari, dan yang lebih berharga: menghapus satu sesi 35&ndash;45 menit dari jadwal Anda</b> &mdash; itu dua trip tambahan setiap hari. Kalau daya listrik rumah memungkinkan, cek juga kemampuan pengisian AC bawaan mobil: bila 6,6 kW, wallbox akan mengisi penuh dalam semalam dan sesi SPKLU siang bisa dihapus sama sekali. Ini investasi paling menguntungkan yang bisa Anda lakukan sekarang.</p>
+    </div>
+    <div class="rule no">
+      <span class="n">Pengungkit 3 &middot; +Rp 64.000 sehari</span>
+      <h3>Jangan pernah pakai Ultra Fast</h3>
+      <p>SPKLU PLN menagih dua hal: harga listrik <b>Rp 2.466&ndash;2.475 per kWh</b> (rata, siang maupun malam), <b>ditambah biaya layanan per sesi</b> &mdash; sekitar <b>Rp 25.000 untuk Fast Charger, dan Rp 57.000 untuk Ultra Fast.</b></p>
+      <p>Mobil Anda mentok menyerap 40 kW. Ultra Fast berada di kelas di atas 50 kW, jadi <b>Anda membayar Rp 32.000 lebih mahal per sesi untuk kecepatan yang sama persis.</b> Dua sesi sehari berarti Rp 64.000 hangus, <b>Rp 1,9 juta sebulan</b>, tanpa menghemat satu menit pun. Selalu pilih Fast Charger kelas 22&ndash;50 kW. Ini penghematan paling mudah di seluruh halaman ini: cukup berhenti melakukan sesuatu.</p>
+    </div>
+    <div class="rule go">
+      <span class="n">Keunggulan yang tetap berlaku</span>
+      <h3>Pelat listrik bebas ganjil&ndash;genap</h3>
+      <p>Terkonfirmasi masih berlaku: Dinas Perhubungan DKI menegaskan pada Mei 2026 bahwa kendaraan listrik berbasis baterai tetap dikecualikan dari ganjil&ndash;genap, bersama pembebasan PKB dan BBNKB.</p>
+      <p>Artinya di jam 06:00&ndash;10:00 dan 16:00&ndash;21:00 hari kerja, sebagian besar pesaing pelat hitam tidak bisa masuk koridor Sudirman&ndash;Thamrin&ndash;Rasuna Said &mdash; Anda bisa. <b>Persaingan yang lebih tipis di jam paling ramai adalah cara tercepat menaikkan utilisasi.</b> Jangan sia-siakan dengan hanya berputar di Tangerang.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>Koridor kerja</h2>
+    <span class="eyebrow">Jarak terukur dari mesin rute</span>
+  </div>
+  <p class="lead">Jarak di bawah <b>bukan lagi perkiraan saya</b> &mdash; ini jarak jalan sebenarnya dari mesin rute OpenStreetMap, diukur dua arah. Kolom &ldquo;jam sibuk&rdquo; masih perkiraan: saya kalikan 1,6 di dalam Tangerang dan 1,9 untuk ruas Jakarta, disandarkan pada catatan TomTom bahwa <b>kecepatan rata-rata jam sibuk di Jakarta 22,8 km/jam</b>. Itu angka paling lemah di halaman ini &mdash; sepuluh catatan odometer Anda akan menggantikannya.</p>
+
+  <div class="mapbox">
+    <svg viewBox="0 0 780 470" role="img" aria-label="Skema koridor kerja dari Modernland ke Bandara Soekarno-Hatta, Karawaci, Alam Sutera, Gading Serpong, BSD City, Jakarta Barat dan Jakarta CBD">
+      <g stroke="var(--line-strong)" stroke-width="1.6" fill="none">
+        <line x1="140" y1="114" x2="140" y2="226"/>
+        <line x1="140" y1="274" x2="140" y2="386"/>
+        <line x1="210" y1="250" x2="320" y2="250"/>
+        <line x1="460" y1="250" x2="570" y2="250"/>
+        <line x1="640" y1="226" x2="640" y2="114"/>
+        <line x1="390" y1="274" x2="390" y2="386"/>
+        <line x1="460" y1="410" x2="570" y2="410"/>
+        <path d="M140 66 C 300 18, 480 18, 640 66" stroke-dasharray="5 4"/>
+      </g>
+
+      <g font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--muted)">
+        <text x="152" y="172">18,4 km</text><text x="152" y="186">19 mnt</text>
+        <text x="152" y="332">8,2 km</text><text x="152" y="346">10 mnt</text>
+        <text x="265" y="242" text-anchor="middle">9,1 km &middot; 12 mnt</text>
+        <text x="515" y="242" text-anchor="middle">14,6 km &middot; 16 mnt</text>
+        <text x="652" y="172">~12 km</text><text x="652" y="186">~14 mnt</text>
+        <text x="402" y="332">6,2 km</text><text x="402" y="346">10 mnt</text>
+        <text x="515" y="402" text-anchor="middle">11,4 km &middot; 14 mnt</text>
+        <text x="390" y="28" text-anchor="middle">Tol Sedyatmo &middot; ~25 km</text>
+      </g>
+
+      <g>
+        <rect x="70" y="66" width="140" height="48" rx="3" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1"/>
+        <rect x="65" y="226" width="150" height="48" rx="3" fill="var(--accent)" stroke="var(--accent)" stroke-width="1"/>
+        <rect x="70" y="386" width="140" height="48" rx="3" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1"/>
+        <rect x="320" y="226" width="140" height="48" rx="3" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1"/>
+        <rect x="320" y="386" width="140" height="48" rx="3" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1"/>
+        <rect x="570" y="386" width="140" height="48" rx="3" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1"/>
+        <rect x="570" y="226" width="140" height="48" rx="3" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1"/>
+        <rect x="570" y="66" width="140" height="48" rx="3" fill="var(--surface-2)" stroke="var(--line-strong)" stroke-width="1"/>
+      </g>
+
+      <g font-family="Barlow Condensed, sans-serif" font-weight="700" font-size="16" letter-spacing="0.5" text-anchor="middle" fill="var(--ink)">
+        <text x="140" y="88">BANDARA SOETTA</text>
+        <text x="140" y="248" fill="var(--accent-ink)">MODERNLAND</text>
+        <text x="140" y="408">KARAWACI</text>
+        <text x="390" y="248">ALAM SUTERA</text>
+        <text x="390" y="408">GADING SERPONG</text>
+        <text x="640" y="408">BSD CITY</text>
+        <text x="640" y="248">JAKARTA BARAT</text>
+        <text x="640" y="88">JAKARTA CBD</text>
+      </g>
+      <g font-family="IBM Plex Mono, monospace" font-size="9.5" text-anchor="middle" fill="var(--muted)">
+        <text x="140" y="103">pagi 04&ndash;07 &middot; malam 19&ndash;22</text>
+        <text x="140" y="263" fill="var(--accent-ink)" opacity="0.8">BASIS &middot; RUMAH</text>
+        <text x="140" y="423">mal &middot; RS &middot; kampus</text>
+        <text x="390" y="263">kantor &middot; mal &middot; kuliner</text>
+        <text x="390" y="423">mal &middot; ruko &middot; kuliner</text>
+        <text x="640" y="423">kantor &middot; mal &middot; ICE</text>
+        <text x="640" y="263">Puri &middot; Kb Jeruk &middot; Slipi</text>
+        <text x="640" y="103">Sudirman &middot; Kuningan</text>
+      </g>
+    </svg>
+    <p class="map-cap">Ruas bertanda ~ belum terukur; sisanya jarak jalan sebenarnya.</p>
+  </div>
+
+  <div class="tblwrap" style="margin-top:16px">
+    <table>
+      <thead><tr><th>Dari Modernland ke</th><th>Berangkat</th><th>Balik</th><th>Selisih</th><th>Lancar</th><th>Jam sibuk</th><th>Cadangan daya</th></tr></thead>
+      <tbody>
+        <tr><td class="day">Stasiun Tangerang</td><td class="num">5,4 km</td><td class="num">&mdash;</td><td class="num">&mdash;</td><td class="num">8 mnt</td><td class="num">13 mnt</td><td class="num"><b>18%</b></td></tr>
+        <tr><td class="day">Lippo Karawaci</td><td class="num">8,2 km</td><td class="num">&mdash;</td><td class="num">&mdash;</td><td class="num">10 mnt</td><td class="num">16 mnt</td><td class="num"><b>19%</b></td></tr>
+        <tr><td class="day">Alam Sutera</td><td class="num">9,1 km</td><td class="num">&mdash;</td><td class="num">&mdash;</td><td class="num">12 mnt</td><td class="num">19 mnt</td><td class="num"><b>20%</b></td></tr>
+        <tr><td class="day">Gading Serpong</td><td class="num">9,9 km</td><td class="num">&mdash;</td><td class="num">&mdash;</td><td class="num">13 mnt</td><td class="num">21 mnt</td><td class="num"><b>20%</b></td></tr>
+        <tr><td class="day">Jakarta Barat &middot; Puri</td><td class="num">14,1 km</td><td class="num"><b>18,4 km</b></td><td class="num" style="color:var(--alert)"><b>+30%</b></td><td class="num">16 mnt</td><td class="num">30 mnt</td><td class="num"><b>24%</b></td></tr>
+        <tr><td class="day">BSD &middot; AEON</td><td class="num">16,7 km</td><td class="num">17,1 km</td><td class="num">+2%</td><td class="num">21 mnt</td><td class="num">34 mnt</td><td class="num"><b>24%</b></td></tr>
+        <tr><td class="day">Stasiun Rawa Buntu</td><td class="num">17,4 km</td><td class="num">&mdash;</td><td class="num">&mdash;</td><td class="num">20 mnt</td><td class="num">32 mnt</td><td class="num"><b>24%</b></td></tr>
+        <tr><td class="day">Bandara Soetta</td><td class="num">18,4 km</td><td class="num"><b>23,4 km</b></td><td class="num" style="color:var(--alert)"><b>+27%</b></td><td class="num">19 mnt</td><td class="num">30 mnt</td><td class="num"><b>27%</b></td></tr>
+        <tr><td class="day">Jakarta CBD &middot; Sudirman</td><td class="num">26,0 km</td><td class="num"><b>29,5 km</b></td><td class="num" style="color:var(--alert)"><b>+13%</b></td><td class="num">24 mnt</td><td class="num">46 mnt</td><td class="num"><b>30%</b></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="rules" style="margin-top:16px">
+    <div class="rule go">
+      <span class="n">Yang berubah setelah diukur</span>
+      <h3>Wilayah Anda lebih rapat dari dugaan saya</h3>
+      <p>Tiga koreksi yang mengubah strategi. <b>Gading Serpong ternyata 9,9 km, bukan 13&ndash;16 km</b> seperti tebakan saya. <b>Jakarta Barat hanya 14,1 km, bukan 20&ndash;25 km.</b> Dan <b>Jakarta CBD 26 km, bukan 32&ndash;38 km.</b></p>
+      <p>Artinya: Karawaci, Alam Sutera, dan Gading Serpong semuanya <b>dalam radius 10 km dari rumah Anda</b>. Berpindah di antara ketiganya nyaris tidak berbiaya &mdash; sekitar 1,4 kWh atau Rp 3.500. Ini memperkuat strategi banyak trip pendek, dan membuat sirkuit siang jauh lebih murah daripada yang saya gambarkan sebelumnya.</p>
+    </div>
+    <div class="rule no">
+      <span class="n">Pola yang baru terlihat setelah diuji dua arah</span>
+      <h3>Koridor Jakarta asimetris, Tangerang tidak</h3>
+      <p>Setelah bandara terbukti asimetris, saya uji rute lain. Polanya jelas: <b>Jakarta Barat +30% saat balik, Bandara +27%, Jakarta CBD +13% &mdash; sementara BSD hanya +2%.</b></p>
+      <p>Artinya <b>setiap perjalanan keluar dari Jakarta menanggung kilometer tersembunyi</b> yang tidak muncul saat berangkat, akibat arah ramp tol dan sistem satu arah. Di dalam Tangerang, jalannya simetris dan Anda bisa mengabaikan hal ini sepenuhnya.</p>
+      <p>Konsekuensi praktisnya ada di kolom cadangan daya, yang sekarang <b>dihitung dari jarak balik, bukan jarak berangkat</b> &mdash; itulah kenapa angka CBD naik ke 30% dan Jakarta Barat ke 24%.</p>
+    </div>
+    <div class="rule hot">
+      <span class="n">Soal data lalu lintas</span>
+      <h3>Yang tidak bisa saya akses, dan siapa yang bisa</h3>
+      <p>Data lalu lintas langsung dari Google, TomTom, atau HERE semuanya butuh kunci API berbayar &mdash; saya tidak bisa mendaftarkannya, jadi kolom jam sibuk tetap perkiraan.</p>
+      <p><b>Tapi Anda punya tiga sumber gratis yang lebih baik.</b> <b>Satu:</b> aplikasi Grab sendiri sudah menampilkan perkiraan waktu yang sadar lalu lintas di tiap kartu order &mdash; Anda sudah memegang data itu, dua puluh kali sehari. <b>Dua:</b> Google Maps di HP Anda menampilkan waktu tempuh khas per jam untuk rute mana pun, gratis, tinggal dibaca. <b>Tiga:</b> odometer dan jam Anda sendiri.</p>
+      <p>Sepuluh catatan dari sumber mana pun di atas akan lebih akurat daripada API mana pun, karena mencakup rute yang benar-benar Anda lewati dan cara Anda mengemudi.</p>
+    </div>
+    <div class="rule">
+      <span class="n">Ruas sirkuit &middot; terukur</span>
+      <h3>Biaya berpindah di dalam wilayah</h3>
+      <p>Alam Sutera &rarr; Gading Serpong <b>6,2 km</b> &middot; Gading Serpong &rarr; BSD <b>11,4 km</b> &middot; BSD &rarr; Alam Sutera <b>9,4 km</b> &middot; Alam Sutera &rarr; Jakarta Barat <b>14,6 km</b>.</p>
+      <p>Perhatikan bahwa sirkuit Alam Sutera &rarr; Serpong &rarr; BSD &rarr; kembali ke Alam Sutera <b>totalnya hanya 27 km</b>. Satu putaran penuh memakai sekitar 4 kWh, sekitar Rp 10.000. Jangan ragu memutarinya beberapa kali di blok siang.</p>
+    </div>
+    <div class="rule no">
+      <span class="n">Terkonfirmasi &middot; diuji dua arah</span>
+      <h3>Balik dari bandara 5 km lebih jauh</h3>
+      <p>Diuji pada pasangan titik yang sama, bolak-balik. <b>Modernland &rarr; Bandara 18,4 km; Bandara &rarr; Modernland 23,4 km.</b> Selisih 5,0 km, atau 27% lebih panjang. Pola yang sama muncul di pasangan kedua: <b>Stasiun Tangerang &rarr; Bandara 19,0 km; Bandara &rarr; Stasiun Tangerang 22,9 km.</b> Penyebabnya hampir pasti sistem jalan satu arah di kawasan bandara dan arah ramp tolnya.</p>
+      <p><b>Akibatnya besar.</b> Kilometer kosong 23,4 km itu adalah <b>perpindahan kosong terpanjang yang mungkin Anda tempuh seharian</b> &mdash; lebih jauh daripada pulang dari Jakarta CBD sekalipun. Antaran bandara tanpa order balik karena itu jatuh ke peringkat bawah dalam tabel Peringkat rute, di bawah sirkuit stasiun.</p>
+      <p>Satu hal lagi yang muncul dari uji ini: <b>rumah Anda punya akses jalan ke bandara yang lebih baik daripada kawasan stasiun</b> &mdash; 18,4 km lawan 19,0 km, meskipun stasiun secara garis lurus lebih dekat. Modernland dekat gerbang tol; kawasan stasiun harus memutar.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>Jadwal harian</h2>
+    <span class="eyebrow">Senin&ndash;Kamis &middot; pola dasar</span>
+  </div>
+  <p class="lead">Titik <b style="color:var(--accent)">hijau</b> adalah jam panen &mdash; di sini 70% penghasilan dibuat, jangan dipakai untuk urusan lain. Titik <b style="color:var(--signal)">oranye</b> adalah jam sepi yang sengaja dipakai untuk isi daya dan istirahat, supaya ngecas tidak pernah memakan jam ramai.</p>
+
+  <div class="tl">
+
+    <div class="blk">
+      <div class="blk-time"><b>04:45</b><em>30 mnt</em></div>
+      <div class="blk-body">
+        <h3>Pra-jalan</h3>
+        <p class="zone">DI RUMAH &mdash; CLUSTER GRACIA</p>
+        <ul>
+          <li>Cek daya baterai. Berangkat <b>minimal 85%</b>; di bawah itu jadwal hari ini otomatis butuh satu sesi ngecas tambahan.</li>
+          <li>Tekanan ban, AC dingin, kaca bersih, HP terisi penuh, power bank, air minum, tisu.</li>
+          <li>Buka tab <b>Insentif</b> &mdash; catat target poin hari ini dan jam-jam yang dibonuskan. Ini menentukan apakah hari ini Anda mengejar jumlah trip atau mengejar jam sibuk.</li>
+          <li><b>Online sebelum keluar cluster.</b> Order pertama sering datang dari dalam Modernland sendiri; kalau Anda baru online di jalan raya, order itu sudah diambil orang lain.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="blk peak">
+      <div class="blk-time"><b>05:15</b><em>1 j 45 mnt</em></div>
+      <div class="blk-body">
+        <h3>Peak pagi I &mdash; arus keluar</h3>
+        <p class="zone">MODERNLAND &rarr; CIKOKOL &rarr; BANDARA / TOL JAKARTA&ndash;MERAK</p>
+        <ul>
+          <li>Tiga sumber permintaan bertumpuk di sini: karyawan berangkat ke Jakarta, penumpang mengejar penerbangan pagi 07:00&ndash;09:00, dan <b>arus penumpang menuju Stasiun Tangerang, Tanah Tinggi, serta Batu Ceper</b> yang memuncak 06:00&ndash;08:00.</li>
+          <li><b>Jadikan sirkuit stasiun sebagai lantai penghasilan Anda.</b> Ketiganya hanya 3&ndash;6 km dari rumah, jadi jarak jemputnya kecil dan utilisasi Anda tinggi. Trip stasiun memang pendek, tapi datang beruntun dan hampir tanpa kilometer kosong &mdash; ini yang menahan hari Anda saat order jauh tidak muncul.</li>
+          <li><b>Prioritaskan order ke Bandara Soetta.</b> Jaraknya &plusmn;18 km, tarifnya tinggi, jalannya masih lancar jam segini, dan Anda tetap dekat rumah. Ini trip dengan rasio rupiah-per-menit terbaik sepanjang hari.</li>
+          <li><b>Tapi ukur dulu bagasi Anda.</b> Atto 1 adalah hatchback kota dengan bagasi kecil. Ukur sendiri berapa koper besar yang benar-benar muat dengan kursi belakang tegak, lalu <b>hafalkan angkanya</b>. Saat order bandara masuk, telepon penumpang lebih dulu dan tanyakan jumlah orang dan koper &mdash; lebih baik bertanya 30 detik daripada tiba di lokasi lalu terpaksa membatalkan, karena pembatalan merusak metrik Anda seharian.</li>
+          <li>Jangan masuk terlalu dalam ke Jakarta Pusat sebelum 06:30 &mdash; Anda akan terjebak arus masuk dan kehilangan satu jam penuh.</li>
+          <li>Setelah menurunkan penumpang di bandara, jangan otomatis antre penjemputan kecuali antreannya pendek. Sering lebih untung keluar dan mengambil order dari kawasan sekitar.</li>
+        </ul>
+        <div class="tags"><span class="tag hit">Target 3&ndash;4 trip</span><span class="tag hit">Rp 150&ndash;220rb</span></div>
+      </div>
+    </div>
+
+    <div class="blk peak">
+      <div class="blk-time"><b>07:00</b><em>2 j 30 mnt</em></div>
+      <div class="blk-body">
+        <h3>Peak pagi II &mdash; pilih medan</h3>
+        <p class="zone">JALUR A: JAKARTA BARAT + CBD &nbsp;&middot;&nbsp; JALUR B: ALAM SUTERA &ndash; SERPONG &ndash; BSD</p>
+        <ul>
+          <li><b>Jalur A, kalau Anda sudah terbawa ke Jakarta.</b> Kerja di koridor Puri &ndash; Kebon Jeruk &ndash; Slipi &ndash; Grogol &ndash; Tanjung Duren, lalu masuk Sudirman dan Kuningan. Di sinilah pelat listrik Anda bekerja: ambil order yang ditolak mobil pelat hitam karena ganjil&ndash;genap.</li>
+          <li><b>Jalur B, kalau masih di Tangerang.</b> Kawasan perkantoran: Green Office Park dan Digital Hub BSD, Prominence dan Synergy Alam Sutera, Karawaci. Trip lebih pendek tapi perputarannya cepat &mdash; bagus kalau insentif hari ini berbasis jumlah trip.</li>
+          <li>Aturan yang berlaku di kedua jalur: <b>bergerak ke arah permintaan, jangan diam di titik turun.</b> Setelah menurunkan penumpang di area sepi, langsung arahkan mobil ke kantong permintaan terdekat sambil tetap online.</li>
+        </ul>
+        <div class="tags"><span class="tag hit">Target 3&ndash;4 trip</span><span class="tag hit">Rp 130&ndash;190rb</span><span class="tag">Pelat EV bebas ganjil&ndash;genap</span></div>
+      </div>
+    </div>
+
+    <div class="blk charge">
+      <div class="blk-time"><b>09:30</b><em>1 jam</em></div>
+      <div class="blk-body">
+        <h3>Isi daya #1 + istirahat wajib</h3>
+        <p class="zone">SPKLU JANGKAR &mdash; PENGISIAN CEPAT 30&ndash;45 MENIT</p>
+        <ul>
+          <li>Daya biasanya sudah di 30&ndash;40%. Isi sampai <b>80%</b> lalu berhenti &mdash; di atas 80% pengisian melambat drastis dan Anda hanya membuang waktu. Sesi 20&rarr;80% memakan <b>&plusmn;35 menit di varian Dynamic, &plusmn;45 menit di Premium</b>, karena mobil ini menerima maksimum 40 kW.</li>
+          <li><b>Pilih gun yang kosong, bukan yang paling kencang.</b> Di atas 40 kW mobil Anda tidak bisa menyerap lebih cepat, jadi antre lima menit di charger 150 kW sudah kalah dari langsung colok di charger 50 kW yang sepi.</li>
+          <li>Sekalian sarapan dan istirahat. Ini juga memenuhi kewajiban istirahat 30 menit setelah 4 jam mengemudi berturut-turut.</li>
+          <li><b>Ubah status ke offline atau mode istirahat selama mencolok.</b> Kalau tetap online, Anda akan menerima order yang terpaksa ditolak, dan tingkat penerimaan Anda jatuh &mdash; itu langsung mengurangi order yang dikirim ke Anda seharian.</li>
+        </ul>
+        <div class="tags"><span class="tag warn">Isi ke 80%, jangan lebih</span><span class="tag stop">Offline saat mencolok</span></div>
+      </div>
+    </div>
+
+    <div class="blk">
+      <div class="blk-time"><b>10:30</b><em>3 j 30 mnt</em></div>
+      <div class="blk-body">
+        <h3>Sirkuit siang &mdash; mal, kantor, rumah sakit</h3>
+        <p class="zone">ALAM SUTERA &rarr; GADING SERPONG &rarr; BSD &rarr; KARAWACI &rarr; TANGERANG KOTA</p>
+        <ul>
+          <li>Rotasi satu arah, jangan bolak-balik: Living World dan Mall @ Alam Sutera &rarr; Summarecon Mal Serpong &rarr; AEON dan The Breeze BSD &rarr; Supermal Karawaci &rarr; Tangcity atau Metropolis.</li>
+          <li><b>11:30&ndash;13:00 adalah jam makan siang perkantoran.</b> Berada di Green Office Park BSD, Digital Hub, atau Prominence Alam Sutera pada jam ini memberi trip pendek yang beruntun.</li>
+          <li>Rumah sakit adalah sumber permintaan paling stabil sepanjang hari dan tidak terikat jam sibuk: Siloam Lippo Village, Eka Hospital BSD, Bethsaida Gading Serpong.</li>
+          <li>Trip di blok ini pendek dan kecil satuannya, tapi jumlahnya yang mengisi poin insentif. <b>Jangan menolak trip 3 km di sini.</b></li>
+        </ul>
+        <div class="tags"><span class="tag hit">Target 5&ndash;6 trip</span><span class="tag hit">Rp 120&ndash;170rb</span></div>
+      </div>
+    </div>
+
+    <div class="blk charge">
+      <div class="blk-time"><b>14:00</b><em>1 j 15 mnt</em></div>
+      <div class="blk-body">
+        <h3>Jam mati &mdash; top-up dan pulang sebentar</h3>
+        <p class="zone">JAM PALING SEPI DALAM SEHARI &mdash; JANGAN DIPAKSA</p>
+        <ul>
+          <li>Permintaan turun tajam antara 14:00 dan 15:15. Memaksa mencari order di sini hanya membakar baterai untuk hasil kecil.</li>
+          <li>Top-up 20&ndash;30 menit ke <b>85&ndash;90%</b>. Ini bekal untuk peak sore <em>sekaligus</em> perjalanan pulang &mdash; setelah blok ini Anda tidak boleh lagi kehilangan waktu untuk ngecas.</li>
+          <li>Kalau posisi dekat, pulang tidur 45 menit. Kualitas peak sore Anda ditentukan di sini.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="blk">
+      <div class="blk-time"><b>15:15</b><em>1 j 45 mnt</em></div>
+      <div class="blk-body">
+        <h3>Ambil posisi sebelum bubaran</h3>
+        <p class="zone">KEPUTUSAN TERPENTING SEPANJANG HARI</p>
+        <ul>
+          <li>Aturannya: <b>sudah berada di titik jemput 20&ndash;30 menit sebelum orang keluar kantor, bukan sesudahnya.</b> Berangkat setelah peak dimulai berarti Anda menghabiskan peak di kemacetan tanpa penumpang.</li>
+          <li><b>Kalau ingin memanen arus Jakarta &rarr; Tangerang</b>, Anda harus sudah berada di Jakarta Barat atau CBD paling lambat pukul 15:30, sebelum tol arah keluar kota padat.</li>
+          <li><b>Kalau main aman di Tangerang</b>, ambil posisi di sekitar Green Office Park BSD, Prominence Alam Sutera, atau Karawaci dan tunggu di sana.</li>
+          <li>Pilih salah satu dan jalani. Berangkat ke Jakarta pukul 16:00 adalah gabungan terburuk dari keduanya: kena macet berangkat, dan tetap ketinggalan awal peak.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="blk peak">
+      <div class="blk-time"><b>17:00</b><em>3 jam</em></div>
+      <div class="blk-body">
+        <h3>Peak sore &mdash; blok terbesar</h3>
+        <p class="zone">ARAH DOMINAN: JAKARTA &rarr; TANGERANG, KANTOR &rarr; PERUMAHAN</p>
+        <ul>
+          <li>Ini blok penghasilan terbesar, biasanya sekitar sepertiga dari total harian. Tidak ada urusan lain yang boleh masuk ke sini &mdash; makan, ngecas, dan istirahat sudah dijadwalkan di luar blok ini.</li>
+          <li>Ganjil&ndash;genap sore berlaku 16:00&ndash;21:00 pada hari kerja &mdash; sekali lagi, mobil listrik Anda bebas. Koridor Sudirman dan Rasuna Said terbuka untuk Anda justru saat pesaing tersaring.</li>
+          <li><b>Jangan melawan arus.</b> Hindari trip yang membawa Anda ke Jakarta Timur, Jakarta Utara, atau Bekasi setelah pukul 18:30: pulangnya jauh, kosong, dan memakan baterai yang Anda butuhkan untuk sampai rumah.</li>
+          <li><b>Arus pulang KRL adalah blok kedua di dalam blok ini.</b> Stasiun Tangerang, Tanah Tinggi, dan Batu Ceper ramai 16:00&ndash;20:00 oleh penumpang yang butuh antaran terakhir ke rumah &mdash; di BSD, perannya dipegang Stasiun Rawa Buntu. Trip pendek, jarak jemput kecil, dan Anda tetap dekat rumah.</li>
+          <li>Setiap kali menerima order, tanyakan satu hal: <b>&ldquo;setelah turun, saya ada di mana?&rdquo;</b> Titik turun yang buruk membatalkan keuntungan trip yang bagus &mdash; matriks kembali di atas sudah menjawabnya untuk setiap zona.</li>
+        </ul>
+        <div class="tags"><span class="tag hit">Target 6&ndash;8 trip</span><span class="tag hit">Rp 250&ndash;330rb</span><span class="tag stop">Jangan ke timur setelah 18:30</span></div>
+      </div>
+    </div>
+
+    <div class="blk peak">
+      <div class="blk-time"><b>20:00</b><em>1 j 15 mnt</em></div>
+      <div class="blk-body">
+        <h3>Panen terakhir</h3>
+        <p class="zone">MAL TUTUP &middot; KAWASAN KULINER &middot; KEDATANGAN BANDARA</p>
+        <ul>
+          <li>Mal tutup antara 21:00 dan 22:00 dan meninggalkan antrean penumpang di pintu keluar &mdash; ambil posisi 15 menit sebelumnya, bukan sesudah antrean terbentuk.</li>
+          <li>Kawasan kuliner malam: Flavor Bliss Alam Sutera, Scientia Square dan deretan ruko Gading Serpong, The Breeze BSD, sentra kuliner Cikokol.</li>
+          <li>Kedatangan bandara 19:00&ndash;22:00 masih ramai, dan bandara hanya 25 menit dari rumah &mdash; ini satu-satunya trip jauh yang tetap aman diambil selarut ini.</li>
+        </ul>
+        <div class="tags"><span class="tag hit">Target 2&ndash;3 trip</span><span class="tag hit">Rp 80&ndash;130rb</span></div>
+      </div>
+    </div>
+
+    <div class="blk">
+      <div class="blk-time"><b>21:15</b><em>45&ndash;60 mnt</em></div>
+      <div class="blk-body">
+        <h3>Protokol pulang</h3>
+        <p class="zone">SEMUA KEPUTUSAN SEKARANG DIUKUR DARI JARAK KE MODERNLAND</p>
+        <ul>
+          <li><b>Aktifkan Filter Arah Tujuan</b> ke Modernland atau Kota Tangerang. Simpan satu jatah filter khusus untuk momen ini &mdash; jangan dihabiskan siang hari.</li>
+          <li>Kalau jatah filter sudah habis, pakai <b>aturan kompas</b>: hanya terima order yang tujuannya ke arah barat atau barat daya dari posisi Anda, atau yang berakhir di dalam lingkar Tangerang.</li>
+          <li><b>Batas keras pukul 22:00: pulang, apa pun yang terjadi.</b> Trip terakhir yang dipaksakan hampir selalu menjauhkan Anda dari rumah dan memakan jam tidur yang menghancurkan peak pagi besok. Satu trip Rp 40rb tidak sepadan dengan peak pagi yang hilang.</li>
+          <li>Kalau daya di bawah 40%, mampir SPKLU 24 jam terdekat rumah dan isi ke 85% <em>sebelum</em> pulang &mdash; bukan besok pagi. Besok pagi tidak ada waktu.</li>
+        </ul>
+        <div class="tags"><span class="tag stop">Batas keras 22:00</span><span class="tag warn">Ngecas sebelum pulang, bukan besok pagi</span></div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>Kelanjutan Jalur A dan B</h2>
+    <span class="eyebrow">Percabangan pukul 07:00, dituntaskan</span>
+  </div>
+  <p class="lead">Blok 07:00 memberi Anda dua pilihan tapi tidak menyelesaikan keduanya. Ini kelanjutannya &mdash; dan intinya satu: <b>Jalur A menghasilkan lebih banyak, tapi seluruh kelebihannya bisa hangus di satu titik, yaitu cara Anda kembali.</b></p>
+
+  <div class="rules">
+    <div class="rule go">
+      <span class="n">Jalur A &middot; Jakarta</span>
+      <h3>Urutan lengkapnya</h3>
+      <p><b>07:00&ndash;09:00</b> &mdash; kerja lokal di Jakarta Barat dan CBD. Ini tarif terbaik yang tersedia sepanjang hari, <b>Rp 40.600&ndash;56.400 per jam</b>, dan pelat listrik Anda membuka koridor yang tertutup bagi pesaing.</p>
+      <p><b>09:00</b> &mdash; <b>aktifkan Filter Arah Tujuan ke Tangerang.</b> Inilah titik paling menentukan di seluruh jalur ini.</p>
+      <p><b>09:30&ndash;10:15</b> &mdash; pulang <em>dengan penumpang</em>, lalu isi daya di jangkar Karawaci atau Kunciran. Setelah itu hari Anda kembali ke jadwal normal.</p>
+      <p><b>Aturan daya:</b> mulai perjalanan pulang saat daya menyentuh <b>40%</b>, bukan lebih rendah. Anda tidak punya SPKLU jangkar di Jakarta, dan penumpang bisa saja membawa Anda lebih dalam sebelum Anda sempat keluar.</p>
+    </div>
+    <div class="rule">
+      <span class="n">Jalur B &middot; Tangerang</span>
+      <h3>Urutan lengkapnya</h3>
+      <p><b>07:00&ndash;09:30</b> &mdash; kawasan kantor BSD dan Alam Sutera, ditambah Stasiun Rawa Buntu di arus berangkat KRL. Sekitar <b>Rp 30.500&ndash;32.200 per jam</b>.</p>
+      <p><b>09:30</b> &mdash; isi daya di jangkar yang memang sudah di dekat Anda. Tidak ada perjalanan pulang yang perlu dipikirkan, tidak ada risiko terdampar.</p>
+      <p>Hasilnya lebih rendah, tapi <b>tidak ada satu pun cara jalur ini bisa gagal.</b> Ini pilihan yang benar jauh lebih sering daripada yang terdengar.</p>
+    </div>
+    <div class="rule no">
+      <span class="n">Perbandingannya</span>
+      <h3>Kelebihan Jalur A: Rp 43.000 &mdash; atau nol</h3>
+      <p>Selama 2,5 jam blok itu, Jalur A menghasilkan sekitar <b>Rp 120.000</b> dan Jalur B sekitar <b>Rp 77.500</b>. Selisihnya <b>Rp 42.500</b>, ditambah nilai trip pulang bila berbayar.</p>
+      <p><b>Tapi kalau pulangnya kosong, biayanya lebih besar dari yang terlihat.</b> Balik dari Jakarta Barat bukan 14,1 km melainkan <b>18,4 km</b> &mdash; koridor Jakarta asimetris, arah pulang 30% lebih panjang. Itu Rp 6.800 listrik dan sekitar 40 menit: <b>hampir Rp 34.000</b> bila dihitung sebagai waktu yang hilang, dan itu memakan habis kelebihan Jalur A. Dari CBD, jarak baliknya <b>29,5 km</b> &mdash; di situ Jalur A justru <b>merugi</b> dibanding Jalur B.</p>
+      <p>Jadi Jalur A bukan pilihan yang lebih baik. Ia pilihan yang <b>lebih baik bersyarat</b>, dan syaratnya cuma satu.</p>
+    </div>
+    <div class="rule go">
+      <span class="n">Aturan tunggal</span>
+      <h3>Ambil Jalur A hanya bila jatah filter masih ada</h3>
+      <p>Kalau Anda masih punya satu jatah Filter Arah Tujuan untuk dipakai pulang, <b>ambil Jalur A</b> &mdash; kepulangan Anda terjamin berbayar, dan kelebihannya nyata.</p>
+      <p>Kalau jatah filter sudah habis, <b>ambil Jalur B</b> &mdash; tanpa jaminan pulang berbayar, Jalur A hanyalah taruhan dengan hasil rata-rata yang tidak lebih baik.</p>
+      <p>Itu saja keputusannya. Bukan soal firasat hari itu ramai atau tidak, melainkan satu hal yang bisa Anda lihat di aplikasi dalam dua detik.</p>
+    </div>
+    <div class="rule hot">
+      <span class="n">Ini merevisi saran saya sebelumnya</span>
+      <h3>Pemakaian jatah filter, diperbaiki</h3>
+      <p>Sebelumnya saya menyarankan memakai jatah pertama sekitar 06:00 untuk mencondongkan order pagi ke Jakarta. <b>Setelah percabangan ini dituntaskan, itu keliru.</b></p>
+      <p>Alasannya: di pagi hari Anda <em>sudah</em> berada di dalam cluster perumahan, dan posisi itu sendiri sudah melahirkan order panjang &mdash; filter tidak menambah banyak. Sebaliknya, <b>kepulangan dari Jakarta pukul 09:00 tidak punya mekanisme alami sama sekali</b>: pada jam itu arus masih menuju ke dalam Jakarta, bukan keluar, jadi order Jakarta&rarr;Tangerang jarang muncul dengan sendirinya.</p>
+      <p><b>Alokasi yang benar: jatah pertama pukul 09:00 untuk pulang berbayar, jatah kedua pukul 21:15 untuk pulang malam.</b> Pagi hari, biarkan posisi yang bekerja &mdash; itu gratis.</p>
+    </div>
+    <div class="rule">
+      <span class="n">Pekerjaan rumah untuk membuka Jalur A</span>
+      <h3>Survei satu SPKLU di Jakarta Barat</h3>
+      <p>Kelemahan struktural Jalur A adalah Anda bekerja 14&ndash;26 km dari jangkar terdekat. Aturan pulang di 40% menutupinya, tapi itu juga <b>memaksa Anda pulang lebih cepat dari yang Anda inginkan di hari yang sedang bagus.</b></p>
+      <p>Satu SPKLU jangkar di kawasan Puri atau Kebon Jeruk menghapus batasan itu &mdash; Anda bisa bertahan di koridor tarif tertinggi sampai peak pagi benar-benar habis. <b>Ini pekerjaan rumah dengan hasil paling besar</b> di seluruh halaman ini setelah colokan rumah.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>Rute &amp; rotasi</h2>
+    <span class="eyebrow">Kebijakan bergerak, bukan jalur</span>
+  </div>
+  <p class="lead">Saya tidak punya data peta atau lalu lintas, jadi saya tidak bisa menghitung jalur seperti aplikasi navigasi &mdash; dan itu memang bukan yang Anda butuhkan. Aplikasi sudah memberi Anda jalur untuk setiap trip. Yang tidak diberikan siapa pun adalah jawaban atas pertanyaan yang muncul <b>dua puluh kali sehari: &ldquo;penumpang sudah turun, sekarang saya ke mana?&rdquo;</b> Di situlah kilometer kosong lahir, dan di situlah utilisasi Anda dimenangkan atau hilang.</p>
+
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>Turun di</th><th>Pagi 05&ndash;09</th><th>Siang 10&ndash;15</th><th>Sore 16&ndash;20</th><th>Malam 20&ndash;22</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="day">Kota<br>Tangerang</td>
+          <td>Tetap. Putar Stasiun Tangerang &ndash; Tanah Tinggi &ndash; Batu Ceper. <b>Jarak jemput 2&ndash;4 km</b></td>
+          <td>Tetap. Tambah Tangcity dan Metropolis ke putaran</td>
+          <td>Tetap. Stasiun Tangerang jadi ramai lagi oleh arus pulang KRL</td>
+          <td><b>Ini zona pulang Anda.</b> Jangan pernah keluar dari sini setelah 21:15</td>
+        </tr>
+        <tr>
+          <td class="day">Karawaci</td>
+          <td>Jl. Sudirman arah Kota Tangerang &mdash; searah arus pagi</td>
+          <td>Supermal, Siloam, UPH. Rumah sakit paling stabil</td>
+          <td>Perkantoran Lippo Village lepas 17:00</td>
+          <td>Mal tutup 21:00, ambil satu, lalu pulang &mdash; hanya 8 km</td>
+        </tr>
+        <tr>
+          <td class="day">Alam<br>Sutera</td>
+          <td>Jl. Raya Serpong arah Kota Tangerang, jangan ke selatan</td>
+          <td>Living World, Mall @Alam Sutera, kawasan kantor</td>
+          <td>Prominence dan Synergy lepas 17:00&ndash;19:00</td>
+          <td>Flavor Bliss ramai sampai 22:00. Pulang 9 km</td>
+        </tr>
+        <tr>
+          <td class="day">Gading<br>Serpong</td>
+          <td>Bergerak ke Alam Sutera &mdash; searah pulang, bukan makin jauh</td>
+          <td>Summarecon Mal Serpong, ruko, Bethsaida</td>
+          <td>Bubaran kantor bertumpuk dengan bubaran sekolah</td>
+          <td>Kuliner Scientia Square. Pulang 14 km &mdash; berangkat 21:00</td>
+        </tr>
+        <tr>
+          <td class="day">BSD</td>
+          <td><b>Stasiun Rawa Buntu</b> &mdash; arus berangkat KRL memuncak 06:00&ndash;08:00</td>
+          <td>AEON, The Breeze, Digital Hub</td>
+          <td>Green Office Park lepas 17:00, lalu <b>Rawa Buntu</b> arus pulang KRL 16:00&ndash;20:00</td>
+          <td>The Breeze sampai 22:00. <b>Ini titik terjauh &mdash; berangkat pulang 20:45</b></td>
+        </tr>
+        <tr>
+          <td class="day">Bandara</td>
+          <td><b>Antre sampai 45&ndash;60 menit.</b> Pergi kosong berarti 23,4 km hangus &mdash; hampir selalu kalah</td>
+          <td>Antrean lebih pendek siang hari. Ini justru waktu terbaik mencobanya</td>
+          <td>Kedatangan mulai menumpuk, antrean memendek</td>
+          <td><b>Gelombang 19:00&ndash;22:00.</b> Trip penutup terbaik &mdash; balik ke rumah 23,4 km dan searah</td>
+        </tr>
+        <tr>
+          <td class="day">Jakarta<br>Barat</td>
+          <td>Kerja lokal sampai 09:30 &mdash; jangan melawan arus masuk dalam keadaan kosong</td>
+          <td>Kalau sepi, balik lewat arteri sambil tetap online. <b>Hanya 14,1 km</b> &mdash; tidak semahal dugaan lama</td>
+          <td><b>Tunggu maksimal 20 menit, lalu pulang.</b> Menunggu 20 menit senilai Rp 16.000; balik kosong 14,1 km senilai Rp 5.200 listrik plus 35 menit. Di atas 20 menit menunggu, lebih untung jalan</td>
+          <td>Ambil apa pun ke arah barat, lalu pulang. Batas berangkat 21:00</td>
+        </tr>
+        <tr>
+          <td class="day">Jakarta<br>CBD</td>
+          <td>Kerja lokal. Pelat listrik Anda bebas ganjil&ndash;genap saat pesaing tersaring</td>
+          <td>Paling tidak produktif. Geser ke Jakarta Barat</td>
+          <td>Arus keluar kota &mdash; ambil hanya yang ke arah barat</td>
+          <td><b>Terlalu jauh.</b> Jam 20:00 Anda seharusnya sudah tidak di sini</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="rules" style="margin-top:16px">
+    <div class="rule go">
+      <span class="n">Yang saya lewatkan di versi pertama</span>
+      <h3>Sirkuit stasiun KRL</h3>
+      <p>Ini kesalahan terbesar saya kemarin. <b>Stasiun Tangerang, Tanah Tinggi, dan Batu Ceper hanya 3&ndash;6 km dari Modernland</b>, dengan 60 perjalanan KRL sehari ke arah Duri. Batu Ceper bahkan titik sambung ke kereta bandara, jadi penumpangnya berkoper.</p>
+      <p><b>Tapi tempatkan ini pada porsinya.</b> Setelah saya hitung, sirkuit stasiun menghasilkan sekitar <b>Rp 30.500 per jam</b> &mdash; separuh dari rute CBD. Ini bukan rencana utama Anda; <b>ini lantai penghasilan</b>, yang menahan hari Anda saat trip panjang tidak muncul, dan tersedia hampir sepanjang hari sementara trip CBD tidak.</p>
+      <p>Jamnya pun tetap dan bisa diandalkan: <b>padat 06:00&ndash;08:00 arah berangkat, 16:00&ndash;20:00 arah pulang</b> &mdash; persis menempel pada dua blok peak Anda. Di BSD, peran yang sama dipegang <b>Stasiun Rawa Buntu</b>.</p>
+    </div>
+    <div class="rule go">
+      <span class="n">Dikoreksi &mdash; tol ditanggung penumpang</span>
+      <h3>Maka: selalu ambil tol</h3>
+      <p>Ini menghapus seluruh perhitungan untung-rugi tol yang saya tulis sebelumnya, dan menyederhanakannya jadi satu kalimat: <b>kalau tol lebih cepat, ambil.</b> Anda hanya menanggung waktu, dan tol justru menghemat waktu &mdash; sementara biayanya jatuh ke penumpang.</p>
+      <p>Dua akibat yang mengubah strategi. <b>Pertama, trip jauh jadi jauh lebih menarik.</b> Tarif tol Kunciran&ndash;Serpong Rp 21.000 tadinya memakan dua pertiga margin Anda di ruas itu; sekarang tidak memakan apa pun. <b>Kedua, jam sibuk jadi lebih bisa dikerjakan</b> &mdash; Anda bisa membeli waktu dengan uang orang lain, dan waktu adalah satu-satunya hal yang benar-benar Anda bayar.</p>
+      <p>Satu hal yang tetap Anda tanggung: <b>tol saat berpindah tanpa penumpang.</b> Di situ aturan lama masih berlaku &mdash; jangan bayar tol untuk mengejar order. Berpindah kosong lewat arteri, berpindah berpenumpang lewat tol.</p>
+    </div>
+    <div class="rule hot">
+      <span class="n">Kemacetan &middot; khusus mobil listrik</span>
+      <h3>Macet tidak membakar uang Anda, tapi membakar jam</h3>
+      <p>Ini keuntungan yang tidak disadari pemilik mobil listrik. Saat berhenti di kemacetan, mobil bensin terus membakar bahan bakar; mobil Anda hampir tidak menarik daya &mdash; hanya AC, sekitar 1&ndash;1,5 kW. <b>Satu jam terjebak macet hanya menghabiskan sekitar Rp 3.700 listrik.</b> Ditambah pengereman regeneratif, biaya per kilometer Anda di lalu lintas padat justru lebih rendah daripada di jalan lancar.</p>
+      <p>Tapi <b>satu jam waktu Anda bernilai Rp 48.000.</b> Jadi seluruh biaya kemacetan bagi Anda adalah biaya kesempatan, bukan biaya energi. Konsekuensinya jelas: jangan pernah menilai order dari tarifnya, selalu dari <b>rupiah per menitnya</b> &mdash; dan jangan takut menembus macet kalau order berikutnya menunggu di seberangnya.</p>
+    </div>
+    <div class="rule">
+      <span class="n">Jendela macet yang bisa diprediksi</span>
+      <h3>Kapan menghindar, kapan justru masuk</h3>
+      <p><b>06:00&ndash;09:00</b> arah masuk Jakarta tersendat &mdash; tapi ini juga arah penumpang Anda, jadi tetap dikerjakan. Yang harus dihindari adalah <em>kembali</em> ke Tangerang di jam ini dalam keadaan kosong.</p>
+      <p><b>16:30&ndash;20:00</b> arah keluar Jakarta tersendat &mdash; sekali lagi searah penumpang Anda. Jangan masuk Jakarta kosong di jam ini.</p>
+      <p><b>Jumat 15:00&ndash;21:00</b> adalah puncak terparah minggu ini. Justru di sinilah tarif dinamis paling sering naik, jadi hari Jumat bukan hari untuk menghindari macet &mdash; melainkan hari untuk berada di dalamnya dengan penumpang.</p>
+      <p><b>Aturan tunggal:</b> macet searah penumpang itu penghasilan; macet tanpa penumpang itu kerugian murni. Semua keputusan rute Anda mengalir dari kalimat ini.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>Peringkat rute</h2>
+    <span class="eyebrow">Dihitung, bukan dinilai</span>
+  </div>
+  <p class="lead">Saya hitung tiap pola rute dengan rumus yang sama: <b>pendapatan = km berpenumpang &times; Rp 2.900</b>, dikurangi <b>energi = seluruh km &times; Rp 369</b>, dibagi total menit satu putaran termasuk menjemput dan menunggu. Jarak memakai angka terukur; jarak jemput dan waktu tunggu masih perkiraan saya, tapi <b>urutannya tetap berlaku</b> karena yang menggerakkannya adalah mekanisme, bukan tebakan.</p>
+
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>Pola rute</th><th>Km dibayar</th><th>Km total</th><th>Menit</th><th>Km dibayar / jam</th><th>Bersih / jam</th></tr></thead>
+      <tbody>
+        <tr><td class="day">CBD &rarr; Tangerang &middot; sore</td><td class="num">26,0</td><td class="num">30,0</td><td class="num">65</td><td class="num">24,0</td><td class="num"><b>Rp 59.400</b></td></tr>
+        <tr><td class="day">Bandara <b>dengan</b> order balik</td><td class="num">36,4</td><td class="num">39,4</td><td class="num">95</td><td class="num">23,0</td><td class="num"><b>Rp 57.500</b></td></tr>
+        <tr><td class="day">Tangerang &rarr; CBD &middot; pagi</td><td class="num">26,0</td><td class="num">31,0</td><td class="num">68</td><td class="num">22,9</td><td class="num"><b>Rp 56.400</b></td></tr>
+        <tr><td class="day">Jakarta Barat &rarr; Tangerang &middot; sore</td><td class="num">14,1</td><td class="num">18,1</td><td class="num">48</td><td class="num">17,6</td><td class="num">Rp 42.800</td></tr>
+        <tr><td class="day">Tangerang &rarr; Jakarta Barat &middot; pagi</td><td class="num">14,1</td><td class="num">19,1</td><td class="num">50</td><td class="num">16,9</td><td class="num">Rp 40.600</td></tr>
+        <tr><td class="day">Kantor BSD &rarr; perumahan &middot; sore</td><td class="num">8,0</td><td class="num">12,0</td><td class="num">35</td><td class="num">13,7</td><td class="num">Rp 32.200</td></tr>
+        <tr><td class="day">Sirkuit stasiun KRL</td><td class="num">6,0</td><td class="num">10,0</td><td class="num">27</td><td class="num">13,3</td><td class="num">Rp 30.500</td></tr>
+        <tr><td class="day">Bandara <b>tanpa</b> order balik</td><td class="num">18,4</td><td class="num">44,8</td><td class="num">76</td><td class="num">14,5</td><td class="num">Rp 29.100</td></tr>
+        <tr><td class="day">Sirkuit mal siang</td><td class="num">6,0</td><td class="num">10,5</td><td class="num">34</td><td class="num">10,6</td><td class="num">Rp 23.900</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="rules" style="margin-top:16px">
+    <div class="rule no">
+      <span class="n">Ini membatalkan saran saya kemarin</span>
+      <h3>Trip panjang menang, bukan trip pendek</h3>
+      <p>Kemarin saya bilang <em>&ldquo;dua puluh trip stasiun 5 km mengalahkan lima trip Jakarta 25 km.&rdquo;</em> Setelah dihitung, itu salah. Dua puluh trip stasiun butuh 9 jam dan menghasilkan <b>Rp 274.000</b>. Lima trip CBD butuh 5,7 jam dan menghasilkan <b>Rp 320.000</b>. Lebih banyak uang, dalam waktu lebih sedikit.</p>
+      <p>Kesalahan saya: menjadikan <b>utilisasi</b> sebagai tujuan. Utilisasi cuma perantara. Yang sebenarnya menentukan adalah <b>km dibayar per jam</b> &mdash; dan trip panjang menang di dua sisi sekaligus: waktu jemput yang tetap tersebar ke lebih banyak kilometer berbayar, <em>dan</em> kilometernya ditempuh di kecepatan tol, bukan kecepatan gang.</p>
+    </div>
+    <div class="rule go">
+      <span class="n">Dua angka untuk dihafal</span>
+      <h3>15 dan 22</h3>
+      <p>Dari model yang sama, target Anda bisa disederhanakan jadi satu ukuran: <b>berapa kilometer berbayar yang Anda tempuh tiap jam.</b></p>
+      <p><b>15 km berbayar per jam &rarr; sekitar Rp 500rb sehari.</b><br><b>22 km berbayar per jam &rarr; sekitar Rp 700rb sehari.</b></p>
+      <p>Lihat tabel di atas: <b>hanya rute CBD dan bandara-dengan-order-balik yang mencapai 22.</b> Itulah jawaban paling jujur atas target Anda &mdash; Rp 700rb sehari bukan soal bekerja lebih lama, melainkan soal <b>hari yang didominasi trip panjang.</b></p>
+    </div>
+    <div class="rule hot">
+      <span class="n">Peluang terbesar &middot; peringkat 1</span>
+      <h3>Koridor CBD, dan pelat Anda yang membukanya</h3>
+      <p>Dua rute teratas keduanya menembus Jakarta dalam, dan di sanalah <b>pembebasan ganjil&ndash;genap Anda bernilai paling besar</b> &mdash; tepat di jam 06:00&ndash;10:00 dan 16:00&ndash;21:00, saat separuh pesaing pelat hitam tersaring keluar dari koridor Sudirman&ndash;Rasuna Said.</p>
+      <p>Jadi keunggulan terbesar Anda dan rute paling menguntungkan Anda <b>berada di tempat yang sama persis.</b> Kalau hanya satu perubahan yang bisa Anda lakukan dari seluruh halaman ini, ini pilihannya: <b>berhenti berputar di Tangerang saat jam peak, masuk ke Jakarta.</b></p>
+    </div>
+    <div class="rule no">
+      <span class="n">Direvisi setelah asimetri terukur</span>
+      <h3>Antre bandara: sampai sejam pun masih untung</h3>
+      <p>Selisih antara bandara <em>dengan</em> dan <em>tanpa</em> order balik ternyata <b>Rp 57.500 lawan Rp 29.100 per jam</b> &mdash; hampir dua kali lipat, ditentukan satu keputusan di tempat parkir.</p>
+      <p>Saya sebelumnya menetapkan batas antre 25 menit. <b>Itu terlalu ketat</b>, karena saya belum tahu keluar dari bandara berarti menelan 23,4 km kosong. Setelah asimetri itu masuk hitungan: pergi tanpa penumpang membakar sekitar Rp 8.600 listrik dan 36 menit, tanpa pemasukan sepeser pun. Menunggu, bahkan lama, tetap mengalahkannya &mdash; <b>titik impasnya berada di sekitar satu jam.</b></p>
+      <p><b>Aturan baru:</b> antre selama perkiraan tunggu <b>di bawah 45&ndash;60 menit.</b> Kalau memang harus pergi, <b>pergilah dalam keadaan online</b> dan arahkan mobil lewat Batu Ceper atau Poris &mdash; menangkap satu order di jalan pulang mengubah perpindahan terburuk hari itu menjadi trip biasa.</p>
+    </div>
+    <div class="rule">
+      <span class="n">Peringkat terbawah, dan artinya</span>
+      <h3>Blok siang cuma menghasilkan Rp 84.000</h3>
+      <p>Sirkuit mal siang menghasilkan <b>Rp 23.900 per jam</b> &mdash; kurang dari setengah rute peak. Selama 3,5 jam blok siang, itu <b>sekitar Rp 84.000</b> untuk seluruh blok.</p>
+      <p>Bandingkan: memperpanjang peak sore <b>hanya 1,5 jam</b> pada Rp 42.800 per jam menghasilkan <b>Rp 64.000</b> &mdash; hampir menyamai seluruh blok siang, dengan sepertiga waktunya. <b>Ini argumen terkuat untuk mode split</b>, dan sekarang bukan lagi soal kesehatan saja, melainkan soal uang: pulang istirahat siang hari nyaris tidak berbiaya.</p>
+    </div>
+    <div class="rule">
+      <span class="n">Jangan salah membaca tabel ini</span>
+      <h3>Peringkat bawah tetap dipakai</h3>
+      <p>Rute peringkat bawah bukan untuk dibuang &mdash; <b>itu lantai penghasilan Anda.</b> Trip CBD tidak tersedia dua belas jam sehari; sirkuit stasiun dan mal tersedia hampir selalu.</p>
+      <p>Cara memakainya: <b>ambil setiap trip panjang yang muncul, isi celah di antaranya dengan trip pendek.</b> Yang keliru adalah menjadikan trip pendek sebagai rencana utama &mdash; itu kesalahan saya kemarin, dan itu yang menahan Anda di Rp 30.000 per jam.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>Mengarahkan orderan</h2>
+    <span class="eyebrow">Anda tidak memilih order &mdash; Anda memilih posisi</span>
+  </div>
+  <p class="lead">Bagian sebelumnya menyimpulkan trip panjang jauh lebih menguntungkan, lalu meninggalkan lubang besar: <b>pengemudi tidak bisa meminta order panjang.</b> Order datang dari sistem, dan memancingnya dengan menolak berulang kali akan menjatuhkan tingkat penerimaan Anda &mdash; jatahnya cuma 2 dari 10, tidak cukup untuk menyaring. Jadi saran itu tidak bisa dijalankan lewat pemilihan order. Tapi bisa lewat jalan lain.</p>
+
+  <div class="call" style="margin-bottom:18px">
+    <span class="n">Kuncinya</span>
+    <p><b>Panjang trip bukan pilihan Anda &mdash; itu akibat dari lokasi Anda.</b> Order yang masuk lahir dari permintaan di sekitar Anda. Duduk di depan mal jam 11 siang, permintaan di sekitar Anda adalah orang pulang ke rumah terdekat: Anda akan dapat order pendek, seketat apa pun filter Anda. Berada di dalam cluster perumahan jam setengah enam pagi, permintaan di sekitar Anda adalah orang berangkat kerja ke Jakarta: order yang datang panjang, tanpa Anda memilih apa pun.</p>
+    <p>Jadi Anda memang tidak mengendalikan satu order pun. Yang Anda kendalikan adalah <b>sebaran</b> dari dua puluh order sehari &mdash; dan itu hampir seluruhnya ditentukan oleh di mana dan kapan Anda menyalakan aplikasi.</p>
+  </div>
+
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>Posisi Anda</th><th>Jam</th><th>Order yang muncul</th><th>Panjang khas</th></tr></thead>
+      <tbody>
+        <tr><td class="day">Dalam cluster perumahan Tangerang</td><td class="num">05:30&ndash;07:30</td><td>Komuter berangkat kerja ke Jakarta</td><td class="num"><b>15&ndash;30 km</b></td></tr>
+        <tr><td class="day">Kawasan kantor Jakarta CBD</td><td class="num">17:00&ndash;20:00</td><td>Karyawan pulang ke pinggiran</td><td class="num"><b>20&ndash;35 km</b></td></tr>
+        <tr><td class="day">Antrean bandara</td><td class="num">sepanjang hari</td><td>Penumpang tiba, hampir selalu bertujuan jauh</td><td class="num"><b>20&ndash;40 km</b></td></tr>
+        <tr><td class="day">Hotel bandara &amp; hotel bisnis</td><td class="num">pagi &amp; malam</td><td>Tamu menuju bandara atau CBD</td><td class="num"><b>15&ndash;35 km</b></td></tr>
+        <tr><td class="day">Terminal Poris Plawad</td><td class="num">rata</td><td>Penumpang bus antarkota melanjutkan perjalanan</td><td class="num">5&ndash;20 km</td></tr>
+        <tr><td class="day">Kawasan kantor BSD &amp; Alam Sutera</td><td class="num">17:00&ndash;19:00</td><td>Karyawan pulang &mdash; tapi rumahnya dekat</td><td class="num">5&ndash;15 km</td></tr>
+        <tr><td class="day">Rumah sakit</td><td class="num">rata</td><td>Pasien dan pengunjung, umumnya lokal</td><td class="num">3&ndash;10 km</td></tr>
+        <tr><td class="day">Stasiun KRL</td><td class="num">06&ndash;08, 16&ndash;20</td><td>Antar-jemput ujung perjalanan &mdash; pendek menurut definisinya</td><td class="num">3&ndash;7 km</td></tr>
+        <tr><td class="day">Depan mal</td><td class="num">siang &amp; malam</td><td>Pengunjung pulang ke rumah terdekat</td><td class="num">3&ndash;8 km</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="rules" style="margin-top:16px">
+    <div class="rule go">
+      <span class="n">Keberuntungan geografis Anda</span>
+      <h3>Rumah Anda adalah posisi terbaik hari itu</h3>
+      <p>Baris teratas tabel itu adalah <b>cluster perumahan Tangerang jam 05:30&ndash;07:30</b> &mdash; dan Anda tinggal di dalam salah satunya. Modernland adalah persis jenis tempat yang melahirkan order komuter panjang di jam itu.</p>
+      <p>Maka order pertama hari Anda berpotensi jadi yang paling menguntungkan sekaligus <b>paling murah &mdash; jarak jemputnya nol.</b> Ini menjelaskan kenapa &ldquo;online sebelum keluar cluster&rdquo; bukan sekadar tips rapi: itu satu-satunya momen ketika Anda berada di posisi terbaik tanpa membayar sepeser pun untuk sampai ke sana.</p>
+      <p><b>Perinciannya penting:</b> berada <em>di dalam</em> cluster, bukan di jalan raya di depannya. Di jalan raya, order yang datang adalah orang yang sudah keluar rumah &mdash; perjalanan pendek. Di dalam cluster, order yang datang adalah orang yang baru berangkat kerja.</p>
+    </div>
+    <div class="rule hot">
+      <span class="n">Satu-satunya alat langsung</span>
+      <h3>Filter Arah Tujuan: pakai dua-duanya, jangan disia-siakan</h3>
+      <p>Ini satu-satunya fitur yang benar-benar membentuk order yang masuk ke Anda, dan jatahnya biasanya cuma dua sehari. Pakai keduanya di tempat yang paling bernilai:</p>
+      <p><b>Jatah pertama, sekitar 06:00 &mdash; arahkan ke Jakarta.</b> Ini mencondongkan order pagi Anda ke arah trip panjang, tepat di jam ketika trip panjang memang ada. Sebelumnya saya menyarankan menyimpan keduanya untuk pulang; itu keliru &mdash; jatah pagi lebih bernilai dipakai untuk membentuk order.</p>
+      <p><b>Jatah kedua, sekitar 21:15 &mdash; arahkan ke Modernland.</b> Ini bekerja rangkap: trip panjang, sekaligus mengantar Anda pulang.</p>
+      <p><b>Jangan pernah memakainya di blok siang.</b> Di jam itu tidak ada trip panjang untuk dibentuk, jadi jatahnya hanya terbuang.</p>
+    </div>
+    <div class="rule go">
+      <span class="n">Sumber trip panjang paling pasti</span>
+      <h3>Antrean bandara adalah satu-satunya jaminan</h3>
+      <p>Di semua tempat lain Anda hanya memiringkan peluang. Di bandara, <b>panjang trip nyaris terjamin</b> &mdash; tidak ada orang tiba di bandara lalu memesan perjalanan 3 km. Ini satu-satunya titik di seluruh wilayah Anda yang <em>menjamin</em> order panjang.</p>
+      <p>Karena itu antrean bandara pantas Anda perlakukan sebagai keputusan serius, bukan iseng: <b>antre kalau perkiraan tunggu di bawah 25 menit.</b> Yang Anda beli dengan menunggu itu bukan satu order, melainkan kepastian bahwa order berikutnya panjang.</p>
+    </div>
+    <div class="rule no">
+      <span class="n">Yang tidak boleh dicoba</span>
+      <h3>Jangan memancing dengan menolak</h3>
+      <p>Menolak order pendek berulang kali sampai yang panjang muncul terdengar masuk akal, dan itu <b>cara tercepat merusak hari Anda.</b> Tingkat penerimaan di bawah 80% membuat sistem mengurangi order yang dikirim ke Anda &mdash; termasuk yang panjang. Anda akan mendapat lebih sedikit dari keduanya.</p>
+      <p>Dan jangan sekali pun menerima lalu meminta penumpang membatalkan, atau membatalkan sendiri setelah melihat tujuannya. Itu bukan strategi yang berisiko, itu jalan menuju suspensi.</p>
+      <p><b>Aturan tunggal:</b> terima hampir semua yang datang, dan ubah <em>apa</em> yang datang dengan memindahkan mobil Anda.</p>
+    </div>
+    <div class="rule">
+      <span class="n">Sejauh mana ini bisa membantu</span>
+      <h3>Batas jujur dari strategi posisi</h3>
+      <p>Posisi memiringkan sebaran, tapi tidak menentukannya. Perkiraan realistis: <b>2 trip panjang di pagi hari, 2 di sore hari</b> &mdash; sekitar 80&ndash;100 km berbayar dari trip panjang, ditambah 60&ndash;70 km dari trip pengisi. Selama 11 jam itu sekitar <b>15 km berbayar per jam</b>.</p>
+      <p>Angka itu mendarat tepat di <b>Rp 500&ndash;580rb</b>, bukan Rp 700rb. Untuk menembus 22 km berbayar per jam, trip panjang harus mendominasi hampir seluruh hari &mdash; dan posisi saja kemungkinan tidak cukup untuk itu. <b>Dua minggu catatan Anda yang akan membuktikan apakah wilayah ini bisa memberi lebih.</b> Kalau ternyata tidak bisa, itu bukan kegagalan eksekusi Anda &mdash; itu batas pasar, dan lebih baik diketahui daripada dikejar terus.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>Rencana yang tidak bergantung trip panjang</h2>
+    <span class="eyebrow">Lantai dulu, bonus belakangan</span>
+  </div>
+  <p class="lead">Trip panjang menaikkan hasil, tapi tidak bisa diandalkan datang. Rencana yang menggantungkan diri padanya akan runtuh di hari pertama trip panjang tidak muncul. Jadi rencananya dibalik: <b>dibangun di atas lantai yang selalu ada, dengan trip panjang sebagai bonus &mdash; bukan sebagai syarat.</b></p>
+
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>Skenario</th><th>Yang terjadi</th><th>Jam kerja</th><th>Bersih</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="day">Hari buruk</td>
+          <td>Tidak ada satu pun trip panjang. Semua pendek dan menengah</td>
+          <td class="num">11 jam</td>
+          <td class="num"><b>Rp 417.000</b></td>
+        </tr>
+        <tr>
+          <td class="day">Hari normal</td>
+          <td>2 trip panjang pagi, 2 sore. Sisanya trip pengisi</td>
+          <td class="num">11 jam</td>
+          <td class="num"><b>Rp 511.000</b></td>
+        </tr>
+        <tr>
+          <td class="day">Hari kuat</td>
+          <td>Jumat, hujan, atau musim gajian. Trip panjang banyak, tarif dinamis naik, insentif lebih besar</td>
+          <td class="num">11&ndash;12 jam</td>
+          <td class="num"><b>Rp 636.000+</b></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="rules" style="margin-top:16px">
+    <div class="rule go">
+      <span class="n">Perubahan cara berpikir yang paling penting</span>
+      <h3>Kejar target bulanan, bukan harian</h3>
+      <p>Anda tidak mengendalikan apakah trip panjang muncul hari ini. Tapi dalam rentang panjang, hukum rata-rata bekerja untuk Anda: dari enam hari, biasanya satu buruk, empat normal, satu kuat.</p>
+      <p><b>Rp 417.000 + (4 &times; Rp 511.000) + Rp 636.000 = Rp 3.097.000 per minggu &mdash; sekitar Rp 13,4 juta sebulan</b>, rata-rata Rp 515.000 dari 26 hari kerja.</p>
+      <p><b>Pakai yang bulanan sebagai patokan resmi Anda</b>, bukan yang mingguan. Bulanan menyerap hari sakit, hujan seharian, dan minggu sepi &mdash; dan kebetulan itu juga irama tagihan Anda. Buku Setoran menghitung saldonya berjalan: tiap malam ia memberi tahu berapa yang perlu Anda kumpulkan per hari di sisa bulan.</p>
+      <p>Ini pembebasan yang nyata: <b>hari buruk berhenti terasa seperti kegagalan.</b> Hari buruk sudah dianggarkan. Yang mengejar Rp 700rb setiap hari akan memaksakan jam ke-15 di hari yang memang sepi &mdash; dan membayar mahal untuk itu keesokan paginya.</p>
+    </div>
+    <div class="rule hot">
+      <span class="n">Yang tetap bekerja di ketiga skenario</span>
+      <h3>Jam di tempat yang benar &mdash; itu saja</h3>
+      <p>Perhatikan bahwa satu-satunya hal yang sama di ketiga skenario adalah <b>jam kerja berada di dua blok peak, bukan di blok siang.</b> Aturan ini menghasilkan lebih banyak uang baik saat trip panjang muncul maupun saat tidak &mdash; karena kedua jenis order sama-sama paling banyak di jam peak.</p>
+      <p>Ini yang membuatnya rencana yang kokoh: <b>tidak butuh ramalan apa pun untuk berhasil.</b> Anda tidak perlu tahu hari ini akan seperti apa. Cukup berada di tempat yang benar pada jam yang benar, dan terima apa pun yang datang.</p>
+    </div>
+    <div class="rule">
+      <span class="n">Titik periksa 09:30</span>
+      <h3>Biarkan pagi memberi tahu Anda hari ini hari apa</h3>
+      <p>Saat berhenti untuk isi daya pukul 09:30, lihat hasil pagi Anda dan tentukan mode hari itu:</p>
+      <p><b>Di bawah Rp 180rb &mdash; mode lantai.</b> Hari ini trip panjang tidak datang. Berhenti mengejarnya. Kerjakan sirkuit padat: stasiun, mal, rumah sakit, sekitar rumah. Kejar jumlah trip untuk poin insentif, dan pulang tepat waktu.</p>
+      <p><b>Rp 180&ndash;250rb &mdash; mode normal.</b> Jalankan rencana apa adanya.</p>
+      <p><b>Di atas Rp 250rb &mdash; mode panen.</b> Hari ini sedang murah hati. Pangkas istirahat siang, perpanjang peak sore satu jam sampai 21:30. Di hari seperti inilah target mingguan Anda diselamatkan.</p>
+    </div>
+    <div class="rule no">
+      <span class="n">Godaan yang paling merugikan</span>
+      <h3>Jangan menunggu trip panjang</h3>
+      <p>Setelah tahu trip panjang jauh lebih menguntungkan, godaannya adalah diam menunggu. <b>Jangan.</b> Menunggu 45 menit demi order Rp 75.000 sama nilainya dengan menerima tiga order Rp 25.000 &mdash; dengan risiko order itu tidak pernah datang.</p>
+      <p><b>Aturan: bergerak setelah 10 menit tanpa order.</b> Trip panjang datang kepada mobil yang bergerak di zona yang benar, bukan kepada mobil yang diam berharap.</p>
+    </div>
+    <div class="rule go">
+      <span class="n">Kalau target mingguan tertinggal</span>
+      <h3>Tiga tuas, sesuai urutan</h3>
+      <p>Kalau sampai Kamis Anda tertinggal, jangan menambal dengan jam panjang di hari sepi. Pakai tuas ini berurutan:</p>
+      <p><b>1. Colokan di rumah.</b> Rp 50&ndash;80rb per hari, sekitar <b>Rp 400rb per minggu</b>, tanpa kerja tambahan. Ini yang terbesar dan hanya perlu dipasang sekali.<br>
+      <b>2. Kerjakan Jumat penuh.</b> Hari kuat yang bisa diandalkan &mdash; satu hari Jumat yang dikerjakan sungguh-sungguh bernilai lebih dari dua hari Selasa.<br>
+      <b>3. Baru tambah hari,</b> bukan tambah jam. Sabtu setengah hari lebih baik daripada memaksakan jam ke-14 di hari Rabu.</p>
+    </div>
+    <div class="rule">
+      <span class="n">Jawaban langsung atas pertanyaan Anda</span>
+      <h3>Jadi apa rencananya</h3>
+      <p><b>Terima hampir semua order.</b> Jangan menyaring, jangan menunggu, jangan memancing.<br>
+      <b>Habiskan jam Anda di dua blok peak,</b> bukan di blok siang &mdash; ini benar apa pun yang terjadi.<br>
+      <b>Berdirilah di tempat yang melahirkan trip panjang</b> saat trip panjang memang ada: di dalam cluster jam 05:30, di Jakarta jam 17:00, di antrean bandara bila pendek.<br>
+      <b>Pakai dua jatah Filter Arah Tujuan</b> di pagi dan malam.<br>
+      <b>Ukur mingguan, bukan harian.</b> Dan pasang colokan di rumah &mdash; itu satu-satunya kenaikan yang datang tanpa bergantung pada order sama sekali.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>Jam kerja fleksibel</h2>
+    <span class="eyebrow">Harga tiap blok jam</span>
+  </div>
+  <p class="lead">Jadwal di halaman ini mengandaikan Anda berangkat pukul 05:15 setiap hari. Kenyataannya tidak selalu begitu &mdash; kadang bangun kesiangan, kadang ada urusan pagi, kadang badan tidak enak. Supaya bisa memilih sendiri, ini <b>harga setiap blok jam</b>. Dari tabel ini seluruh pertanyaan &ldquo;kalau saya keluar jam sekian bagaimana&rdquo; bisa Anda jawab sendiri.</p>
+
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>Blok</th><th>Jam</th><th>Bersih per jam</th><th>Sifatnya</th></tr></thead>
+      <tbody>
+        <tr><td class="day">Peak pagi</td><td class="num">05:15&ndash;09:30</td><td class="num"><b>Rp 45.000</b></td><td>Blok termahal. Komuter ke Jakarta dan penerbangan pagi</td></tr>
+        <tr><td class="day">Peak sore</td><td class="num">17:00&ndash;20:00</td><td class="num"><b>Rp 45.000</b></td><td>Setara peak pagi, dan lebih panjang di hari Jumat</td></tr>
+        <tr><td class="day">Malam</td><td class="num">20:00&ndash;21:30</td><td class="num">Rp 38.000</td><td>Mal tutup, kuliner, kedatangan bandara</td></tr>
+        <tr><td class="day">Pra-peak</td><td class="num">15:15&ndash;17:00</td><td class="num">Rp 30.000</td><td>Nilainya bukan di sini &mdash; ini biaya untuk berada di posisi benar jam 17:00</td></tr>
+        <tr><td class="day">Larut</td><td class="num">21:30&ndash;23:00</td><td class="num">Rp 28.000</td><td>Tarif naik tapi order jarang. Merusak peak pagi besok</td></tr>
+        <tr><td class="day">Pagi akhir</td><td class="num">09:30&ndash;11:00</td><td class="num">Rp 26.000</td><td>Peak sudah lewat, sirkuit belum ramai</td></tr>
+        <tr><td class="day">Siang</td><td class="num">11:00&ndash;14:00</td><td class="num">Rp 24.000</td><td>Mal dan makan siang kantor</td></tr>
+        <tr><td class="day">Jam mati</td><td class="num">14:00&ndash;15:15</td><td class="num" style="color:var(--alert)">Rp 20.000</td><td>Blok terburuk dalam sehari</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="margin-top:16px" class="tblwrap">
+    <table>
+      <thead><tr><th>Pilihan sif</th><th>Jam</th><th>Durasi</th><th>Bersih</th><th>Per jam</th></tr></thead>
+      <tbody>
+        <tr><td class="day">Split dua peak</td><td class="num">05:15&ndash;09:30 + 15:15&ndash;21:30</td><td class="num">10,5 j</td><td class="num"><b>Rp 501.000</b></td><td class="num" style="color:var(--accent)"><b>Rp 47.700</b></td></tr>
+        <tr><td class="day">Pagi saja</td><td class="num">05:15&ndash;11:00</td><td class="num">5,75 j</td><td class="num">Rp 260.000</td><td class="num" style="color:var(--accent)"><b>Rp 45.300</b></td></tr>
+        <tr><td class="day">Sore&ndash;malam saja</td><td class="num">15:00&ndash;23:00</td><td class="num">8 j</td><td class="num">Rp 344.000</td><td class="num">Rp 43.000</td></tr>
+        <tr><td class="day">Penuh tanpa jeda</td><td class="num">05:15&ndash;21:30</td><td class="num">14 j</td><td class="num">Rp 585.000</td><td class="num">Rp 41.800</td></tr>
+        <tr><td class="day">Siang&ndash;malam</td><td class="num">11:00&ndash;23:00</td><td class="num">12 j</td><td class="num">Rp 449.000</td><td class="num" style="color:var(--alert)"><b>Rp 37.400</b></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="rules" style="margin-top:16px">
+    <div class="rule no">
+      <span class="n">Jawaban langsung: kalau keluar siang</span>
+      <h3>Jangan mulai jam 11 &mdash; mulai jam 15</h3>
+      <p>Berangkat pukul 11:00 lalu bekerja 12 jam menghasilkan <b>Rp 449.000</b>. Berangkat pukul 15:00 dan bekerja 8 jam menghasilkan <b>Rp 344.000</b>.</p>
+      <p>Artinya empat jam tambahan itu (11:00&ndash;15:00) hanya membeli <b>Rp 105.000, sekitar Rp 26.000 per jam</b> &mdash; jauh di bawah lantai Anda, dan Anda membayarnya dengan kelelahan yang terbawa ke peak sore.</p>
+      <p><b>Kalau bangun kesiangan, jangan buru-buru keluar.</b> Peak pagi sudah lewat dan tidak bisa dikejar. Tidur lagi, keluar pukul 15:00, kerjakan peak sore dan malam sampai 23:00. Hasil per jamnya justru naik dari Rp 37.400 menjadi Rp 43.000 &mdash; dan Anda masih sempat bangun pagi keesokan harinya.</p>
+    </div>
+    <div class="rule go">
+      <span class="n">Anda benar, bulanan lebih masuk akal</span>
+      <h3>Target Rp 13,4 juta sebulan</h3>
+      <p>Target harian memaksa keputusan buruk di hari sepi. Target mingguan lebih baik, tapi masih runtuh kalau ada satu hari sakit. <b>Target bulanan yang benar-benar cocok</b> &mdash; dan kebetulan itu juga irama tagihan Anda: cicilan, listrik, sekolah, semuanya bulanan.</p>
+      <p><b>Rp 13,4 juta bersih operasional, dari sekitar 26 hari kerja.</b> Rata-ratanya Rp 515.000 per hari, tapi <em>rata-rata</em> itu tidak harus dicapai setiap hari &mdash; itulah gunanya.</p>
+      <p>Yang berubah: hari sepi berhenti jadi kegagalan, dan Anda boleh mengambil sif pendek tanpa merasa bersalah. <b>Sif sore&ndash;malam 8 jam senilai Rp 344.000 jauh lebih baik daripada libur mendadak</b> &mdash; dan dengan target bulanan, keduanya sama-sama pilihan sah.</p>
+    </div>
+    <div class="rule hot">
+      <span class="n">Cara memakainya</span>
+      <h3>Saldo berjalan, bukan target harian</h3>
+      <p>Bagi bulan jadi saldo: <b>Rp 13,4 juta dibagi jumlah hari kerja yang Anda rencanakan.</b> Tiap malam, catatan Anda menambah atau mengurangi saldo itu. Buku Setoran sudah menghitungnya.</p>
+      <p>Sebarkan tidak rata, sesuai kekuatan harinya: <b>Jumat, hujan, dan tanggal 25&ndash;5 targetkan Rp 650&ndash;700rb</b>; hari biasa Rp 500rb; hari lelah ambil sif pendek Rp 344rb dan tidak apa-apa. Yang penting saldo akhir bulan, bukan angka hari ini.</p>
+    </div>
+    <div class="rule">
+      <span class="n">Soal menarik dari tempat lain</span>
+      <h3>Berpindah pangkalan: kapan sepadan</h3>
+      <p>Pangkalan Anda bukan rumah &mdash; pangkalan adalah <b>tempat Anda menunggu di antara order</b>, dan itu boleh berpindah tiap blok. Yang menentukan sepadan atau tidak cuma satu: <b>apakah masuk dan keluarnya berpenumpang.</b></p>
+      <p><b>Contoh yang sepadan:</b> pangkal di Jakarta CBD untuk peak sore. Tarifnya Rp 56.400 per jam lawan Rp 45.000 di Tangerang &mdash; selisih <b>Rp 34.000 untuk tiga jam</b>, ditambah dua trip panjang di kedua ujungnya. Syaratnya: masuk sebelum 15:30 dengan penumpang, keluar sekitar 20:30 memakai Filter Arah Tujuan.</p>
+      <p><b>Contoh yang tidak sepadan:</b> pindah ke Jakarta tanpa penumpang. Masuk 14,1 km kosong dan keluar 29,5 km kosong memakan sekitar <b>Rp 80.000</b> waktu dan listrik &mdash; lebih besar dari seluruh kelebihan tarifnya.</p>
+      <p>Di dalam Tangerang, berpindah pangkalan hampir gratis: Karawaci, Alam Sutera, dan Serpong semuanya dalam radius 10 km. <b>Berpindahlah sesering yang Anda mau di sini; berpikir dua kali sebelum menyeberang ke Jakarta.</b></p>
+    </div>
+    <div class="rule">
+      <span class="n">Satu hipotesis yang layak diuji</span>
+      <h3>Sif subuh 03:30 &mdash; belum saya buktikan</h3>
+      <p>Penerbangan pertama berangkat 05:00&ndash;06:00, jadi penumpangnya butuh dijemput <b>03:00&ndash;04:30</b>. Trip itu panjang (18,4 km), berangkat dari cluster perumahan seperti tempat tinggal Anda, dan hampir tanpa pesaing karena sedikit pengemudi yang bangun.</p>
+      <p>Kalau tarif dinamis ikut naik di jam itu, blok 03:30&ndash;05:15 bisa jadi blok termahal sepanjang hari &mdash; dan mengalir langsung ke peak pagi. <b>Tapi saya tidak punya data untuk memastikannya</b>, dan kalau ternyata sepi, Anda kehilangan tidur tanpa imbalan.</p>
+      <p>Cara mengujinya murah: <b>coba tiga hari, catat di Buku Setoran, bandingkan Rp per jamnya dengan Rp 45.000.</b> Kalau di atas, jadikan kebiasaan di hari-hari kuat. Kalau di bawah, hentikan dan Anda hanya kehilangan tiga pagi.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>Hitungan mingguan &amp; biaya kendaraan</h2>
+    <span class="eyebrow">Asumsi yang belum pernah saya sebutkan</span>
+  </div>
+  <p class="lead">Seluruh angka mingguan di halaman ini memakai satu asumsi yang tidak pernah saya nyatakan: <b>enam hari kerja, satu hari libur, sekitar 11 jam per hari &mdash; total 66 jam seminggu.</b> Itu jauh di atas pekerjaan normal, dan pantas dipertanyakan sebelum dijadikan rencana.</p>
+
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>Pola</th><th>Jam / minggu</th><th>Bersih / minggu</th><th>Bersih / bulan</th><th>Penilaian</th></tr></thead>
+      <tbody>
+        <tr><td class="day">5 hari</td><td class="num">55</td><td class="num">Rp 2.586.000</td><td class="num">Rp 11,2 jt</td><td>Berkelanjutan. Ada hari pulih yang sungguhan</td></tr>
+        <tr><td class="day">6 hari</td><td class="num">66</td><td class="num"><b>Rp 3.097.000</b></td><td class="num"><b>Rp 13,4 jt</b></td><td>Asumsi yang saya pakai. Berat tapi bisa dijalani &mdash; asal hari liburnya benar-benar libur</td></tr>
+        <tr><td class="day">7 hari</td><td class="num">77</td><td class="num">Rp 3.608.000</td><td class="num">Rp 15,6 jt</td><td style="color:var(--alert)"><b>Jangan.</b> Hari ketujuh menurunkan mutu enam hari lainnya, dan angka itu tidak akan tercapai</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="rules" style="margin-top:16px">
+    <div class="rule go">
+      <span class="n">Hari libur mana</span>
+      <h3>Selasa atau Rabu, bukan akhir pekan</h3>
+      <p>Libur di hari yang paling lemah. Dari pola mingguan: Jumat paling kuat, Senin punya peak pagi terberat, Sabtu dan Minggu ramai di mal, kuliner, dan bandara. <b>Yang paling sepi justru Selasa dan Rabu.</b></p>
+      <p>Libur hari Minggu terasa wajar secara sosial, tapi harganya sekitar <b>Rp 100.000 lebih mahal</b> daripada libur hari Rabu. Kalau keluarga memungkinkan, ambil Rabu.</p>
+    </div>
+    <div class="rule no">
+      <span class="n">Lubang terbesar di seluruh analisis saya</span>
+      <h3>&ldquo;Bersih di tangan&rdquo; bukan keuntungan</h3>
+      <p>Angka Rp 511.000 sehari itu adalah pendapatan <b>dikurangi listrik dan parkir saja.</b> Sepanjang percakapan ini saya belum sekali pun menghitung biaya kendaraan &mdash; dan itu kelalaian yang serius, karena jumlahnya besar.</p>
+      <p>Dari Rp 13,4 juta sebulan, masih harus keluar: <b>servis dan ban</b> (sekitar Rp 700rb, tinggi karena jarak tempuh Anda besar), <b>asuransi</b> (sekitar Rp 500rb), dan <b>cicilan</b> bila mobil dikredit (sekitar Rp 4,3 juta untuk unit Rp 195&ndash;210 juta).</p>
+      <p><b>Mobil sudah lunas: sekitar Rp 12,2 juta sebulan.<br>Mobil masih kredit: sekitar Rp 7,9 juta sebulan.</b></p>
+      <p>Dan itu belum menghitung <b>penyusutan</b> &mdash; biaya paling tak terlihat, karena tidak pernah ditagih tapi tetap Anda bayar saat menjual mobilnya nanti.</p>
+    </div>
+    <div class="rule no">
+      <span class="n">Konsekuensi jarak tempuh yang perlu Anda tahu sekarang</span>
+      <h3>Semua garansi habis dalam 2 tahun, bukan 8</h3>
+      <p>Enam hari &times; 245 km = sekitar <b>6.400 km sebulan, atau 76.000 km setahun.</b> Bandingkan dengan ketentuan garansi BYD:</p>
+      <p><b>Servis gratis 4 tahun atau 60.000 km</b> &rarr; bagi Anda habis dalam <b>9 bulan</b>.<br>
+      <b>Garansi kendaraan 6 tahun atau 150.000 km</b> &rarr; habis dalam <b>23 bulan</b>.<br>
+      <b>Garansi baterai 8 tahun atau 160.000 km</b> &rarr; habis dalam <b>25 bulan</b>.</p>
+      <p>Batas waktunya tidak pernah relevan untuk Anda &mdash; <b>batas kilometernya yang selalu tiba lebih dulu, sekitar empat kali lebih cepat.</b> Angka &ldquo;8 tahun&rdquo; di brosur tidak berlaku bagi pengemudi harian.</p>
+      <p><b>Satu hal yang wajib Anda tanyakan ke diler:</b> apakah pemakaian komersial sebagai taksi daring membatalkan atau membatasi garansi. Banyak pabrikan mengecualikannya, dan itu perlu Anda ketahui sekarang &mdash; bukan saat mengajukan klaim.</p>
+    </div>
+    <div class="rule go">
+      <span class="n">Temuan terpenting dari seluruh percakapan ini</span>
+      <h3>Wall charger 7 kW mungkin sudah hak Anda</h3>
+      <p>Sepanjang halaman ini saya menyebut colokan rumah sebagai tuas terbesar Anda &mdash; Rp 400.000 seminggu. Ternyata <b>BYD menyertakan perangkat dan instalasi wall charging 7 kW secara gratis</b> dalam paket pembelian.</p>
+      <p>Kalau Anda membeli unit baru dan haknya belum diambil, <b>hubungi diler sekarang juga.</b> Bukan colokan 2,2 kW seperti yang saya sarankan &mdash; <b>7 kW mengisi baterai 30 kWh dari kosong sampai penuh dalam sekitar 4,5 jam.</b> Semalam sudah lebih dari cukup.</p>
+      <p>Artinya: <b>sesi SPKLU hilang sepenuhnya dari jadwal harian Anda.</b> Hemat Rp 50.000 biaya layanan per hari, listrik jauh lebih murah dengan tarif rumah, dan 70&ndash;90 menit kembali ke jam kerja Anda &mdash; sekitar dua trip tambahan setiap hari, tanpa menambah jam.</p>
+      <p>Sebagai bonus, pengisian AC yang lambat dan teratur di rumah <b>lebih bersahabat bagi umur baterai</b> daripada dua sesi arus searah setiap hari &mdash; dan itu penting justru karena garansi kilometer Anda akan habis dalam dua tahun.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>Filter keputusan</h2>
+    <span class="eyebrow">Lima aturan yang bisa dihitung di layar</span>
+  </div>
+  <p class="lead">Menebak <em>di mana</em> permintaan berada itu rapuh &mdash; saya tidak punya datanya, dan besok pun berubah. Tapi Anda tidak butuh peta permintaan untuk menilai <b>order yang sudah ada di depan mata.</b> Kelima filter ini hanya memakai angka yang tercetak di kartu order: jarak jemput, jarak antar, tujuan, jam, dan sisa daya. Semuanya bekerja tanpa data yang tidak saya punya.</p>
+
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>Filter</th><th>Yang diukur</th><th>Terima kalau</th><th>Kenapa ambangnya segitu</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="day">1<br>Rasio<br>jemput</td>
+          <td>Jarak jemput dibagi jarak antar</td>
+          <td class="num"><b>&le; 0,33</b><br>jam sepi &le; 0,50<br>jam peak &le; 0,20</td>
+          <td>Utilisasi satu order = 1 &divide; (1 + rasio). Rasio <b>0,33 tepat menghasilkan 75%</b> &mdash; target Anda, dinyatakan sebagai aturan yang bisa dihitung dalam dua detik. Rasio 0,5 jatuh ke 67%, rasio 1,0 jatuh ke 50%.</td>
+        </tr>
+        <tr>
+          <td class="day">2<br>Rupiah<br>per menit</td>
+          <td>Perkiraan tarif dibagi total menit, <b>termasuk menit menjemput</b></td>
+          <td class="num"><b>&ge; Rp 800</b><br>per menit</td>
+          <td>Menangkap jebakan yang lolos filter 1: trip jauh yang tarifnya besar tapi tersangkut satu setengah jam di tol. Rp 800 per menit setara Rp 48.000 per jam kotor &mdash; ambang minimum agar hari Anda tidak rugi waktu.</td>
+        </tr>
+        <tr>
+          <td class="day">3<br>Cadangan<br>daya</td>
+          <td>(jemput + antar + jarak pulang dari tujuan) dibagi km per persen</td>
+          <td class="num">sisa daya <b>&ge; hasil + 15</b></td>
+          <td>Satu persen baterai = <b>2,0 km</b> di varian Dynamic, <b>2,6 km</b> di Premium. Jarak pulang dari tiap zona sudah terukur dan ada di tabel Koridor kerja &mdash; hafalkan enam angkanya dan filter ini selesai dalam sekali lihat.</td>
+        </tr>
+        <tr>
+          <td class="day">4<br>Kompas<br>(≥ 20:00)</td>
+          <td>Jarak tujuan ke rumah, dibanding jarak posisi Anda sekarang ke rumah</td>
+          <td>tujuan harus <b>lebih dekat</b> ke rumah</td>
+          <td>Menjamin setiap trip setelah jam 20:00 memperpendek perjalanan pulang, bukan memperpanjang. Ini versi terukur dari protokol pulang.</td>
+        </tr>
+        <tr>
+          <td class="day">5<br>Titik<br>turun</td>
+          <td>Zona tujuan: ramai (A), netral (B), mati (C)</td>
+          <td>C hanya bila rasio jemput <b>&le; 0,15</b></td>
+          <td>Titik turun yang mati membuat kilometer kosong <em>berikutnya</em> panjang &mdash; biayanya tidak muncul di order ini, tapi di order sesudahnya. Zona A/B/C Anda tentukan sendiri dari catatan, bukan dari tebakan saya.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="rules" style="margin-top:16px">
+    <div class="rule no">
+      <span class="n">Batas yang membuat filter ini jujur</span>
+      <h3>Jatah tolak: 2 dari setiap 10 order</h3>
+      <p>Tingkat penerimaan harus tetap di atas 80%, jadi <b>Anda hanya boleh menolak 2 dari setiap 10 order.</b> Filter di atas tidak bisa dipakai untuk menyaring semua order &mdash; jatahnya tidak cukup.</p>
+      <p>Maka urutannya begini: <b>posisi mengerjakan 80% pekerjaan, filter hanya membuang 20% terburuk.</b> Kalau Anda mendapati diri ingin menolak lebih dari dua order per sepuluh, masalahnya bukan pada order &mdash; masalahnya Anda berada di zona yang salah. Pindah, jangan menolak.</p>
+    </div>
+    <div class="rule go">
+      <span class="n">Contoh hitungan &middot; 15 detik</span>
+      <h3>Cara memakainya di lampu merah</h3>
+      <p>Order masuk: <b>jemput 3 km, antar 12 km, tujuan Jakarta Barat.</b> Posisi Anda di BSD, sisa daya 30%, jam 19:40.</p>
+      <p><b>Filter 1:</b> 3 &divide; 12 = 0,25. Lolos.<br>
+      <b>Filter 3:</b> 3 + 12 + 22 km pulang = 37 km. 37 &divide; 2,0 = 18,5, ditambah 15 = <b>butuh 34%.</b> Anda hanya punya 30%. <b>Tolak.</b></p>
+      <p>Tanpa filter 3, order ini terlihat bagus dan Anda akan mengambilnya &mdash; lalu berakhir di Jakarta Barat jam 8 malam dengan daya 11%, harus ngecas 35 menit sebelum bisa pulang, dan membayar satu biaya layanan sesi tambahan. <b>Filter ini baru saja menyelamatkan Rp 25.000 dan satu jam hidup Anda.</b></p>
+    </div>
+    <div class="rule hot">
+      <span class="n">Pemetaan yang benar-benar berguna</span>
+      <h3>Peta permintaan Anda sendiri, dua minggu</h3>
+      <p>Saya tidak bisa memetakan permintaan Grab, dan siapa pun yang mengaku bisa sedang menebak. Tapi <b>riwayat trip di aplikasi Anda adalah peta itu</b> &mdash; sudah terkumpul, akurat, dan khusus untuk wilayah Anda.</p>
+      <p>Catat lima kolom saja untuk tiap trip: <b>jam, zona jemput, zona antar, km, pendapatan.</b> Setelah dua minggu Anda punya yang tidak dimiliki pengemudi lain: daftar zona A/B/C Anda sendiri untuk filter 5, jam-jam yang benar-benar membayar, dan angka Rp per km Anda yang sesungguhnya.</p>
+    </div>
+    <div class="rule go">
+      <span class="n">Satu pengukuran, tiga tebakan terhapus</span>
+      <h3>Ukur Rp per km Anda malam ini</h3>
+      <p>Buka riwayat 20 trip terakhir. <b>Jumlahkan pendapatan Anda, jumlahkan kilometernya, lalu bagi.</b> Angka itu sudah mencakup komisi, tarif dasar, tarif dinamis, dan semua yang saya tebak-tebak &mdash; sekaligus, tanpa asumsi.</p>
+      <p>Masukkan hasilnya ke kalkulator di bawah dan seluruh halaman ini berhenti menjadi perkiraan. Ini pekerjaan lima menit yang menggantikan tiga angka paling rapuh di sini.</p>
+      <p>Supaya tidak perlu diulang tiap malam, catatannya sudah saya buatkan tempatnya: <a href="index.html" style="color:var(--accent);font-weight:600">Buku Setoran</a> &mdash; isi sekali sehari, dan Rp per km, utilisasi, km per kWh, serta km berbayar per jam Anda dihitung sendiri lalu dibandingkan dengan asumsi di halaman ini.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>Versi yang lebih tahan lama</h2>
+    <span class="eyebrow">Mode split</span>
+  </div>
+  <p class="lead">Jadwal di atas berdurasi sekitar 17 jam sejak bangun. Itu melampaui batas waktu kerja pengemudi angkutan umum dan tidak bisa dijalankan tujuh hari berturut-turut tanpa risiko. Ini versi yang mempertahankan hampir seluruh penghasilan dengan cara memotong jam matinya:</p>
+
+  <div class="rules">
+    <div class="rule go">
+      <span class="n">Sif 1 &middot; 05:15&ndash;10:30</span>
+      <h3>Panen pagi penuh</h3>
+      <p>Peak pagi utuh, tidak ada yang dikorbankan. Ditutup dengan isi daya sekalian, lalu pulang. <b>Sekitar 7&ndash;8 trip, Rp 300&ndash;400rb.</b></p>
+    </div>
+    <div class="rule hot">
+      <span class="n">Jeda &middot; 10:30&ndash;15:00</span>
+      <h3>Pulang, tidur, makan</h3>
+      <p>Anda tinggal 15&ndash;20 menit dari titik kerja utama &mdash; keuntungan yang tidak dimiliki pengemudi dari luar kota. Yang hilang hanya sirkuit siang, blok dengan hasil per jam paling rendah.</p>
+    </div>
+    <div class="rule go">
+      <span class="n">Sif 2 &middot; 15:00&ndash;21:30</span>
+      <h3>Peak sore dan panen malam</h3>
+      <p>Blok terbesar tetap utuh, dan Anda memasukinya dalam keadaan segar &mdash; itu sendiri menaikkan jumlah trip. <b>Sekitar 10&ndash;12 trip, Rp 380&ndash;480rb.</b></p>
+    </div>
+  </div>
+
+  <div class="call" style="margin-top:16px">
+    <span class="n">Konsekuensi jujur</span>
+    <p>Mode split memangkas sekitar <b>Rp 100&ndash;150rb</b> dari hari puncak karena Anda melepas sirkuit siang. Kompensasinya: 11&ndash;12 jam mengemudi alih-alih 15, dan Anda bisa menjalankannya enam hari seminggu tanpa jatuh. <b>Rekomendasi: pakai mode split Senin&ndash;Kamis, dan jadwal penuh hanya di Jumat, Sabtu, serta tanggal-tanggal ramai</b> &mdash; di situ hasil per jamnya memang membenarkan jam panjang.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>Penyesuaian per hari</h2>
+    <span class="eyebrow">Pola mingguan dan cuaca</span>
+  </div>
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>Hari</th><th>Mulai</th><th>Karakter</th><th>Yang berubah</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="day">Senin</td><td class="num">04:45</td>
+          <td>Peak pagi paling berat sepanjang minggu; arus ke Jakarta padat sejak subuh.</td>
+          <td>Berangkat 30 menit lebih awal. Prioritaskan trip jauh ke Jakarta dan bandara di pagi hari, karena sore Senin cenderung lebih lemah dibanding sore Jumat.</td>
+        </tr>
+        <tr>
+          <td class="day">Selasa&ndash;Kamis</td><td class="num">05:15</td>
+          <td>Pola dasar. Rabu biasanya paling stabil dan paling mudah diprediksi.</td>
+          <td>Tidak ada perubahan. Ini hari untuk mode split dan untuk memulihkan tenaga.</td>
+        </tr>
+        <tr>
+          <td class="day">Jumat</td><td class="num">05:15</td>
+          <td>Hari terbaik. Peak sore paling panjang, paling macet, dan tarif dinamis paling sering naik.</td>
+          <td><b>Geser isi daya ke 11:30&ndash;13:00</b> &mdash; jam Jumatan adalah jam paling sepi dalam seminggu, gratis untuk dipakai ngecas. Lalu kerja penuh 15:00&ndash;21:30; peak sore Jumat berlanjut sampai jauh malam.</td>
+        </tr>
+        <tr>
+          <td class="day">Sabtu</td><td class="num">07:30</td>
+          <td>Tidak ada peak pagi. Permintaan bergeser ke siang, malam, dan larut malam.</td>
+          <td>Mulai siang, selesai 23:00. Bobot pindah ke mal, kuliner, dan bandara. Ganjil&ndash;genap tidak berlaku di akhir pekan, jadi keunggulan pelat listrik Anda hilang hari ini &mdash; tidak perlu memaksa masuk CBD.</td>
+        </tr>
+        <tr>
+          <td class="day">Minggu</td><td class="num">07:00</td>
+          <td>Pagi tenang: ibadah, olahraga, mal baru buka pukul 10:00. Sore dan malam arus balik ke Jakarta menguat.</td>
+          <td>Selesai lebih awal, <b>batas 20:30</b>, karena Senin pagi menuntut Anda segar. Bandara ramai sepanjang hari.</td>
+        </tr>
+        <tr>
+          <td class="day">Tanggal 25&ndash;5</td><td class="num">&mdash;</td>
+          <td>Musim gajian. Permintaan naik di hampir semua blok.</td>
+          <td>Pakai jadwal penuh, bukan split. Ini jendela terbaik untuk mengejar kekurangan target bulanan.</td>
+        </tr>
+        <tr>
+          <td class="day">Hari hujan</td><td class="num">&mdash;</td>
+          <td>Permintaan melonjak dan tarif dinamis naik, tapi risikonya juga naik.</td>
+          <td>Segera online begitu hujan mulai &mdash; lonjakannya ada di 20 menit pertama. <b>Tapi jangan pernah menembus genangan lebih dari sekitar 15 cm:</b> risiko kerusakan pada mobil listrik mahal dan bisa menggugurkan klaim garansi. Hindari titik banjir langganan di Periuk, Ciledug, dan sebagian Jakarta Barat.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>Aturan baterai</h2>
+    <span class="eyebrow">Kendala paling mengikat</span>
+  </div>
+  <p class="lead">Tanpa charger di rumah, baterai &mdash; bukan jumlah penumpang &mdash; adalah batas nyata penghasilan Anda. Perlakukan SPKLU seperti garasi: tetapkan lokasinya sekarang, jangan mencarinya saat sudah butuh.</p>
+
+  <div class="rules">
+    <div class="rule">
+      <span class="n">Kalibrasi</span>
+      <h3>Ukur konsumsi Anda sendiri</h3>
+      <p>Perkiraan kerja untuk memulai: <b>6,5&ndash;7,5 km per kWh</b> di lalu lintas Jabodetabek dengan AC menyala. Untuk 240 km sehari, itu sekitar <b>32&ndash;37 kWh</b>. Selama seminggu, catat kWh masuk dan km tempuh tiap hari, lalu ganti angka ini dengan angka Anda sendiri &mdash; seluruh jadwal bergantung padanya.</p>
+    </div>
+    <div class="rule">
+      <span class="n">Varian Atto 1 &middot; periksa STNK</span>
+      <h3>Jarak nyata, bukan angka brosur</h3>
+      <p><b>Dynamic &mdash; 30,08 kWh, klaim 300 km NEDC.</b> NEDC diukur di laboratorium; di Jabodetabek dengan AC menyala, hitung <b>185&ndash;210 km nyata</b>. Jendela pakai 20&ndash;90% hanya &plusmn;140 km, jadi hari 240 km <b>butuh dua sesi isi daya</b>, persis seperti jadwal di atas.</p>
+      <p><b>Premium &mdash; 38,88 kWh, klaim 380 km NEDC.</b> Nyatanya sekitar <b>240&ndash;270 km</b>. Cukup satu sesi penuh plus satu top-up pendek &mdash; sesi pukul 14:00 bisa dipangkas jadi 20 menit, sisanya untuk istirahat.</p>
+    </div>
+    <div class="rule hot">
+      <span class="n">Batas pengisian 40 kW</span>
+      <h3>Jangan antre di charger ultra-cepat</h3>
+      <p>Atto 1 menerima maksimum <b>40 kW arus searah lewat soket CCS2</b>. Artinya charger 50 kW, 100 kW, dan 200 kW memberi Anda kecepatan yang sama persis &mdash; <b>mengantre di charger ultra-cepat adalah waktu yang terbuang percuma.</b> Selalu pilih unit yang kosong, bukan yang paling bertenaga. Yang perlu Anda hindari hanyalah charger lambat 25 kW ke bawah.</p>
+      <p>Perkiraan durasi 20&rarr;80%: <b>Dynamic &plusmn;35 menit, Premium &plusmn;45 menit.</b> Jadi anggaran ngecas Anda sekitar <b>70&ndash;90 menit sehari</b> &mdash; setara dua trip yang hilang. Ini yang membuat colokan rumah begitu berharga.</p>
+    </div>
+    <div class="rule no">
+      <span class="n">Verifikasi sebelum menjalankan jadwal</span>
+      <h3>Pastikan varian Anda memang bisa DC</h3>
+      <p>Spesifikasi 40 kW CCS2 yang beredar disebutkan untuk varian <b>Premium</b>. Sebelum apa pun yang lain, <b>pastikan varian Anda punya soket CCS2 dan berapa kW yang diterimanya</b> &mdash; cek buku manual atau tanya diler BYD. Kalau ternyata mobil Anda hanya bisa pengisian AC, seluruh jadwal ini tidak bisa dijalankan tanpa colokan di rumah, karena pengisian AC butuh 5&ndash;7 jam dan tidak mungkin diselipkan di sela jam kerja. Itu akan mengubah rencana secara total, jadi pastikan dulu.</p>
+    </div>
+    <div class="rule hot">
+      <span class="n">Direvisi &mdash; bukan lagi 20/80</span>
+      <h3>Isi lebih penuh, lebih jarang</h3>
+      <p>Aturan 20/80 yang biasa dipakai pemilik mobil listrik <b>tidak berlaku untuk Anda</b>, karena SPKLU menagih biaya layanan <b>per sesi</b>, bukan per menit. Setiap sesi tambahan adalah Rp 25.000 hangus.</p>
+      <p>Maka: <b>isi 15% &rarr; 90% dalam satu sesi.</b> Sepuluh persen terakhir memang lambat &mdash; sekitar 15 menit ekstra, setara Rp 12.000 waktu kerja &mdash; tapi itu tetap lebih murah daripada memicu sesi ketiga seharga Rp 25.000. Tujuannya bukan mengisi secepat mungkin, melainkan <b>menyelesaikan hari dengan sesi sesedikit mungkin.</b></p>
+      <p>Lantai keras tetap: jangan pernah di bawah <b>20%</b>, dan <b>25%</b> selama berada di dalam Jakarta.</p>
+    </div>
+    <div class="rule no">
+      <span class="n">Cadangan pulang</span>
+      <h3>Selalu sisakan daya untuk sampai rumah</h3>
+      <p>Angka-angka ini sekarang dihitung dari jarak jalan terukur, bukan tebakan &mdash; rumusnya <b>(km pulang &divide; 2) + 15</b>, dan tabel lengkapnya ada di bagian Koridor kerja.</p>
+      <p>Patokan cepat sisa daya minimum: <b>Jakarta CBD 28%</b>, <b>Bandara 24%</b>, <b>BSD 23%</b>, <b>Jakarta Barat 22%</b>, <b>Gading Serpong dan Alam Sutera 20%</b>, <b>Karawaci 19%</b>. Perhatikan bahwa patokan BSD yang saya tulis sebelumnya, 12%, <b>terlalu longgar dan berbahaya</b> &mdash; jarak sebenarnya 16,7 km. Di bawah angka-angka ini, tolak order dan pulang.</p>
+    </div>
+    <div class="rule">
+      <span class="n">Jaringan &middot; kandidat nyata</span>
+      <h3>Dua jangkar, dua cadangan</h3>
+      <p>Tangerang punya sekitar <b>11 titik SPKLU</b>. Kandidat yang muncul di data publik dan layak Anda survei:</p>
+      <p><b>Dekat rumah</b> &mdash; Supermal Karawaci (Jl. Boulevard Diponegoro, Bencongan) dan Auto2000 Alam Sutera (Kunciran, Kec. Pinang, Kota Tangerang). Keduanya sekitar 8&ndash;10 km dari Modernland, jadi cocok jadi jangkar penutup malam.<br>
+      <b>Tengah wilayah kerja</b> &mdash; Jl. Alam Sutera Boulevard Kav. 21 (Pakulonan, Serpong Utara), Living World Alam Sutera, AEON Mall BSD City (dua unit PLN), dan Lippo Maxxbox Karawaci.</p>
+      <p><b>Tetap verifikasi lewat PLN Mobile sebelum berangkat</b> &mdash; yang perlu Anda pastikan sendiri adalah tiga hal yang tidak ada di daftar mana pun: apakah soketnya CCS2, kelas dayanya Fast atau Ultra Fast, dan seberapa sering gun-nya kosong.</p>
+    </div>
+    <div class="rule">
+      <span class="n">Survei sekali, hemat selamanya</span>
+      <h3>Habiskan satu hari untuk memetakan</h3>
+      <p>Sebelum menjalankan jadwal ini, luangkan satu hari mendatangi calon SPKLU jangkar Anda. Catat: <b>jenis soket (harus CCS2), daya keluaran, tarif per kWh, jumlah gun, jam buka, biaya parkir, dan seberapa sering penuh.</b> Karena mobil Anda mentok di 40 kW, kriteria terpenting bukan seberapa kencang chargernya, melainkan <b>seberapa besar peluang gun-nya kosong saat Anda datang</b> &mdash; unit 50 kW yang selalu sepi jauh lebih berharga daripada unit 150 kW yang selalu antre.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>Ketentuan dan cara order dialirkan</h2>
+    <span class="eyebrow">Yang menaikkan dan yang menjatuhkan akun</span>
+  </div>
+
+  <div class="rules">
+    <div class="rule go">
+      <span class="n">Yang menaikkan order</span>
+      <h3>Tiga metrik yang dibaca sistem</h3>
+      <p><b>Tingkat penerimaan minimal 80%</b>, <b>tingkat pembatalan maksimal 5%</b>, <b>rating minimal 4,8</b>. Ini yang menentukan berapa banyak dan sebagus apa order yang dikirim ke Anda. Menolak satu order jelek memang menyelamatkan satu jam, tapi kalau dilakukan terus-menerus sistem berhenti menawari Anda order bagus &mdash; jadi rancang <em>posisi</em> Anda supaya order jelek jarang datang, alih-alih menolaknya berulang kali.</p>
+    </div>
+    <div class="rule go">
+      <span class="n">Kebiasaan harian</span>
+      <h3>Online tanpa putus, bergerak ke permintaan</h3>
+      <p>Jangan buka-tutup aplikasi untuk &ldquo;menyegarkan&rdquo; &mdash; sesi online yang panjang dan stabil di dalam zona permintaan lebih menguntungkan. Setelah menurunkan penumpang, langsung arahkan mobil ke kantong permintaan terdekat; jangan berhenti dan menunggu di tempat sepi.</p>
+    </div>
+    <div class="rule no">
+      <span class="n">Yang mematikan akun</span>
+      <h3>Jangan pernah dilakukan</h3>
+      <p>GPS palsu atau aplikasi modifikasi, menerima order lalu meminta penumpang yang membatalkan, meminta pembayaran di luar aplikasi, order fiktif dengan akun penumpang sendiri. Konsekuensinya suspensi permanen &mdash; seluruh rencana ini hangus dalam satu kali kejadian.</p>
+    </div>
+    <div class="rule">
+      <span class="n">Kelengkapan</span>
+      <h3>Dokumen yang harus selalu hidup</h3>
+      <p>SIM A yang berlaku, STNK aktif dengan pajak terbayar, uji berkala (KIR) untuk angkutan sewa khusus, stiker resmi terpasang, serta keanggotaan koperasi atau badan hukum sesuai ketentuan angkutan sewa khusus di Jabodetabek. <b>Pasang pengingat 60 hari sebelum tiap dokumen habis</b> &mdash; dokumen kedaluwarsa membekukan akun tepat di hari Anda paling butuh bekerja.</p>
+    </div>
+    <div class="rule">
+      <span class="n">Kelas kendaraan</span>
+      <h3>Mobil kecil: main di jumlah trip</h3>
+      <p>Atto 1 adalah hatchback kota berkursi empat, jadi hampir pasti Anda masuk tarif ekonomi &mdash; bukan kelas 6-penumpang yang tarif per kilometernya lebih tinggi. <b>Terima kenyataan itu dan mainkan kekuatannya:</b> mobil kecil lebih lincah di gang perumahan, lebih mudah parkir di mal, dan biaya energinya jauh di bawah pesaing bermesin bensin. Strategi Anda adalah <b>banyak trip cepat</b>, bukan sedikit trip mahal &mdash; itulah sebabnya sirkuit siang dan trip pendek tidak boleh Anda tolak.</p>
+    </div>
+    <div class="rule hot">
+      <span class="n">Batas waktu kerja</span>
+      <h3>8 jam, dengan jeda 30 menit tiap 4 jam</h3>
+      <p>Undang-Undang Lalu Lintas dan Angkutan Jalan menetapkan waktu kerja pengemudi maksimum 8 jam sehari, dengan istirahat minimal 30 menit setelah 4 jam mengemudi berturut-turut, dan tidak melebihi 12 jam dalam keadaan tertentu. <b>Jadwal penuh di halaman ini melampaui batas itu.</b> Saya tetap menuliskannya karena Anda meminta target Rp 700rb dan itulah konsekuensinya &mdash; tapi Anda perlu tahu bahwa itu di luar ketentuan. Jadikan mode split pola normal Anda, dan simpan jadwal penuh untuk hari-hari terpilih.</p>
+    </div>
+    <div class="rule">
+      <span class="n">Yang tidak bisa saya pastikan</span>
+      <h3>Skema insentif berubah terus</h3>
+      <p>Struktur poin, ambang bonus, aturan zona bandara, dan jatah Filter Arah Tujuan berbeda antar wilayah dan berubah tiap minggu. <b>Anggap halaman ini kerangka, dan tab Insentif di aplikasi sebagai sumber kebenaran harian.</b> Kalau skema minggu ini mengejar jumlah trip, perbesar bobot sirkuit siang; kalau mengejar jam sibuk, perbesar bobot dua blok peak.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>Hitung hari Anda</h2>
+    <span class="eyebrow">Isi tiap malam sebelum tidur</span>
+  </div>
+  <p class="lead">Kalkulator ini sekarang memakai model yang benar: <b>kilometer berpenumpang</b>, bukan jumlah trip. Angka awalnya adalah hari dasar yang menghasilkan Rp 390rb &mdash; bukan catatan Anda. Coba ubah <b>utilisasi dari 62 ke 75</b> dan lihat berapa yang bertambah tanpa satu menit kerja tambahan; lalu ubah <b>sesi ngecas dari 2 ke 1</b> untuk melihat nilai colokan di rumah.</p>
+
+  <div class="calc">
+    <div class="fields">
+      <div class="f"><label for="km">Km tempuh</label><input id="km" type="number" inputmode="numeric" value="245"></div>
+      <div class="f"><label for="util">Utilisasi %</label><input id="util" type="number" inputmode="numeric" value="62"></div>
+      <div class="f"><label for="rpkm">Rp / km penumpang</label><input id="rpkm" type="number" inputmode="numeric" value="2900"></div>
+      <div class="f"><label for="ins">Insentif</label><input id="ins" type="number" inputmode="numeric" value="130000"></div>
+      <div class="f"><label for="kmkwh">km / kWh</label><input id="kmkwh" type="number" inputmode="decimal" value="6.7"></div>
+      <div class="f"><label for="tar">Tarif / kWh</label><input id="tar" type="number" inputmode="numeric" value="2470"></div>
+      <div class="f"><label for="sesi">Sesi ngecas</label><input id="sesi" type="number" inputmode="numeric" value="2"></div>
+      <div class="f"><label for="fee">Biaya / sesi</label><input id="fee" type="number" inputmode="numeric" value="25000"></div>
+      <div class="f"><label for="lain">Parkir dll</label><input id="lain" type="number" inputmode="numeric" value="15000"></div>
+      <div class="f"><label for="jam">Jam kerja</label><input id="jam" type="number" inputmode="decimal" value="13"></div>
+    </div>
+    <div class="readout">
+      <div>
+        <div class="eyebrow" style="margin-bottom:6px">Bersih di tangan</div>
+        <div class="big under" id="net">Rp 415.190</div>
+      </div>
+      <div class="bar" aria-hidden="true"><i id="bar" style="width:80.6%"></i></div>
+      <div class="mini">
+        <div><span>Km berpenumpang</span><b id="pkm">152 km</b></div>
+        <div><span>Kotor</span><b id="gross">Rp 570.510</b></div>
+        <div><span>Biaya</span><b id="cost">Rp 155.320</b></div>
+        <div><span>Per jam</span><b id="perjam">Rp 31.938</b></div>
+        <div><span>Listrik</span><b id="kwh">36,6 kWh</b></div>
+      </div>
+      <p style="font-size:12.5px;color:var(--muted)">Bilah mengukur terhadap <b>Rp 515.000</b>, rata-rata harian menuju target bulanan Rp 13,4 juta. Ganti <b>Rp per km penumpang</b> dengan angka dari riwayat 20 trip terakhir Anda &mdash; itu yang membuat hitungan ini berhenti menebak.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p><b>Dari mana angkanya.</b> Tarif SPKLU (Rp 2.466&ndash;2.475 per kWh, biaya layanan Rp 25.000 Fast dan Rp 57.000 Ultra Fast), potongan komisi 8% menurut Perpres 27/2026 yang berlaku 1 Juli 2026, kisaran tarif Jabodetabek Rp 3.000&ndash;3.300 per km, pembebasan ganjil&ndash;genap untuk kendaraan listrik yang ditegaskan Dishub DKI pada Mei 2026, tarif Tol Kunciran&ndash;Serpong Rp 21.000 untuk 11,2 km, lokasi SPKLU Tangerang, serta daftar dan jam padat stasiun KRL Lin Tangerang dan Lin Rangkasbitung &mdash; semuanya dari sumber publik, bukan perkiraan.</p>
+  <p style="margin-top:10px"><b>Jarak sudah diukur, bukan ditebak.</b> Titik koordinat diambil dari OpenStreetMap Nominatim, jarak dan waktu tempuh dihitung mesin rute OSRM dari titik Modernland. Waktunya kondisi lancar tanpa lalu lintas &mdash; angka jam sibuk di tabel adalah hasil pengalian, jadi itu bagian yang masih perkiraan. Matriks kembali disusun dari <em>jam operasi</em> kantor, mal, stasiun, dan penerbangan, yang memang tetap; tapi seberapa besar permintaan yang benar-benar muncul di tiap titik, hanya catatan Anda yang bisa membuktikan.</p>
+  <p style="margin-top:10px"><b>Yang masih belum pasti, dan Anda yang bisa memastikannya.</b> Tiga hal. <b>Satu:</b> apakah potongan 8% berlaku untuk mobil atau hanya roda dua &mdash; laporan pendapatan Anda sendiri yang menjawab. <b>Dua:</b> nilai insentif harian, yang berubah tiap minggu dan bisa menggeser hasil ratusan ribu. <b>Tiga:</b> Rp per km berpenumpang Anda yang sebenarnya, termasuk tarif dinamis &mdash; hitung dari 20 trip terakhir dan ketiga ketidakpastian ini menyusut jadi satu.</p>
+  <p style="margin-top:10px"><b>Yang tidak bisa dipetakan siapa pun.</b> Kepadatan pengemudi lain per zona per jam, dan peta permintaan Grab yang sebenarnya. Karena itu halaman ini tidak mencoba menebaknya &mdash; filter keputusan di atas dirancang bekerja tanpa keduanya, dan catatan dua minggu Anda akan mengisi sisanya dengan data yang benar-benar milik Anda.</p>
+</footer>
+
+</div>
+
+<script>
+(function(){
+  var ids = ["km","util","rpkm","ins","kmkwh","tar","sesi","fee","lain","jam"];
+  var el = {};
+  ids.forEach(function(k){ el[k] = document.getElementById(k); });
+  var out = {
+    net: document.getElementById("net"), bar: document.getElementById("bar"),
+    pkm: document.getElementById("pkm"), gross: document.getElementById("gross"),
+    cost: document.getElementById("cost"), perjam: document.getElementById("perjam"),
+    kwh: document.getElementById("kwh")
+  };
+  var TARGET = 515000;
+
+  function n(k){ var v = parseFloat(el[k].value); return isFinite(v) && v >= 0 ? v : 0; }
+  function rp(v){ return "Rp " + Math.round(v).toLocaleString("id-ID"); }
+  function num(v, d){ return v.toLocaleString("id-ID", {minimumFractionDigits:d, maximumFractionDigits:d}); }
+
+  function calc(){
+    var km = n("km"), jam = n("jam"), kmkwh = n("kmkwh");
+    var pkm   = km * Math.min(n("util"), 100) / 100;
+    var gross = pkm * n("rpkm") + n("ins");
+    var kwh   = kmkwh > 0 ? km / kmkwh : 0;
+    var cost  = kwh * n("tar") + n("sesi") * n("fee") + n("lain");
+    var net   = gross - cost;
+
+    out.pkm.textContent   = num(pkm, 0) + " km";
+    out.gross.textContent = rp(gross);
+    out.cost.textContent  = rp(cost);
+    out.kwh.textContent   = num(kwh, 1) + " kWh";
+    out.net.textContent   = rp(net);
+    out.net.className = "big " + (net >= TARGET ? "over" : "under");
+
+    var pct = Math.max(0, Math.min(100, (net / TARGET) * 100));
+    out.bar.style.width = pct.toFixed(1) + "%";
+
+    out.perjam.textContent = jam > 0 ? rp(net / jam) : "—";
+  }
+
+  ids.forEach(function(k){ el[k].addEventListener("input", calc); });
+  calc();
+})();
+</script>
+
+</body></html>
