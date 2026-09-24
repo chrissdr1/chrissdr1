@@ -9,7 +9,9 @@
      3. TERBIT (js/data.js) == VERSION (sw.js), manifest sah, service worker aktif dan cache terisi
      4. adapter AI: putaran alat, streaming teks, JSON, dan pemetaan galat -- dengan fetch tiruan
      5. logika rencana tahap 5: jeda bebas persis, estimasi order per langkah, rekap = bersih,
-        sesi ngecas (jembatan + jeda), jam nyata sampai ke menit */
+        sesi ngecas (jembatan + jeda), jam nyata sampai ke menit
+     6. halaman Mulai hari, perkiraan baterai (model + odometer GPS), jangkar ngecas,
+        lapisan kemacetan TomTom, faktor macet di rekomendasi */
 import { chromium } from "playwright";
 import http from "node:http";
 import fs from "node:fs";
@@ -204,6 +206,11 @@ async function main(){
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ locale:"id-ID", timezoneId:"Asia/Jakarta", serviceWorkers:"allow" });
   /* Internet luar dimatikan supaya hasilnya pasti: cuaca jatuh ke cadangan, ubin peta kosong. */
+  /* Halaman "Mulai hari" terbuka sendiri sekali sehari; bagian 1-11 tidak mengujinya,
+     jadi ditandai "dilewati" sebelum halaman dimuat -- kecuali halaman uji bagian 12. */
+  await ctx.addInitScript(() => {
+    try { if (!/checkin/.test(location.search)) localStorage.setItem("mulai-hari-lewati", new Date().toLocaleDateString("sv-SE")); } catch (e) {}
+  });
   await ctx.route("**/api.open-meteo.com/**", r => r.abort());
   await ctx.route("**/tile.openstreetmap.org/**", r => r.abort());
   await ctx.route("**/api.anthropic.com/**", r => r.abort());
@@ -544,6 +551,70 @@ async function main(){
     ok(!dalamJam || (!jam.manual && Math.abs(jam.keluar - jam.t) < 0.02 && /ikut jam, tepat ke menit/.test(jam.src)), "mesin memakai jam sekarang tepat ke menit", JSON.stringify(jam));
     ok(/^\d\d:\d\d$/.test(jam.hidup), "jam hidup tampil HH:MM", jam.hidup);
     await fresh.close();
+  }
+
+  console.log("12. Mulai hari, perkiraan baterai, odometer GPS, lapisan TomTom");
+  {
+    let ttCalls = 0;
+    const ci = await ctx.newPage();
+    await ci.route("**/api.tomtom.com/**", r => { ttCalls++; r.abort(); });
+    await ci.goto(url + "index.html?checkin", { waitUntil:"load" });
+    await ci.evaluate(() => { localStorage.removeItem("mulai-hari-lewati"); localStorage.removeItem("mulai-hari"); localStorage.removeItem("baterai-hari"); localStorage.removeItem("buku-setoran-plan"); });
+    await ci.reload({ waitUntil:"load" });
+    await ci.waitForFunction(() => document.querySelector("#n-steps .step"));
+    const jam = await ci.evaluate(() => jamSekarangTepat());
+    const dalamJam = jam >= 3.5 && jam <= 23.5;
+    const tampil = await ci.$eval("#checkin", e => !e.hidden);
+    ok(!dalamJam || tampil, "halaman Mulai hari terbuka sendiri saat aplikasi dibuka", JSON.stringify({ jam, tampil }));
+    if (!tampil) await ci.evaluate(() => bukaCheckin());
+    const auto = await ci.$eval("#ci-auto", e => e.innerText);
+    ok(/Yang sudah diketahui mesin/.test(auto) && /posisi:/.test(auto), "halaman menyebut yang sudah diketahui mesin (hari, jam, posisi)", auto);
+    await setField(ci, "ci-soc", 72); await setField(ci, "ci-zona", "tng"); await setField(ci, "ci-filter", 1);
+    await setField(ci, "ci-rehat", "custom"); await setField(ci, "ci-rehat-dari", 12); await setField(ci, "ci-rehat-sampai", 13.5);
+    await setField(ci, "ci-gps", false);
+    await ci.click("#ci-mulai");
+    const sesudah = await ci.evaluate(() => ({ hidden:document.getElementById("checkin").hidden, soc:document.getElementById("n-soc").value, src:document.getElementById("src-soc").textContent,
+      plan:(PLAN && PLAN.date === iso(new Date())) ? { rehat:JSON.stringify(PLAN.rehat), filter:PLAN.filter, zona:PLAN.zona } : null,
+      mulai:MULAI_HARI && MULAI_HARI.soc, jangkar:Baterai.terakhir(), est:document.getElementById("socest").innerText, status:document.getElementById("hari-status").innerText }));
+    ok(sesudah.hidden && sesudah.soc === "72" && sesudah.mulai === 72, "Mulai hari menutup halaman dan mengisi baterai 72% di tab Sekarang", JSON.stringify(sesudah));
+    ok(sesudah.plan && sesudah.plan.rehat === "[12,13.5]" && sesudah.plan.filter === 1 && sesudah.plan.zona === "tng", "isian menjadi rencana hari ini (jeda 12:00–13:30, filter 1, Tangerang)", JSON.stringify(sesudah.plan));
+    ok(sesudah.jangkar && sesudah.jangkar.soc === 72 && /perkiraan mesin/.test(sesudah.src) && /Perkiraan mesin/.test(sesudah.est), "jangkar baterai 72% dan keterangan perkiraan", JSON.stringify({ j:sesudah.jangkar, src:sesudah.src, est:sesudah.est }));
+    const est2 = await ci.evaluate(() => { const j = Baterai.terakhir(); return Baterai.perkiraan(j.jam + 2, { bat:30.08, zona:"tng", rehat:"none" }); });
+    ok(est2 && est2.soc < 72 && est2.soc > 40 && !est2.gps, "dua jam kemudian perkiraan turun menurut model blok jam", JSON.stringify(est2));
+    const est3 = await ci.evaluate(() => { const j = Baterai.terakhir(); Baterai.catatFix(-6.18, 106.62, 1); Baterai.catatFix(-6.18, 106.70, 2); Baterai.catatFix(-6.25, 106.70, 3);
+      return { km:Baterai.muat().gpsKm, p:Baterai.perkiraan(j.jam + 0.5, { bat:30.08, zona:"tng", rehat:"none" }) }; });
+    ok(est3.km > 15 && est3.p.gps && est3.p.soc < 72, "odometer GPS menjumlahkan jarak antar titik dan dipakai perkiraan", JSON.stringify(est3));
+    await setField(ci, "cas-ke", 85); await ci.click("#cas-selesai");
+    const cas = await ci.evaluate(() => ({ soc:document.getElementById("n-soc").value, j:Baterai.terakhir(), status:document.getElementById("hari-status").innerText }));
+    ok(cas.soc === "85" && cas.j.soc === 85 && cas.j.sumber === "ngecas", "Selesai ngecas ke 85% menjadi jangkar baru", JSON.stringify(cas));
+    await setField(ci, "n-soc", 60);
+    const ketik = await ci.evaluate(() => ({ j:Baterai.terakhir(), src:document.getElementById("src-soc").textContent }));
+    ok(ketik.j.soc === 60 && ketik.j.sumber === "diketik", "angka baterai yang diketik sendiri menjadi jangkar", JSON.stringify(ketik));
+    await ci.reload({ waitUntil:"load" }); await ci.waitForFunction(() => document.querySelector("#n-steps .step"));
+    const ulang = await ci.evaluate(() => ({ hidden:document.getElementById("checkin").hidden, soc:document.getElementById("n-soc").value, mulai:!!MULAI_HARI }));
+    ok(ulang.hidden && ulang.mulai && Math.abs(parseFloat(ulang.soc) - 60) <= 3, "dibuka lagi: tidak minta isi ulang, baterai terisi dari perkiraan", JSON.stringify(ulang));
+    await ci.evaluate(() => { localStorage.removeItem("mulai-hari"); localStorage.removeItem("mulai-hari-lewati"); });
+    await ci.reload({ waitUntil:"load" }); await ci.waitForFunction(() => document.querySelector("#n-steps .step"));
+    if (dalamJam) await ci.click("#ci-lewati");
+    const lewat = await ci.evaluate(() => ({ hidden:document.getElementById("checkin").hidden, l:localStorage.getItem("mulai-hari-lewati") === iso(new Date()) }));
+    ok(lewat.hidden && (!dalamJam || lewat.l), "Lewati menutup halaman dan diingat untuk hari ini", JSON.stringify(lewat));
+    await ci.evaluate(() => Peta.setKunciTomTom("kunci-uji"));
+    await ci.click("#peta-toggle");
+    await ci.waitForTimeout(800);
+    const tt = await ci.evaluate(() => ({ ada:Peta.adaTomTom(), url:Peta.urlTomTom("k"), img:!!document.querySelector('img[src*="api.tomtom.com"]') }));
+    ok(tt.ada && /api\.tomtom\.com\/traffic\/map\/4\/tile\/flow/.test(tt.url) && (ttCalls > 0 || tt.img), "kunci TomTom memasang lapisan kemacetan di peta", JSON.stringify({ ...tt, ttCalls }));
+    await ci.goto(url + "index.html?checkin&tautan2#tomtom=abc123", { waitUntil:"load" });
+    await ci.waitForFunction(() => document.querySelector("#n-steps .step"));
+    const tl = await ci.evaluate(() => ({ k:Peta.kunciTomTom(), hash:location.hash, flag:document.getElementById("tautan").innerText }));
+    ok(tl.k === "abc123" && tl.hash === "" && /TomTom/.test(tl.flag), "tautan pengaturan #tomtom= menyimpan kunci", JSON.stringify(tl));
+    const rek = await ci.evaluate(() => {
+      const ctx = dayCtx("2026-09-24"), L = LOKMAP.kota;
+      const h = Rekomendasi.hitung({ ctx, keluar:17.25, pulang:21.5, rehat:"none", zona:"tng", filter:2, bat:30.08, rumah:false, hujan:false, acara:false, soc:70, deadKm:0 }, L, 70, false);
+      const x = h.daftar.find(y => y.id === "cbd");
+      return x ? { macet:x.macet, menit:Math.round(x.jamPindah*60), km:Math.round(x.kmPindah) } : null;
+    });
+    ok(rek && rek.macet === 1.9 && rek.menit > rek.km / 26 * 60, "rekomendasi memakai faktor macet jam sibuk untuk waktu pindah", JSON.stringify(rek));
+    await ci.close();
   }
 
   await browser.close(); srv.close();

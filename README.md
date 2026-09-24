@@ -93,6 +93,12 @@ plus token). Pencarian web harus tidak dimatikan admin di Settings → Privacy.
    Setiap "Simpan hari ini" menulis `catatan/shanti.json` ke repo itu. Kalau
    ganti HP, atur token di HP baru dan catatannya kembali sendiri.
 
+### 2b. Lapisan kemacetan TomTom di peta (opsional)
+
+Tanpa kunci, tombol **Lihat kemacetan di Google Maps** membuka Google Maps dengan lapisan lalu lintas tepat di posisi Ibu. Kalau ingin lapisan kemacetan tampil langsung di peta aplikasi, daftarkan akun pengembang TomTom (developer.tomtom.com), buat kunci API dengan produk *Traffic Flow* / *Map Display*, lalu tempel di kolom **Kunci TomTom** di bawah peta, atau kirim lewat tautan pengaturan `#tomtom=…`.
+
+Catatan jujur: bentuk URL ubin yang dipakai (`…/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=…`) ditulis dari ingatan dokumentasi TomTom Traffic API v4 dan **perlu diverifikasi** saat kunci pertama kali dipakai. Kalau ubinnya tidak muncul, cek dokumentasi *Traffic Flow Tiles* TomTom dan sesuaikan `urlTomTom` di `app/js/peta.js`. Jatah gratis harian TomTom ada, tetapi besarannya berubah-ubah; periksa di dasbor TomTom.
+
 ### 3. Tautan pengaturan: tidak perlu mengetik apa pun di HP
 
 Rangkai tautan ini di komputer, lalu kirim ke HP Ibu lewat WhatsApp (pesan
@@ -102,7 +108,7 @@ pribadi, dan hapus pesannya setelah dibuka):
 https://chrissdr1.github.io/chrissdr1/#kunci=sk-ant-…&repo=chrissdr1/buku-setoran-data&token=github_pat_…
 ```
 
-Bagian mana pun boleh dihilangkan (`#kunci=…` saja, atau `#repo=…&token=…` saja).
+Bagian mana pun boleh dihilangkan (`#kunci=…` saja, atau `#repo=…&token=…` saja). Kunci TomTom ikut dengan `&tomtom=…`.
 Saat tautan dibuka, aplikasi menyimpan isinya di HP itu, menghapusnya dari alamat,
 dan menampilkan kotak "Pengaturan: tersimpan dari tautan". Bagian setelah `#`
 tidak pernah dikirim ke server mana pun, termasuk ke GitHub Pages dan ke pratinjau
@@ -111,6 +117,14 @@ tautan WhatsApp.
 Membaca datanya: buka berkas itu di GitHub, atau tambahkan repo tersebut ke sesi
 Claude Code dan minta analisa. Bentuknya `{ "harian": [ {id, jam, trip, dpt, ins, kmt,
 kmp, kwh, biaya, mnt, cat, diubah}, … ], "rencana": {…} }`.
+
+## Cara kerja hariannya
+
+1. **Mulai hari.** Saat aplikasi dibuka (sekali sehari, jam 03:30–23:30) muncul halaman *Mulai hari*: baterai sekarang, varian, jam mulai, rencana pulang, wilayah, jatah filter, sudah dapat, jeda, charger di rumah. Hari, jam, tanggal merah, acara, cuaca, dan posisi GPS diisi mesin. Isian ini menjadi rencana hari itu dan jangkar perkiraan baterai. Bisa dilewati; bisa dibuka lagi lewat tombol **Isi keadaan hari ini**.
+2. **Baterai diperkirakan sendiri.** Dari jangkar terakhir, mesin mengurangi km yang ditempuh: odometer GPS selama halaman terbuka (bila masuk akal) atau model km per jam tiap blok jam dikurangi jeda. Kolom *Sisa baterai* terisi sendiri sampai Ibu mengetik angka lain; angka yang diketik dan tombol **Selesai ngecas ke %** menjadi jangkar baru. Selalu bertanda "perkiraan" dengan keraguannya.
+3. **Rencana dan langkah.** Jeda bebas dari–sampai. Sesi ngecas ditempatkan dengan mencoba semua kombinasi (jeda gratis, blok peak dihindari, lantai 20%/25% boleh ditembus sedikit hanya bila lebih murah daripada satu sesi lagi), diisi secukupnya sampai sesi berikutnya atau sampai pulang dengan cadangan; jeda panjang boleh sampai 100%. Tiap langkah menyebut perkiraan order, km berbayar, Rp/order, dan baterai; baris rekap bertemu angka bersih.
+4. **Rekomendasi rute** dari posisi sekarang memakai faktor macet jam sibuk (×1,6 Tangerang, ×1,9 arah Jakarta) untuk waktu pindah, dan tombol arah ke Google Maps (lalu lintas langsung). Lapisan TomTom opsional di peta.
+5. **Jam nyata.** Tab Sekarang memakai jam sekarang tepat ke menit; pilihan jam manual (untuk "kalau saya keluar jam 15:00?") kedaluwarsa sendiri setelah 20 menit.
 
 ## Memasang di HP Ibu
 
@@ -151,7 +165,9 @@ app/
   js/peta.js          peta Leaflet: posisi, titik terukur, SPKLU, tautan kemacetan
   js/acara.js         kalender acara dari pencarian web
   js/sinkron.js       sinkron catatan ke repo GitHub privat
-  js/app.js           antarmuka dan boot
+  js/rekomendasi.js   rekomendasi rute otomatis dari posisi sekarang (faktor macet jam sibuk)
+  js/baterai.js       jejak baterai: jangkar (Mulai hari, selesai ngecas), odometer GPS, model km per blok
+  js/app.js           antarmuka, halaman Mulai hari, dan boot
   vendor/             anthropic-sdk.min.js (npm run build:sdk), leaflet/
   sw.js, manifest.webmanifest, icons/, rute-700k.html
 tests/run.mjs         uji Chromium: uji mandiri, service worker, adapter AI, cuaca, peta,

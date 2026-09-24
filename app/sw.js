@@ -7,7 +7,7 @@ var VERSION = "2026-09-24.5";
 var CACHE = "shanti-" + VERSION;
 var ASSETS = [
   "./", "index.html", "style.css", "manifest.webmanifest", "rute-700k.html",
-  "js/data.js", "js/engine.js", "js/ai.js", "js/cuaca.js", "js/peta.js", "js/acara.js", "js/sinkron.js", "js/rekomendasi.js", "js/app.js",
+  "js/data.js", "js/engine.js", "js/ai.js", "js/cuaca.js", "js/peta.js", "js/acara.js", "js/sinkron.js", "js/rekomendasi.js", "js/baterai.js", "js/app.js",
   "vendor/anthropic-sdk.min.js", "vendor/leaflet/leaflet.js", "vendor/leaflet/leaflet.css",
   "vendor/leaflet/images/marker-icon.png", "vendor/leaflet/images/marker-icon-2x.png",
   "vendor/leaflet/images/marker-shadow.png", "vendor/leaflet/images/layers.png", "vendor/leaflet/images/layers-2x.png",

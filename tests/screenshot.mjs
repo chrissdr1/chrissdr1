@@ -15,7 +15,11 @@ const ctx = await b.newContext({ viewport:{ width:390, height:844 }, deviceScale
 await ctx.route("**/api.open-meteo.com/**", r => r.abort());
 const p = await ctx.newPage();
 await p.goto(url + "index.html", { waitUntil:"load" }); await p.waitForFunction(() => document.querySelector("#n-steps .step"));
-await p.evaluate(() => document.getElementById("panduan-tutup").click());
+/* Halaman Mulai hari (dibuka paksa supaya tidak bergantung jam) */
+await p.evaluate(() => { document.getElementById("panduan-tutup").click(); bukaCheckin(); });
+await p.screenshot({ path:OUT + "/mulai.png" });
+await p.evaluate(() => { document.getElementById("ci-soc").value = "78"; document.getElementById("ci-gps").checked = false; document.getElementById("ci-mulai").click(); });
+await p.waitForFunction(() => document.getElementById("checkin").hidden);
 await p.screenshot({ path:OUT + "/now.png" });
 await p.evaluate(() => document.getElementById("peta-toggle").click());
 await p.waitForFunction(() => document.querySelectorAll("#peta .pin").length > 0);

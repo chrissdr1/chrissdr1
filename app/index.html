@@ -20,6 +20,35 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div class="checkin" id="checkin" hidden>
+  <div class="checkin-card">
+    <div class="eyebrow">Mulai hari &middot; <span id="ci-tgl"></span></div>
+    <h2>Hallo, Shanti. Bagaimana keadaan sekarang?</h2>
+    <p class="checkin-sub">Isi sebentar supaya mesinnya menghitung dari keadaan Ibu yang sebenarnya, bukan dari asumsi. Setelah ini baterai diperkirakan sendiri sepanjang hari; kalau selesai ngecas, tekan tombolnya di tab Sekarang.</p>
+    <div class="grid">
+      <div class="f"><label for="ci-soc">Baterai sekarang %</label><input id="ci-soc" type="number" inputmode="numeric" min="1" max="100" value="90"></div>
+      <div class="f"><label for="ci-bat">Varian</label><select id="ci-bat"><option value="30.08" selected>Dynamic 30,08 kWh</option><option value="38.88">Premium 38,88 kWh</option></select></div>
+      <div class="f"><label for="ci-keluar">Mulai kerja pukul</label><select id="ci-keluar"></select></div>
+      <div class="f"><label for="ci-pulang">Rencana pulang</label><select id="ci-pulang"></select></div>
+      <div class="f"><label for="ci-zona">Wilayah kerja</label><select id="ci-zona">
+        <option value="tng" selected>Tangerang</option><option value="mix">Tangerang + Jakarta</option><option value="jkt">Jakarta</option><option value="apt">Bandara</option></select></div>
+      <div class="f"><label for="ci-filter">Jatah filter</label><select id="ci-filter"><option value="0">0</option><option value="1">1</option><option value="2" selected>2</option></select></div>
+      <div class="f"><label for="ci-dpt">Sudah dapat hari ini (Rp)</label><input id="ci-dpt" type="number" inputmode="numeric" value="0"></div>
+      <div class="f" style="grid-column:1/-1"><label for="ci-rehat">Jeda istirahat</label>
+        <div class="jedarow"><select id="ci-rehat"><option value="none" selected>Tanpa jeda</option><option value="custom">Ada jeda</option></select>
+          <select id="ci-rehat-dari" aria-label="Jeda mulai" hidden></select><span id="ci-rehat-panah" hidden>&rarr;</span><select id="ci-rehat-sampai" aria-label="Jeda selesai" hidden></select></div></div>
+    </div>
+    <div class="toggles">
+      <label class="chk"><input type="checkbox" id="ci-rumah"> Ada charger di rumah</label>
+      <label class="chk"><input type="checkbox" id="ci-gps" checked> Pakai posisi GPS</label>
+    </div>
+    <div class="checkin-auto" id="ci-auto"></div>
+    <div class="actions">
+      <button type="button" class="go" id="ci-mulai">Mulai hari</button>
+      <button type="button" class="go ghost" id="ci-lewati">Lewati hari ini</button>
+    </div>
+  </div>
+</div>
 <div class="wrap">
 
 <header class="mast">
@@ -38,7 +67,8 @@
     <div class="p-card">
       <span class="p-when">Tiap pagi, sebelum berangkat</span>
       <ol>
-        <li>Buka halaman ini. <b>Tanggal, hari, dan cuaca terisi sendiri</b> &mdash; tidak perlu diapa-apakan.</li>
+        <li>Buka halaman ini. Halaman <b>Mulai hari</b> muncul sekali sehari: isi baterai sekarang, jam mulai, rencana pulang, wilayah, dan jeda. <b>Tanggal, hari, cuaca, acara, dan posisi terisi sendiri.</b></li>
+        <li>Setelah itu <b>baterai diperkirakan sendiri</b> sepanjang hari (dari km yang ditempuh). Tiap selesai ngecas, isi angkanya di tombol <b>Selesai ngecas ke %</b> supaya perkiraannya mulai lagi dari situ.</li>
         <li>Lihat kotak berwarna paling atas. Kalau hari ini tanggal merah, ada acara besar, atau diperkirakan hujan, penjelasannya ada di situ.</li>
         <li>Kalau ingin menyusun rencana sehari penuh, buka tab <b>Rencana</b>. Kalau langsung mau jalan, cukup pakai tab <b>Sekarang</b>.</li>
       </ol>
@@ -48,7 +78,7 @@
       <span class="p-when">Saat di jalan &mdash; tab Sekarang</span>
       <ol>
         <li>Pilih <b>posisi Ibu sekarang</b> di kolom paling atas.</li>
-        <li>Isi <b>sisa baterai</b> dan <b>sudah dapat berapa</b> hari ini.</li>
+        <li>Periksa <b>sisa baterai</b> (terisi sendiri dari perkiraan; ketik kalau angkanya lain) dan <b>sudah dapat berapa</b> hari ini.</li>
         <li>Baca kartu besar di tengah &mdash; itulah <b>langkah berikutnya</b>: mau ke mana, lewat mana, dan kenapa. Di bawahnya, <b>rekomendasi rute</b> membandingkan sembilan tempat dari posisi Ibu sekarang, lengkap dengan tombol arah ke Google Maps.</li>
         <li>Di bawahnya ada <b>urutan sampai pulang</b>, lengkap dengan jam berapa harus mengisi daya dan jam berapa mulai pulang.</li>
       </ol>
@@ -105,7 +135,8 @@
           <div class="hint" id="ketikhint">Ketik nama daerah. Kolom km opsional &mdash; isi kalau Anda tahu kira-kira jaraknya ke rumah.</div>
         </div>
       </div>
-      <div class="f"><label for="n-soc">Sisa baterai %</label><input id="n-soc" type="number" inputmode="numeric" min="1" max="100" value="65"></div>
+      <div class="f"><label for="n-soc">Sisa baterai % <em id="src-soc"></em></label><input id="n-soc" type="number" inputmode="numeric" min="1" max="100" value="65">
+        <div class="hint" id="socest"></div></div>
       <div class="f"><label for="n-dpt">Sudah dapat</label><input id="n-dpt" type="number" inputmode="numeric" value="0"></div>
       <div class="f"><label for="n-pulang">Jam pulang</label><select id="n-pulang"></select></div>
       <div class="f"><label for="n-tujuan">Pulang ke</label><select id="n-tujuan">
@@ -126,6 +157,11 @@
       <label class="chk"><input type="checkbox" id="n-rumah"> Charger di rumah</label>
       <label class="chk"><input type="checkbox" id="n-gpsauto" checked> Deteksi lokasi sendiri</label>
     </div>
+    <div class="actions hari-actions">
+      <button type="button" class="go ghost" id="ci-buka">Isi keadaan hari ini</button>
+      <span class="ketikrow casrow"><input id="cas-ke" type="number" inputmode="numeric" min="1" max="100" placeholder="%" aria-label="Baterai setelah ngecas"><button type="button" id="cas-selesai">Selesai ngecas ke %</button></span>
+      <span class="status" id="hari-status"></span>
+    </div>
     <p class="whytoggle">Kedua centang di atas terisi sendiri dari prakiraan cuaca internet (Open-Meteo) dan kalender acara. Ubah kalau kenyataannya beda &mdash; ramalan sering meleset, dan acara kecil seperti wisuda atau pameran lokal tidak masuk kalender mana pun.</p>
   </div>
 
@@ -136,7 +172,9 @@
       <a class="go" id="peta-macet" href="#" target="_blank" rel="noopener">Lihat kemacetan di Google Maps</a>
       <span class="status" id="peta-status"></span>
     </div>
-    <p class="peta-catatan">Hijau Tangerang, merah Jakarta, oranye bandara dan SPKLU, biru posisi Ibu. Ketuk titik lalu &ldquo;Saya di sini&rdquo; untuk memakainya sebagai posisi. <b>Lapisan kemacetan langsung ada di Google Maps</b> (tombol di atas membukanya tepat di posisi Ibu), bukan di peta ini &mdash; tidak ada sumber gratis untuk itu.</p>
+    <p class="peta-catatan">Hijau Tangerang, merah Jakarta, oranye bandara dan SPKLU, biru posisi Ibu. Ketuk titik lalu &ldquo;Saya di sini&rdquo; untuk memakainya sebagai posisi. <b>Lapisan kemacetan langsung ada di Google Maps</b> (tombol di atas membukanya tepat di posisi Ibu). Di peta ini lapisan kemacetan hanya tampil bila ada kunci TomTom (gratis untuk pemakaian kecil; anak yang mendaftar):</p>
+    <div class="ketikrow" style="margin-top:8px"><input id="tt-key" type="password" autocomplete="off" spellcheck="false" placeholder="Kunci TomTom (opsional)" aria-label="Kunci API TomTom"><button type="button" id="tt-save">Simpan</button><button type="button" id="tt-clear" hidden>Hapus</button></div>
+    <div class="hint" id="tt-status"></div>
   </div>
 
   <div class="plancheck" id="plancheck" hidden></div>
@@ -415,6 +453,7 @@
 <script src="js/acara.js"></script>
 <script src="js/sinkron.js"></script>
 <script src="js/rekomendasi.js"></script>
+<script src="js/baterai.js"></script>
 <script src="js/app.js"></script>
 <script>
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
