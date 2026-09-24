@@ -461,7 +461,7 @@ function buildSteps(o, r, opts){
       kmBayar = L.paidKmH * L.jamJalan; order = kmBayar / L.tripKm;
       detail = "&asymp; " + (order < 1 ? "1" : Math.round(order)) + " order &middot; " + Math.round(kmBayar) + " km berbayar" +
                (order >= 1 ? " &middot; Rp " + Math.round(L.grossH * L.jamJalan / order).toLocaleString("id-ID") + "/order" : "") +
-               " &middot; baterai " + Math.round(L.socMulai*100) + "&rarr;" + Math.round(L.socAkhir*100) + "%";
+               " &middot; baterai " + Math.round(L.socMulai*100) + (L.sesi ? "&rarr;" + Math.round(L.sesi.ke*100) + "% setelah colok" : "") + "&rarr;" + Math.round(L.socAkhir*100) + "%";
     } else {
       detail = "baterai " + Math.round(L.socMulai*100) + "%" + (L.sesi ? " &rarr; " + Math.round(L.sesi.ke*100) + "% setelah ngecas" : " (istirahat, tidak jalan)");
     }

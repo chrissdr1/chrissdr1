@@ -842,6 +842,12 @@ function runPlan(){
     bat:parseFloat(el("p-bat").value), rumah:el("p-rumah").checked,
     hujan:el("p-hujan").checked, acara:el("p-acara").checked };
   if (o.pulang<=o.keluar){ o.pulang=Math.min(24,o.keluar+1); el("p-pulang").value=o.pulang; }
+  /* Rencana untuk HARI INI berangkat dari baterai yang Ibu isi di Mulai hari
+     (bukan asumsi 90%), asal jam mulainya tidak jauh sebelum isian itu. */
+  var socAwalPlan = null;
+  if (typeof MULAI_HARI !== "undefined" && MULAI_HARI && el("p-tgl").value === iso(new Date()) && MULAI_HARI.jam - o.keluar < 1.5){
+    o.soc = MULAI_HARI.soc; socAwalPlan = MULAI_HARI.soc;
+  }
   var r = simulate(o);
   var jedaR = rehatRange(o.rehat);
 
@@ -864,7 +870,7 @@ function runPlan(){
     ["Listrik", dec(r.kwh,1)+" kWh &middot; "+rp(r.listrik)],
     ["Pendapatan blok", rp(r.blockNet)], ["Insentif", rp(r.insentif)],
     ["Sesi SPKLU", r.sessions+"&times;"+(r.sessions ? " &middot; "+Math.round(r.chargeHours*60)+" mnt kerja hilang" : "")],
-    ["Baterai", Math.round(r.soc0*100)+"% &rarr; terendah "+Math.round(Math.max(0,r.socMinKerja)*100)+"% &rarr; tiba "+Math.round(Math.max(0,r.socTiba)*100)+"%"]
+    ["Baterai", Math.round(r.soc0*100)+"%"+(socAwalPlan != null ? " (Mulai hari)" : "")+" &rarr; terendah "+Math.round(Math.max(0,r.socMinKerja)*100)+"% &rarr; tiba "+Math.round(Math.max(0,r.socTiba)*100)+"%"]
   ].map(function(x){ return "<div><span>"+x[0]+"</span><b>"+x[1]+"</b></div>"; }).join("");
   el("p-ringkas").innerHTML = "Keluar <b>"+hhmm(o.keluar)+"</b>"+(jedaR ? ", jeda <b>"+hhmm(jedaR[0])+"&ndash;"+hhmm(jedaR[1])+"</b>" : ", tanpa jeda")+
     ", pulang <b>"+hhmm(o.pulang)+"</b>: &asymp; <b>"+Math.round(r.trips)+" order</b>, <b>"+Math.round(r.kmTotal)+" km</b> ("+
