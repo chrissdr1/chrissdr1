@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Hallo Shanti</title>
 <meta name="description" content="Buku setoran, penunjuk arah, dan perencana hari untuk pengemudi GrabCar listrik di Tangerang.">
-<meta name="theme-color" content="#00713C" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0C1411" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#1A56C4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0B1220" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Shanti">
@@ -49,7 +49,7 @@
       <ol>
         <li>Pilih <b>posisi Ibu sekarang</b> di kolom paling atas.</li>
         <li>Isi <b>sisa baterai</b> dan <b>sudah dapat berapa</b> hari ini.</li>
-        <li>Baca kartu besar di tengah &mdash; itulah <b>langkah berikutnya</b>: mau ke mana, lewat mana, dan kenapa.</li>
+        <li>Baca kartu besar di tengah &mdash; itulah <b>langkah berikutnya</b>: mau ke mana, lewat mana, dan kenapa. Di bawahnya, <b>rekomendasi rute</b> membandingkan sembilan tempat dari posisi Ibu sekarang, lengkap dengan tombol arah ke Google Maps.</li>
         <li>Di bawahnya ada <b>urutan sampai pulang</b>, lengkap dengan jam berapa harus mengisi daya dan jam berapa mulai pulang.</li>
       </ol>
       <p class="p-note">Ulangi tiap kali pindah tempat atau tiap beberapa jam. Angkanya ikut berubah.</p>
@@ -68,7 +68,7 @@
     <div class="p-card">
       <span class="p-when">Arti warna</span>
       <ul class="p-warna">
-        <li><i class="w-ok"></i><span><b>Hijau</b> &mdash; bagus, jalan terus.</span></li>
+        <li><i class="w-ok"></i><span><b>Biru</b> &mdash; bagus, jalan terus.</span></li>
         <li><i class="w-warn"></i><span><b>Oranye</b> &mdash; hati-hati, ada yang perlu disiapkan. Biasanya soal isi daya atau waktu.</span></li>
         <li><i class="w-bad"></i><span><b>Merah</b> &mdash; berhenti dulu dan kerjakan itu sekarang. Biasanya baterai menipis atau posisi terlalu jauh dari rumah.</span></li>
       </ul>
@@ -142,6 +142,14 @@
   <div class="plancheck" id="plancheck" hidden></div>
   <div class="batwarn" id="batwarn" hidden></div>
   <div class="verdict" id="verdict"></div>
+
+  <div class="ai briefing" id="briefing" hidden></div>
+
+  <div class="rek" id="rek">
+    <div class="rek-head"><span class="eyebrow">Rekomendasi rute sekarang &middot; otomatis</span><span class="eyebrow" id="rek-faktor"></span></div>
+    <div id="rek-list"></div>
+    <p class="rek-catatan" id="rek-catatan"></p>
+  </div>
 
   <div class="res">
     <div>
@@ -365,6 +373,9 @@
       <button class="go ghost" id="ai-clear" type="button" hidden>Hapus kunci</button>
       <span class="status" id="ai-status"></span>
     </div>
+    <div class="toggles">
+      <label class="chk"><input type="checkbox" id="ai-briefing" checked> Briefing otomatis di tab Sekarang tiap blok jam berganti <em>&plusmn; Rp 1.000 sekali</em></label>
+    </div>
     <p style="font-size:12px;color:var(--muted);margin-top:12px">Pakai kunci dari workspace tersendiri dengan batas belanja bulanan, supaya kalau HP hilang kuncinya tinggal dicabut dari platform.claude.com. <b>Tidak perlu mengetik di HP:</b> anak bisa mengirim tautan pengaturan sekali pakai dari komputer (caranya di README).</p>
   </div>
 </section>
@@ -398,6 +409,7 @@
 <script src="js/peta.js"></script>
 <script src="js/acara.js"></script>
 <script src="js/sinkron.js"></script>
+<script src="js/rekomendasi.js"></script>
 <script src="js/app.js"></script>
 <script>
 if ("serviceWorker" in navigator && location.protocol !== "file:") {

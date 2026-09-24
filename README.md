@@ -33,6 +33,19 @@ Yang diambil dari internet, dan dari mana:
 | Tanya | Claude (`claude-opus-5`) + alat hitung halaman + pencarian web | kunci API Anthropic |
 | Catatan Ibu → anak | GitHub Contents API ke repo privat | token GitHub terbatas |
 
+Yang terjadi sendiri setiap kali aplikasi dibuka:
+
+- **Rekomendasi rute** (tab Sekarang): sembilan tempat kerja dibandingkan dari
+  posisi Ibu sekarang, memakai mesin yang sama dengan proyeksi: hari, jam, wilayah
+  tarif, jarak pindah, baterai setelah pindah, cuaca, acara, jarak pulang. Diurutkan,
+  tiap kartu punya tombol arah ke Google Maps. Tempat di wilayah tarif yang sama
+  hanya berbeda karena jarak; mesin ini tidak punya data permintaan per tempat.
+- **Briefing dari Claude** (kalau tersambung): satu paragraf tiap blok jam berganti,
+  disusun dari rekomendasi mesin dan konteks yang sama dengan tab Tanya. Disimpan di
+  HP supaya tidak membayar dua kali; bisa dimatikan di tab Tanya.
+- **Cuaca** diperbarui, dengan pita peluang hujan per jam; **kalender acara**
+  disegarkan tiap minggu (butuh kunci API); **posisi** dibaca dari GPS.
+
 Tanpa kunci apa pun, semua hitungan tetap jalan dan aplikasi mengatakan apa yang
 sedang tidak aktif. Tidak ada lapisan kemacetan di dalam aplikasi: tidak ada sumber
 gratis untuk itu, dan tombol Google Maps memberi data yang sama tanpa biaya.
@@ -43,6 +56,13 @@ gratis untuk itu, dan tombol Google Maps memberi data yang sama tanpa biaya.
 
 Dibuat di Claude Console: https://platform.claude.com (alamat lama
 console.anthropic.com mengarah ke sana).
+
+**Langganan Claude Pro/Max tidak mencakup API.** API dibayar terpisah, prabayar,
+sesuai pemakaian. Ada satu jalur tanpa API: versi pratinjau di claude.ai
+(https://claude.ai/artifact/9rMWxjNEbuuVZXJRtruv6g) memakai langganan Claude milik
+orang yang membuka halamannya, jadi tab Tanya dan briefing jalan tanpa kunci selama
+dibuka dalam keadaan login. Aplikasi yang dipasang dari GitHub Pages tidak bisa
+memakai langganan itu; di sana hanya kunci API yang jalan.
 
 1. **Saldo.** Settings → Billing (https://platform.claude.com/settings/billing):
    isi kredit prabayar. Tanpa saldo, kunci ditolak saat dipakai.

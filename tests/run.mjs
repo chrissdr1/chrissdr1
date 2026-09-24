@@ -170,6 +170,7 @@ window.fetch = async function(url, init){
   const body = init && init.body && String(init.body)[0] === "{" ? JSON.parse(init.body) : null;
   window.__calls.push({ url:u, method:(init && init.method) || "GET", headers:Object.fromEntries(new Headers(init && init.headers || {}).entries()), body });
   if (u.includes("api.github.com")) return github(u, init);
+  if (window.__mode === "briefing") return textStream(window.__briefingTeks || "Briefing uji.");
   if (window.__mode === "acara") return textStream("Ini hasilnya:\\n" + JSON.stringify({ acara:[
     { tanggal:"2099-01-05", nama:"Konser Uji", tempat:"ICE BSD", zona:"lokal" },
     { tanggal:"2099-01-06", nama:"Expo Uji", tempat:"JIExpo Kemayoran", zona:"jkt" },
@@ -345,7 +346,9 @@ async function main(){
   await page.waitForFunction(() => /Open-Meteo/.test(document.getElementById("cuaca").textContent), null, { timeout:15000 });
   const cu = await page.evaluate(() => ({ teks: document.getElementById("cuaca").textContent.replace(/\s+/g, " "),
     hujan: document.getElementById("n-hujan").checked, cache: JSON.parse(localStorage.getItem("cuaca-openmeteo")),
-    notes: document.getElementById("n-notes").textContent }));
+    notes: document.getElementById("n-notes").textContent,
+    pita: document.querySelectorAll("#cuaca .jamstrip i").length, pitaHujan: document.querySelectorAll("#cuaca .jamstrip i.l3").length }));
+  ok(cu.pita === 24 && cu.pitaHujan === 4, "pita 24 jam, 4 jam hujan ditandai", `${cu.pita} ${cu.pitaHujan}`);
   ok(/Diperkirakan hujan sekitar 13:00-17:00/.test(cu.teks) && /70%/.test(cu.teks), "kotak cuaca dari internet: jam dan peluang", cu.teks);
   ok(cu.hujan === true && /Hujan sudah dihitung/.test(cu.notes) && /Open-Meteo/.test(cu.notes), "centang hujan terisi dan masuk hitungan", cu.notes.slice(0, 300));
   ok(cu.cache && cu.cache.tanggal === today && cu.cache.jamHujan.join(",") === "13,14,15,16", "prakiraan disimpan 3 jam di HP", JSON.stringify(cu.cache));
@@ -426,8 +429,69 @@ async function main(){
   ok(tl2.kunci === "sk-ant-tautan" && tl2.flag === true, "tanpa tautan: pengaturan tetap, kotak tidak muncul lagi");
   await page.evaluate(() => { AI.setKey(""); Sinkron.setCfg(null); });
 
+  console.log("10. tema biru, rekomendasi rute otomatis, briefing Claude (tiruan)");
+  await page.goto(url + "index.html?tahap4", { waitUntil:"load" });
+  await page.waitForFunction(() => document.querySelector("#rek-list .rek-item"));
+  const tema = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
+  ok(tema.toUpperCase() === "#1A56C4", "tema terang memakai aksen biru", tema);
+  await page.emulateMedia({ colorScheme:"dark" });
+  const temaGelap = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
+  ok(temaGelap.toUpperCase() === "#6FA1FF", "tema gelap memakai aksen biru terang", temaGelap);
+  await page.emulateMedia({ colorScheme:"light" });
+  for (const [k, v] of Object.entries({ "n-jam":9.5, "n-lok":"karawaci", "n-soc":65, "n-dpt":0, "n-pulang":21.5, "n-filter":2, "n-bat":30.08, "n-tujuan":"rumah" })) await setField(page, k, v);
+  const rk = await page.evaluate(() => {
+    const d = SEKARANG.rek.daftar;
+    const urut = d.every((x, i) => i === 0 || d[i - 1].sisa >= x.sisa);
+    const here = d.find(x => x.diSini);
+    const ctx = dayCtx(iso(new Date()));
+    const o = { ctx, keluar:9.5, pulang:21.5, rehat:"none", zona:"jkt", filter:2, bat:30.08, rumah:false, hujan:false, acara:false, soc:65 };
+    const tanpaDead = simulate(Object.assign({}, o, { deadKm:0 })).net, bawaan = simulate(o).net;
+    return { n:d.length, urut, here: here && here.id, hereKm: here && here.kmPindah, basis: SEKARANG.rek.basis && SEKARANG.rek.basis.id,
+      tampil: document.querySelectorAll("#rek-list .rek-item").length, top: document.querySelector("#rek-list .rek-item.top .rek-body b").textContent,
+      faktor: document.getElementById("rek-faktor").textContent, arah: document.querySelector("#rek-list a.linkbtn") && document.querySelector("#rek-list a.linkbtn").getAttribute("href"),
+      deltaHere: here && here.selisih, tanpaDead, bawaan, jkt: d.find(x => x.id === "cbd").kmPindah > 20 };
+  });
+  ok(rk.n === 9 && rk.urut, "9 tempat dibandingkan, urut dari sisa hari terbesar", JSON.stringify(rk));
+  ok(rk.here === "karawaci" && rk.hereKm === 0 && rk.basis === "karawaci" && rk.deltaHere === 0, "posisi sekarang jadi acuan tanpa km pindah", JSON.stringify(rk));
+  ok(rk.tampil === 3 && /baterai 65%/.test(rk.faktor) && /blok pagi akhir/.test(rk.faktor) && /pulang 21:30/.test(rk.faktor), "3 kartu teratas dan baris faktor", rk.faktor);
+  ok(/google\.com\/maps\/dir\/\?api=1&destination=-6\.\d+,106\.\d+/.test(rk.arah || ""), "tombol arah ke Google Maps", rk.arah);
+  ok(rk.tanpaDead >= rk.bawaan && rk.jkt, "deadKm=0 tidak menghitung km kosong dua kali; CBD jauh dari Karawaci", JSON.stringify({ t:rk.tanpaDead, b:rk.bawaan }));
+  await page.evaluate(() => document.getElementById("rek-toggle").click());
+  ok((await page.$$("#rek-list .rek-item")).length === 9, "lihat semua: 9 kartu");
+  await page.evaluate(() => document.getElementById("rek-toggle").click());
+  /* briefing: tidak ada sambungan -> tidak ada kotak; dengan sambungan -> satu panggilan per kunci */
+  ok(await page.$eval("#briefing", e => e.hidden), "tanpa Claude, kotak briefing tidak muncul");
+  await page.evaluate(FAKE_FETCH);
+  const br = await page.evaluate(async () => {
+    const out = {};
+    AI.setKey("sk-ant-test");
+    window.__mode = "briefing"; window.__briefingTeks = "Briefing uji: tetap di Karawaci sampai 11:00, lalu ke Alam Sutera.";
+    await new Promise(r => { pasangAI(); setTimeout(r, 300); });
+    out.terjadwal = !!sampler;
+    await jalankanBriefing(false);
+    out.teks = document.querySelector("#briefing .ai-out").textContent;
+    out.hidden = document.getElementById("briefing").hidden;
+    out.calls1 = window.__calls.filter(c => c.url.includes("/v1/messages")).length;
+    const body = window.__calls.filter(c => c.url.includes("/v1/messages")).pop().body;
+    out.model = body.model; out.effort = body.output_config && body.output_config.effort;
+    out.promptAdaRek = /REKOMENDASI MESIN/.test(body.messages[0].content) && /Karawaci/.test(body.messages[0].content);
+    out.cache = JSON.parse(localStorage.getItem("briefing-claude"));
+    briefingKunci = null; briefingOtomatis(); await new Promise(r => setTimeout(r, 2300));
+    out.calls2 = window.__calls.filter(c => c.url.includes("/v1/messages")).length;
+    document.getElementById("ai-briefing").checked = false; document.getElementById("ai-briefing").dispatchEvent(new Event("change"));
+    out.mati = document.getElementById("briefing").hidden && localStorage.getItem("briefing-otomatis") === "0";
+    document.getElementById("ai-briefing").checked = true; document.getElementById("ai-briefing").dispatchEvent(new Event("change"));
+    out.hidupLagi = !document.getElementById("briefing").hidden;
+    AI.setKey(""); localStorage.removeItem("briefing-claude"); localStorage.removeItem("briefing-otomatis");
+    return out;
+  });
+  ok(br.terjadwal && !br.hidden && /Briefing uji/.test(br.teks), "briefing tampil dari jawaban Claude", JSON.stringify(br));
+  ok(br.model === "claude-opus-5" && br.effort === "medium" && br.promptAdaRek, "briefing memakai tier default dan menyertakan rekomendasi mesin", JSON.stringify({ m:br.model, e:br.effort, r:br.promptAdaRek }));
+  ok(br.cache && br.cache.kunci && br.calls2 === br.calls1, "disimpan di HP; kunci yang sama tidak memanggil lagi", JSON.stringify({ c1:br.calls1, c2:br.calls2, k:br.cache && br.cache.kunci }));
+  ok(br.mati && br.hidupLagi, "saklar briefing mematikan dan menghidupkan kotaknya");
+
   if (process.env.ORIG_HTML){
-    console.log("10. uji emas terhadap artifact asli");
+    console.log("11. uji emas terhadap artifact asli");
     const orig = await ctx.newPage();
     await orig.goto("file://" + path.resolve(process.env.ORIG_HTML), { waitUntil:"load" });
     await orig.waitForFunction(() => document.querySelector("#n-steps .step"));
