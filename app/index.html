@@ -281,12 +281,16 @@
       <div class="f"><label for="p-tgl">Tanggal</label><input id="p-tgl" type="date"></div>
       <div class="f"><label for="p-keluar">Jam keluar</label><select id="p-keluar"></select></div>
       <div class="f"><label for="p-pulang">Jam pulang</label><select id="p-pulang"></select></div>
-      <div class="f"><label for="p-rehat">Istirahat siang</label><select id="p-rehat">
-        <option value="none">Tidak ada</option>
-        <option value="duapeak">09:30&ndash;16:45 &middot; mode 8 jam</option>
-        <option value="full" selected>10:30&ndash;15:00</option>
-        <option value="short">13:00&ndash;15:00</option>
+      <div class="f"><label for="p-rehat">Jeda / istirahat</label><select id="p-rehat">
+        <option value="none">Tanpa jeda</option>
+        <option value="duapeak">Dua sif: jeda 09:30&ndash;16:45</option>
+        <option value="full" selected>Siang: 10:30&ndash;15:00</option>
+        <option value="short">Pendek: 13:00&ndash;15:00</option>
+        <option value="custom">Atur sendiri&hellip;</option>
       </select></div>
+      <div class="f" id="f-jeda"><label>Jeda dari &rarr; sampai</label>
+        <div class="jedarow"><select id="p-rehat-dari" aria-label="Jeda mulai"></select><span>&rarr;</span><select id="p-rehat-sampai" aria-label="Jeda selesai"></select></div>
+        <div class="hint" id="jedahint">Bebas dipilih; mesin menghitung ulang dan menyarankan jeda termurah dengan durasi sama.</div></div>
       <div class="f"><label for="p-zona">Wilayah</label><select id="p-zona">
         <option value="tng" selected>Tangerang saja</option>
         <option value="mix">Tangerang + Jakarta peak</option>
@@ -312,6 +316,7 @@
     </div>
   </div>
 
+  <p class="p-ringkas" id="p-ringkas" style="margin-top:14px;font-size:14px;color:var(--ink-2);max-width:70ch"></p>
   <div class="res">
     <div>
       <div class="eyebrow" style="margin-bottom:6px">Perkiraan bersih</div>

@@ -59,6 +59,15 @@ var LOKMAP = {}; LOK.forEach(function(l){ LOKMAP[l.id] = l; });
 var PEAKS = {"Peak pagi":1,"Peak sore":1,"Subuh":1};
 var SESSION_FEE = 25000, PARKIR = 15000, TARIF_KWH = 2470;
 var BASE_RPKM = 2900, BASE_E = 369;
+/* Panjang trip khas per blok (km berbayar per order), ASUMSI dari tabel
+   "Mengarahkan orderan" Rute 700K: komuter cluster 15-30 km, kantor BSD/Alsut
+   5-15, mal 3-8, stasiun 3-7, bandara 20-40, rumah sakit 3-10. Dikalibrasi
+   dari catatan Ibu (km berpenumpang / trip) begitu ada 3 hari. Baseline hari
+   dasar Rute 700K: 152 km berbayar / 18 trip = 8,4 km. */
+var TRIP_KM = { "Subuh":18, "Peak pagi":12, "Pagi akhir":7, "Siang":6, "Jam mati":6,
+                "Pra-peak":8, "Peak sore":10, "Malam":8, "Larut":10 };
+var TRIP_ZONA = { tng:1.0, mix:1.15, jkt:1.5, apt:1.8 };
+var BASE_TRIP_KM = 8.4;
 var TARGET_DAY = 515000, TARGET_MONTH = 13400000;
 
 /* ---------------- Indonesian red-letter days ----------------

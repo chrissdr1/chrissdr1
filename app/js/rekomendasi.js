@@ -48,9 +48,10 @@ var Rekomendasi = (function(){
       var o2 = salin(o);
       o2.keluar = keluar; o2.zona = K.z; o2.soc = Math.max(1, soc - socPindah);
       o2.deadKm = 0;   /* km kosong sudah dihitung di sini, jangan dihitung lagi oleh wilayah */
+      o2.kmHome = stay ? 0 : K.home; o2.stay = !!stay;
       var r = simulate(o2);
       var biayaPindah = kmPindah * (TARIF_KWH / CALIB.kmkwh);
-      var sisa = r.blockNet - r.feeCharge - biayaPindah;
+      var sisa = r.blockNet - r.feeCharge - r.parkir - biayaPindah;
       var blkTiba = blockAt(Math.min(keluar, 22.9), o.ctx.shapeDay);
       out.push({ id:id, n:K.n, z:K.z, lat:K.lat, lon:K.lon, diSini:diSini,
                  kmPindah:kmPindah, jamPindah:jamPindah, tiba:keluar, socTiba:Math.round(o2.soc),
