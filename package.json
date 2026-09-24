@@ -1,0 +1,16 @@
+{
+  "name": "hallo-shanti",
+  "private": true,
+  "description": "Buku setoran, penunjuk arah, dan perencana hari untuk pengemudi GrabCar listrik di Tangerang (PWA statis).",
+  "type": "module",
+  "scripts": {
+    "build:sdk": "esbuild tools/sdk-entry.mjs --bundle --format=iife --global-name=AnthropicSDK --platform=browser --target=es2019 --minify --legal-comments=none --outfile=app/vendor/anthropic-sdk.min.js",
+    "serve": "python3 -m http.server 8080 --directory app",
+    "test": "node tests/run.mjs"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
+    "esbuild": "^0.25.0",
+    "playwright": "^1.56.0"
+  }
+}

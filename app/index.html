@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Hallo Shanti</title>
+<meta name="description" content="Buku setoran, penunjuk arah, dan perencana hari untuk pengemudi GrabCar listrik di Tangerang.">
+<meta name="theme-color" content="#00713C" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0C1411" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Shanti">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="mast">
+  <div class="mast-top">
+    <h1>Hallo, <span>Shanti</span></h1>
+    <div class="today" id="today"></div>
+  </div>
+  <p style="max-width:64ch;color:var(--ink-2);font-size:14.5px">Buku setoran, penunjuk arah, dan perencana hari &mdash; satu tempat. Angka yang Ibu catat tiap malam langsung dipakai untuk hitungan besoknya. Rujukan tarif lengkapnya di <a href="rute-700k.html">Rute 700K</a>.</p>
+  <button type="button" class="panduan-btn" id="panduan-btn">Cara pakai</button>
+</header>
+
+<section class="panduan" id="panduan">
+  <div class="p-head"><h2>Cara pakai</h2><button type="button" id="panduan-tutup">Tutup</button></div>
+
+  <div class="p-grid">
+    <div class="p-card">
+      <span class="p-when">Tiap pagi, sebelum berangkat</span>
+      <ol>
+        <li>Buka halaman ini. <b>Tanggal, hari, dan cuaca terisi sendiri</b> &mdash; tidak perlu diapa-apakan.</li>
+        <li>Lihat kotak berwarna paling atas. Kalau hari ini tanggal merah, ada acara besar, atau diperkirakan hujan, penjelasannya ada di situ.</li>
+        <li>Kalau ingin menyusun rencana sehari penuh, buka tab <b>Rencana</b>. Kalau langsung mau jalan, cukup pakai tab <b>Sekarang</b>.</li>
+      </ol>
+    </div>
+
+    <div class="p-card">
+      <span class="p-when">Saat di jalan &mdash; tab Sekarang</span>
+      <ol>
+        <li>Pilih <b>posisi Ibu sekarang</b> di kolom paling atas.</li>
+        <li>Isi <b>sisa baterai</b> dan <b>sudah dapat berapa</b> hari ini.</li>
+        <li>Baca kartu besar di tengah &mdash; itulah <b>langkah berikutnya</b>: mau ke mana, lewat mana, dan kenapa.</li>
+        <li>Di bawahnya ada <b>urutan sampai pulang</b>, lengkap dengan jam berapa harus mengisi daya dan jam berapa mulai pulang.</li>
+      </ol>
+      <p class="p-note">Ulangi tiap kali pindah tempat atau tiap beberapa jam. Angkanya ikut berubah.</p>
+    </div>
+
+    <div class="p-card">
+      <span class="p-when">Tiap malam, sebelum tidur &mdash; tab Catatan</span>
+      <ol>
+        <li>Isi angka-angka dari aplikasi Grab: jam kerja, jumlah trip, pendapatan, insentif, km, dan biaya ngecas.</li>
+        <li>Tekan <b>Simpan hari ini</b>. Sekitar satu menit saja.</li>
+        <li>Setelah <b>tiga hari</b> terisi, seluruh hitungan di halaman ini otomatis memakai angka Ibu sendiri, bukan perkiraan.</li>
+      </ol>
+      <p class="p-note">Di tab itu juga ada saldo bulanan: berapa yang sudah terkumpul, dan berapa lagi per hari sampai akhir bulan.</p>
+    </div>
+
+    <div class="p-card">
+      <span class="p-when">Arti warna</span>
+      <ul class="p-warna">
+        <li><i class="w-ok"></i><span><b>Hijau</b> &mdash; bagus, jalan terus.</span></li>
+        <li><i class="w-warn"></i><span><b>Oranye</b> &mdash; hati-hati, ada yang perlu disiapkan. Biasanya soal isi daya atau waktu.</span></li>
+        <li><i class="w-bad"></i><span><b>Merah</b> &mdash; berhenti dulu dan kerjakan itu sekarang. Biasanya baterai menipis atau posisi terlalu jauh dari rumah.</span></li>
+      </ul>
+      <p class="p-note">Kalau posisi Ibu tidak ada di daftar, pilih <b>&ldquo;Ketik lokasi lain…&rdquo;</b> paling bawah, ketik nama daerahnya, lalu tekan Petakan.</p>
+    </div>
+  </div>
+</section>
+
+<div class="flag" id="segar" hidden></div>
+<div class="flag" id="dayflag" hidden></div>
+<div class="flag" id="cuaca" hidden></div>
+
+<div class="tabs">
+  <button type="button" class="tab on" id="t-now">Sekarang</button>
+  <button type="button" class="tab" id="t-log">Catatan</button>
+  <button type="button" class="tab" id="t-plan">Rencana</button>
+  <button type="button" class="tab" id="t-tanya">Tanya</button>
+</div>
+
+<!-- ============ SEKARANG ============ -->
+<div id="v-now">
+<section>
+  <div class="sec-head"><h2>Saya di sini, sekarang</h2><span class="eyebrow" id="calmode">Asumsi bawaan</span></div>
+  <div class="panel">
+    <div class="grid">
+      <div class="f"><label for="n-jam">Jam sekarang <em id="src-jam"></em></label><select id="n-jam"></select>
+        <div class="hint"><button type="button" class="linkbtn" id="jam-auto" hidden>ikut jam sekarang</button></div></div>
+      <div class="f" id="lokfield"><label for="n-lok">Posisi saya <em id="src-lok"></em></label>
+        <div class="ketikrow"><select id="n-lok" style="flex:1;min-width:0"></select><button type="button" id="n-gps" title="Deteksi lokasi">Lokasi saya</button></div>
+        <div class="hint" id="gpshint"></div>
+        <div class="ketikwrap" id="ketikwrap" hidden>
+          <div class="ketikrow"><input id="n-ketik" type="text" placeholder="mis. Cengkareng"><input id="n-ketikkm" type="number" inputmode="numeric" placeholder="km" style="max-width:64px"><button type="button" id="n-petakan">Petakan</button></div>
+          <div class="hint" id="ketikhint">Ketik nama daerah. Kolom km opsional &mdash; isi kalau Anda tahu kira-kira jaraknya ke rumah.</div>
+        </div>
+      </div>
+      <div class="f"><label for="n-soc">Sisa baterai %</label><input id="n-soc" type="number" inputmode="numeric" min="1" max="100" value="65"></div>
+      <div class="f"><label for="n-dpt">Sudah dapat</label><input id="n-dpt" type="number" inputmode="numeric" value="0"></div>
+      <div class="f"><label for="n-pulang">Jam pulang</label><select id="n-pulang"></select></div>
+      <div class="f"><label for="n-tujuan">Pulang ke</label><select id="n-tujuan">
+        <option value="rumah" selected>Modernland (rumah)</option>
+        <option value="stay">Tidak pulang</option>
+      </select></div>
+      <div class="f"><label for="n-bat">Baterai</label><select id="n-bat">
+        <option value="30.08" selected>Dynamic 30,08 kWh</option>
+        <option value="38.88">Premium 38,88 kWh</option>
+      </select></div>
+      <div class="f"><label for="n-filter">Jatah filter</label><select id="n-filter">
+        <option value="0">0</option><option value="1">1</option><option value="2" selected>2</option>
+      </select></div>
+    </div>
+    <div class="toggles">
+      <label class="chk"><input type="checkbox" id="n-hujan"> Hujan <em id="src-hujan"></em></label>
+      <label class="chk"><input type="checkbox" id="n-acara"> Acara besar <em id="src-acara"></em></label>
+      <label class="chk"><input type="checkbox" id="n-rumah"> Charger di rumah</label>
+      <label class="chk"><input type="checkbox" id="n-gpsauto" checked> Deteksi lokasi sendiri</label>
+    </div>
+    <p class="whytoggle">Kedua centang di atas terisi sendiri dari prakiraan BMKG dan kalender acara. Ubah kalau kenyataannya beda &mdash; ramalan sering meleset, dan acara kecil seperti wisuda atau pameran lokal tidak masuk kalender mana pun.</p>
+  </div>
+
+  <div class="plancheck" id="plancheck" hidden></div>
+  <div class="batwarn" id="batwarn" hidden></div>
+  <div class="verdict" id="verdict"></div>
+
+  <div class="res">
+    <div>
+      <div class="eyebrow" style="margin-bottom:6px">Proyeksi sampai pulang</div>
+      <div class="big" id="n-net">Rp 0</div>
+      <div class="bar" aria-hidden="true"><i id="n-bar" style="width:0%"></i></div>
+      <div class="vs" id="n-vs"></div>
+    </div>
+    <div class="side" id="n-side"></div>
+  </div>
+
+  <div class="steps" id="n-steps"></div>
+  <div class="notes" id="n-notes"></div>
+</section>
+</div>
+
+<!-- ============ CATATAN ============ -->
+<div id="v-log" hidden>
+<section>
+  <div class="sec-head"><h2>Angka Anda</h2><span class="eyebrow" id="calbasis">Belum ada data</span></div>
+  <div class="cal" id="caltiles"></div>
+  <p style="font-size:12.5px;color:var(--muted);margin-top:10px" id="calnote">Begitu ada 3 hari tercatat, angka-angka ini <b>langsung dipakai mesin</b> di tab Sekarang dan Rencana &mdash; tanpa perlu disalin.</p>
+</section>
+
+<section>
+  <div class="sec-head"><h2>Saldo bulan ini</h2><span class="eyebrow" id="monthname"></span></div>
+  <div class="saldo">
+    <div class="saldo-top">
+      <span class="big" id="mnet">Rp 0</span>
+      <span class="goal">dari target <b>Rp 13.400.000</b></span>
+    </div>
+    <div class="bar" aria-hidden="true"><i id="mbar" style="width:0%"></i></div>
+    <div class="pace" id="pace">Belum ada catatan bulan ini.</div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><h2>Catat hari ini</h2><span class="eyebrow">&plusmn; 1 menit</span></div>
+  <div class="panel">
+    <div class="grid">
+      <div class="f"><label for="tgl">Tanggal</label><input id="tgl" type="date"></div>
+      <div class="f"><label for="jam">Jam kerja</label><input id="jam" type="number" inputmode="decimal" step="0.5" placeholder="11"></div>
+      <div class="f"><label for="trip">Trip selesai</label><input id="trip" type="number" inputmode="numeric" placeholder="18"></div>
+      <div class="f"><label for="dpt">Pendapatan aplikasi</label><input id="dpt" type="number" inputmode="numeric" placeholder="440000"><div class="hint">Bagian Anda, sebelum insentif</div></div>
+      <div class="f"><label for="ins">Insentif</label><input id="ins" type="number" inputmode="numeric" placeholder="130000"></div>
+      <div class="f"><label for="kmt">Km tempuh</label><input id="kmt" type="number" inputmode="numeric" placeholder="245"></div>
+      <div class="f"><label for="kmp">Km berpenumpang</label><input id="kmp" type="number" inputmode="numeric" placeholder="152"><div class="hint">Boleh kosong</div></div>
+      <div class="f"><label for="kwh">kWh diisi</label><input id="kwh" type="number" inputmode="decimal" step="0.1" placeholder="34"></div>
+      <div class="f"><label for="biaya">Ngecas + parkir</label><input id="biaya" type="number" inputmode="numeric" placeholder="155000"></div>
+      <div class="f"><label for="mnt">Menit perjalanan pulang</label><input id="mnt" type="number" inputmode="numeric" placeholder="55"><div class="hint" id="mnthint">Dari titik terakhir sampai rumah</div></div>
+      <div class="f"><label for="cat">Catatan hari ini</label><input id="cat" type="text" placeholder="mis. konser ICE BSD"><div class="hint">Acara, cuaca, kejadian</div></div>
+    </div>
+    <div class="preview">
+      <div><span class="lbl">Bersih</span><span class="v" id="pv-net">&mdash;</span></div>
+      <div><span class="lbl">Per jam</span><span class="v" id="pv-jam">&mdash;</span></div>
+      <div><span class="lbl">Km bayar/jam</span><span class="v" id="pv-kmj">&mdash;</span></div>
+      <div><span class="lbl">Utilisasi</span><span class="v" id="pv-util">&mdash;</span></div>
+      <div><span class="lbl">km/kWh</span><span class="v" id="pv-eff">&mdash;</span></div>
+    </div>
+    <div class="actions">
+      <button class="go" id="save" type="button">Simpan hari ini</button>
+      <span class="status" id="status"></span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><h2>Cadangan catatan</h2><span class="eyebrow">Kirim ke anak &middot; atau pulihkan</span></div>
+  <div class="panel">
+    <p style="font-size:14px;color:var(--ink-2);max-width:66ch">Catatan Ibu tersimpan di HP ini saja &mdash; aman, tapi ikut hilang kalau HP-nya hilang atau riwayat browser terhapus. Tekan <b>Salin catatan</b>, lalu tempel ke WhatsApp. Itu sekaligus jadi cadangan dan bahan analisa.</p>
+    <div class="actions">
+      <button class="go" id="salin" type="button">Salin catatan</button>
+      <button class="go ghost" id="pulihkan" type="button">Pulihkan dari salinan</button>
+      <span class="status" id="cadstatus"></span>
+    </div>
+    <div id="cadwrap" hidden style="margin-top:14px">
+      <textarea id="cadteks" rows="5" style="width:100%;font-family:'IBM Plex Mono',monospace;font-size:12px;padding:10px;border:1px solid var(--line-strong);border-radius:3px;background:var(--ground);color:var(--ink)" placeholder="Tempel salinan catatan di sini, lalu tekan Pulihkan sekali lagi."></textarea>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><h2>Riwayat</h2><span class="eyebrow" id="histcount"></span></div>
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>Tanggal</th><th>Hari</th><th>Jam</th><th>Trip</th><th>Km</th><th>Util</th><th>Km bayar/jam</th><th>Bersih</th></tr></thead>
+      <tbody id="hist"></tbody>
+    </table>
+    <div class="empty" id="histempty">Belum ada catatan. Isi malam ini setelah pulang.</div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><h2>Minta analisa</h2><span class="eyebrow">Butuh minimal 3 hari</span></div>
+  <div class="ai">
+    <p style="font-size:14px;color:var(--ink-2)">Tiga saran konkret berdasarkan angka Anda sendiri.</p>
+    <div class="actions" style="margin-top:0">
+      <button id="ask" class="go ghost" type="button" disabled>Analisa catatan saya</button>
+      <span class="status" id="aistatus"></span>
+    </div>
+    <div class="ai-out" id="aiout"></div>
+  </div>
+</section>
+</div>
+
+<!-- ============ RENCANA ============ -->
+<div id="v-plan" hidden>
+<section>
+  <div class="sec-head"><h2>Rencana sehari</h2><span class="eyebrow">Coba sebelum menjalani</span></div>
+  <div class="panel">
+    <div class="grid">
+      <div class="f"><label for="p-tgl">Tanggal</label><input id="p-tgl" type="date"></div>
+      <div class="f"><label for="p-keluar">Jam keluar</label><select id="p-keluar"></select></div>
+      <div class="f"><label for="p-pulang">Jam pulang</label><select id="p-pulang"></select></div>
+      <div class="f"><label for="p-rehat">Istirahat siang</label><select id="p-rehat">
+        <option value="none">Tidak ada</option>
+        <option value="duapeak">09:30&ndash;16:45 &middot; mode 8 jam</option>
+        <option value="full" selected>10:30&ndash;15:00</option>
+        <option value="short">13:00&ndash;15:00</option>
+      </select></div>
+      <div class="f"><label for="p-zona">Wilayah</label><select id="p-zona">
+        <option value="tng" selected>Tangerang saja</option>
+        <option value="mix">Tangerang + Jakarta peak</option>
+        <option value="jkt">Jakarta dominan</option>
+        <option value="apt">Fokus bandara</option>
+      </select></div>
+      <div class="f"><label for="p-filter">Jatah filter</label><select id="p-filter">
+        <option value="0">0</option><option value="1">1</option><option value="2" selected>2</option>
+      </select></div>
+      <div class="f"><label for="p-bat">Baterai</label><select id="p-bat">
+        <option value="30.08" selected>Dynamic 30,08 kWh</option>
+        <option value="38.88">Premium 38,88 kWh</option>
+      </select></div>
+    </div>
+    <div class="toggles">
+      <label class="chk"><input type="checkbox" id="p-rumah"> Charger di rumah</label>
+      <label class="chk"><input type="checkbox" id="p-hujan"> Hujan</label>
+      <label class="chk"><input type="checkbox" id="p-acara"> Ada acara besar</label>
+    </div>
+    <div class="actions">
+      <button class="go" id="p-save" type="button">Jadikan rencana hari ini</button>
+      <span class="status" id="p-status"></span>
+    </div>
+  </div>
+
+  <div class="res">
+    <div>
+      <div class="eyebrow" style="margin-bottom:6px">Perkiraan bersih</div>
+      <div class="big" id="p-net">Rp 0</div>
+      <div class="bar" aria-hidden="true"><i id="p-bar" style="width:0%"></i></div>
+      <div class="vs" id="p-vs"></div>
+      <div class="tlbar" id="p-tl"></div>
+      <div class="tlaxis"><span style="left:0">03:30</span><span style="left:26.8%">09:00</span><span style="left:51.2%">14:00</span><span style="left:75.6%">19:00</span><span style="left:100%">24:00</span></div>
+    </div>
+    <div class="side" id="p-side"></div>
+  </div>
+
+  <div class="steps" id="p-steps"></div>
+  <div class="notes" id="p-notes"></div>
+</section>
+
+<section>
+  <div class="sec-head"><h2>Bandingkan sif</h2><span class="eyebrow" id="cmphead"></span></div>
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>Sif</th><th>Jam</th><th>Durasi</th><th>Bersih</th><th>Per jam</th></tr></thead>
+      <tbody id="cmp"></tbody>
+    </table>
+  </div>
+</section>
+</div>
+
+<div id="v-tanya" hidden>
+<section>
+  <div class="sec-head"><h2>Tanya apa saja</h2><span class="eyebrow" id="tanyastatus"></span></div>
+  <p style="color:var(--ink-2);max-width:66ch;margin-bottom:14px">Tanyakan apa pun tentang hari Ibu &mdash; mau ke mana sekarang, kenapa hasilnya turun, enaknya pulang jam berapa. Dia sudah tahu catatan Ibu, rencana hari ini, cuaca, dan tarif tiap jam. <b>Dia tidak bisa melihat apa pun di luar aplikasi ini.</b></p>
+
+  <div class="chat" id="chatlog"></div>
+
+  <div class="chatbar">
+    <input id="chatinput" type="text" placeholder="mis. sekarang enaknya ke mana?">
+    <button class="go" id="chatsend" type="button">Kirim</button>
+  </div>
+  <div class="chips" id="chatchips"></div>
+  <p style="font-size:12px;color:var(--muted);margin-top:12px">Percakapan tersimpan di HP ini saja. <button type="button" class="linkbtn" id="chatclear">Hapus percakapan</button></p>
+</section>
+
+<section id="ai-panel">
+  <div class="sec-head"><h2>Sambungan ke Claude</h2><span class="eyebrow" id="aistat"></span></div>
+  <div class="panel">
+    <p style="font-size:14px;color:var(--ink-2);max-width:66ch">Tab Tanya, tombol <b>Analisa catatan</b>, dan pemetaan nama tempat yang tidak dikenal memakai Claude lewat kunci API Anthropic. <b>Isi sekali saja</b> &mdash; kuncinya disimpan di HP ini dan hanya dikirim ke api.anthropic.com. Kalau tidak diisi, semua hitungan lain tetap jalan seperti biasa.</p>
+    <div class="ketikrow" style="margin-top:12px"><input id="ai-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" aria-label="Kunci API Anthropic"><button type="button" id="ai-save">Simpan</button></div>
+    <div class="actions">
+      <button class="go ghost" id="ai-test" type="button">Uji sambungan</button>
+      <button class="go ghost" id="ai-clear" type="button" hidden>Hapus kunci</button>
+      <span class="status" id="ai-status"></span>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin-top:12px">Pakai kunci dari workspace tersendiri dengan batas belanja bulanan, supaya kalau HP hilang kuncinya tinggal dicabut dari console.anthropic.com.</p>
+  </div>
+</section>
+</div>
+
+<section>
+  <div class="sec-head"><h2>Uji mandiri</h2><span class="eyebrow">Tekan untuk memeriksa</span></div>
+  <div class="actions" style="margin-top:0;margin-bottom:12px">
+    <button class="go ghost" id="ujijalan" type="button">Jalankan pemeriksaan</button>
+    <span class="status" id="ujistatus"></span>
+  </div>
+  <div class="uji" id="ujihasil">Belum dijalankan. Pemeriksaan memakan beberapa detik dan sengaja tidak berjalan sendiri, supaya halaman langsung terbuka.</div>
+  <p style="font-size:12.5px;color:var(--muted);margin-top:10px">Dua belas aturan yang harus selalu benar. Sepuluh memeriksa <b>urutan langkah</b> &mdash; ngecas tidak boleh di langkah pertama, tidak boleh dua sesi beruntun, tidak boleh di jam peak bila ada pilihan lain, jarak pulang tidak boleh nol, kumulatif harus naik, tidak boleh ada teks kosong &mdash; di seluruh kombinasi wilayah, hari, jam berangkat, pola istirahat, baterai, dan sisa daya. Aturan ke-11 memeriksa <b>angkanya</b>: jarak pulang yang dihitung halaman dibandingkan dengan 183 titik yang jaraknya benar-benar diukur di lapangan. Aturan itu ada karena sepuluh yang lain pernah lolos penuh sementara satu daerah meleset 60%. Aturan ke-12 memeriksa <b>uangnya</b>: bahwa nasihat "kalau mau mengejar" dihitung dari hari yang sama diperpanjang &mdash; bukan dari sif baru berbaterai penuh, yang dulu membuatnya salah tanda &mdash; dan bahwa jam ngecas dibebankan pada tarif blok termurah, sama seperti tempat urutan langkah menaruh sesinya. Kalau ada yang dilanggar, kotak ini berubah merah dan menyebutkan kombinasinya.</p>
+</section>
+
+<footer>
+  <p><b>Kalender tanggal merah</b> memakai SKB 3 Menteri 2026 (17 libur nasional, 8 cuti bersama). Untuk 2027 SKB belum terbit, jadi hanya tanggal pasti yang dimuat &mdash; 1 Januari, 17 Agustus, 25 Desember. Efek hari libur terhadap permintaan adalah penalaran dari pola, bukan hasil pengukuran: libur diperlakukan seperti akhir pekan (tanpa arus komuter, bobot ke mal dan bandara), dan <b>malam sebelum libur panjang</b> diperlakukan sebagai arus keluar kota.</p>
+  <p><b>Kalender acara terakhir diperbarui 9 September 2026</b> dan isinya berhenti di 27 Desember 2026. Dulu di sini tertulis daftarnya &ldquo;disegarkan otomatis setiap tanggal 1&rdquo; &mdash; itu tidak benar, tidak ada yang menjalankannya, dan janji seperti itu justru membuat kalender yang basi terlihat seperti kalender yang terawat. Penyegarannya manual, dan kotak &ldquo;Umur halaman&rdquo; di atas akan memberi tahu kalau sudah lewat. Acara kecil &mdash; wisuda, pameran lokal, hajatan &mdash; tetap Anda isi sendiri lewat centang &ldquo;acara besar&rdquo; dan kolom catatan harian.</p>
+  <p>Tarif blok jam, jarak antar kawasan, biaya listrik, dan biaya sesi SPKLU berasal dari <a href="rute-700k.html">Rute 700K</a>. Angkanya <b>bersih operasional</b> &mdash; belum dikurangi cicilan, asuransi, servis, dan ban. Begitu ada 3 hari tercatat, Rp per km, insentif, dan km per kWh Anda otomatis menggantikan asumsi saya di seluruh halaman ini.</p>
+</footer>
+<p style="font-size:12px;color:var(--muted);margin-top:14px">Kode sumber aplikasi ini ada di <a href="https://github.com/chrissdr1/chrissdr1" style="color:var(--accent)">github.com/chrissdr1/chrissdr1</a>. Angka kalender, cuaca, dan acara diubah di <code>app/js/data.js</code>.</p>
+
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/engine.js"></script>
+<script src="vendor/anthropic-sdk.min.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/app.js"></script>
+<script>
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  window.addEventListener("load", function(){ navigator.serviceWorker.register("sw.js").catch(function(){}); });
+}
+</script>
+</body>
+</html>
