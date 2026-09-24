@@ -1742,7 +1742,11 @@ el("p-hujan").addEventListener("change", function(){ this.dataset.touched = "1";
 /* ---------------- sambungan ke Claude ---------------- */
 function tandaiAI(){
   var st = AI.status(), e = el("aistat"), k = AI.getKey();
-  var teks = st === "artifact" ? "Lewat claude.ai" : st === "api" ? "Kunci tersimpan" :
+  /* Label mengikuti sampler yang benar-benar ada, bukan dugaan: di claude.ai
+     window.claude bisa ada tanpa izin "sample" -- itu tetap "belum ada kunci". */
+  var teks = (sampler && sampler.sumber === "artifact") ? "Lewat claude.ai" :
+             sampler ? "Kunci tersimpan" :
+             k ? "Kunci ada, belum tersambung" :
              st === "no_sdk" ? "SDK tidak termuat" : "Belum ada kunci";
   if (e) e.textContent = teks;
   el("tanyastatus").textContent = sampler ? "" : "Belum tersambung";
