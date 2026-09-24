@@ -1,5 +1,5 @@
 /* Peluang rute: urutan TEMPAT per blok jam untuk sisa hari (atau untuk
-   rencana), disusun dan dinilai oleh mesin yang sama dengan proyeksi.
+   rencana), disusun dan dinilai oleh perhitungan yang sama dengan perkiraan.
 
    Cara kerja: potongan blok dari potongBlok(o). Untuk tiap potongan kerja
    dipilih satu tempat dari sembilan tempat inti. Pencarian berkas (beam):

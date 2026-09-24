@@ -1,5 +1,5 @@
 /* Rekomendasi rute otomatis: begitu halaman dibuka (dan tiap masukan berubah),
-   sembilan tempat kerja dibandingkan memakai mesin yang sama dengan proyeksi:
+   sembilan tempat kerja dibandingkan memakai perhitungan yang sama dengan perkiraan:
    untuk tiap tempat, sisa hari disimulasikan dari jam tiba di sana, dengan
    wilayah tarifnya (Tangerang / Jakarta / bandara), baterai setelah perjalanan
    pindah, hujan, acara, hari, dan jarak pulangnya. Hasilnya diurutkan.
@@ -71,12 +71,13 @@ var Rekomendasi = (function(){
   /* Faktor yang ikut menentukan, untuk ditampilkan apa adanya. */
   function faktor(o, soc){
     var ctx = o.ctx, f = [];
-    f.push(ctx.name + (Math.abs(ctx.mult - 1) > 0.005 ? " ×" + ctx.mult.toFixed(2).replace(".", ",") : ""));
+    f.push(ctx.name);
     if (ctx.holi) f.push("tanggal merah");
     if (ctx.eve) f.push("malam sebelum libur");
-    f.push("blok " + blockAt(o.keluar, ctx.shapeDay).n.toLowerCase());
-    if (o.hujan) f.push("hujan +20%");
-    if (ctx.ev) f.push("acara: " + ctx.ev[0]); else if (o.acara) f.push("acara besar +15%");
+    var b = blockAt(o.keluar, ctx.shapeDay).n;
+    f.push("jam " + (typeof labelBlok === "function" ? labelBlok(b) : b).toLowerCase());
+    if (o.hujan) f.push("hujan");
+    if (ctx.ev) f.push("acara " + ctx.ev[0]); else if (o.acara) f.push("acara besar");
     f.push("baterai " + soc + "%");
     if (o.filter === 0) f.push("filter habis");
     f.push("pulang " + hhmm(o.pulang));

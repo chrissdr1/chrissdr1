@@ -413,3 +413,34 @@ a.go{text-decoration:none; display:inline-block; line-height:1.3; font-family:"I
 .peluang .rute span.jeda{background:var(--accent-soft)}
 .peluang .rute span.cas{outline:2px solid var(--signal); outline-offset:-2px}
 .peluang .rute i{align-self:center; color:var(--muted); font-style:normal}
+
+/* Tab Sekarang yang dilirik 3 detik: baris status, panel masukan dilipat, "Kenapa?" */
+.statusbar{display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center; width:100%; text-align:left; cursor:pointer;
+  background:var(--surface); border:1px solid var(--line); border-left:4px solid var(--accent); border-radius:4px; padding:11px 14px;
+  font:inherit; color:var(--ink); font-size:15px}
+.statusbar b{font-family:"IBM Plex Mono",monospace; font-weight:600}
+.statusbar span{white-space:nowrap}
+.statusbar em{font-style:normal; color:var(--muted); font-size:12px; margin-left:auto}
+.statusbar:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+details.lipat{margin-top:12px}
+details.lipat>summary{cursor:pointer; list-style:none; display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 14px;
+  background:var(--surface-2); border:1px solid var(--line); border-radius:4px; font-size:14px; font-weight:600; color:var(--ink-2)}
+details.lipat>summary::-webkit-details-marker{display:none}
+details.lipat>summary::before{content:"\25B8"; color:var(--accent); font-size:13px}
+details.lipat[open]>summary::before{content:"\25BE"}
+details.lipat[open]>summary{border-bottom-left-radius:0; border-bottom-right-radius:0}
+details.lipat>.panel, details.lipat>.rek{border-top-left-radius:0; border-top-right-radius:0; margin-top:0}
+details.lipat.kecil{margin-top:8px}
+details.lipat.kecil>summary{padding:6px 10px; font-size:12.5px; background:transparent; border:1px dashed var(--line)}
+details.kenapa{margin-top:8px}
+details.kenapa>summary{cursor:pointer; list-style:none; font-family:"IBM Plex Mono",monospace; font-size:11px; font-weight:600; color:var(--accent); letter-spacing:.04em}
+details.kenapa>summary::-webkit-details-marker{display:none}
+details.kenapa>summary::before{content:"?"; display:inline-block; width:16px; height:16px; line-height:16px; text-align:center; border-radius:50%; background:var(--accent-soft); margin-right:6px}
+details.kenapa>*:not(summary){margin-top:6px; font-size:13px; color:var(--ink-2)}
+.p-tiga{margin:0; padding-left:22px; display:flex; flex-direction:column; gap:6px; font-size:14.5px; color:var(--ink-2)}
+.p-tiga b{color:var(--ink)}
+.p-note i{display:inline-block; width:11px; height:11px; border-radius:2px; vertical-align:-1px; margin-right:3px}
+#pengaturan-anak{margin-top:28px}
+#pengaturan-anak h3{font-size:18px; margin:0}
+#pengaturan-anak section{margin-top:14px}
+.note details.kenapa{margin-top:6px}

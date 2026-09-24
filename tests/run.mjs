@@ -230,15 +230,17 @@ async function main(){
   const tabs = await page.$$eval(".tabs .tab", t => t.map(x => x.textContent.trim()));
   ok(tabs.join(",") === "Sekarang,Catatan,Rencana,Tanya", "empat tab", tabs);
   const v = await texts(page, ["verdict", "n-net", "aistat", "tanyastatus"]);
-  ok(/langkah berikutnya/i.test(v.verdict), "kartu langkah terisi", v.verdict);
+  ok(/Sekarang · \d\d:\d\d/i.test(v.verdict), "kartu langkah terisi", v.verdict);
   ok(/^Rp/.test(v["n-net"]), "proyeksi terisi", v["n-net"]);
-  ok(v.aistat === "Belum ada kunci", "status AI jujur tanpa kunci", v.aistat);
+  const aistat0 = await page.$eval("#aistat", e => e.textContent);
+  ok(aistat0 === "Belum ada kunci", "status AI jujur tanpa kunci", aistat0);
   await page.click("#t-plan");
   ok(await page.$eval("#v-plan", e => !e.hidden), "tab Rencana tampil");
-  ok((await page.$$("#cmp tr")).length === 7, "tabel bandingkan sif: 7 pola");
+  ok((await page.$$("#cmp tr")).length === 8, "tabel bandingkan sif: 8 pola");
   await page.click("#t-now");
 
   console.log("2. uji mandiri bawaan");
+  await page.evaluate(() => { document.getElementById("pengaturan-anak").open = true; });
   await page.click("#ujijalan");
   await page.waitForFunction(() => /kombinasi/.test(document.getElementById("ujihasil").textContent), null, { timeout:120000 });
   const uji = await texts(page, ["ujihasil"]);
@@ -356,8 +358,8 @@ async function main(){
     notes: document.getElementById("n-notes").textContent,
     pita: document.querySelectorAll("#cuaca .jamstrip i").length, pitaHujan: document.querySelectorAll("#cuaca .jamstrip i.l3").length }));
   ok(cu.pita === 24 && cu.pitaHujan === 4, "pita 24 jam, 4 jam hujan ditandai", `${cu.pita} ${cu.pitaHujan}`);
-  ok(/Diperkirakan hujan sekitar 13:00-17:00/.test(cu.teks) && /70%/.test(cu.teks), "kotak cuaca dari internet: jam dan peluang", cu.teks);
-  ok(cu.hujan === true && /Hujan sudah dihitung/.test(cu.notes) && /Open-Meteo/.test(cu.notes), "centang hujan terisi dan masuk hitungan", cu.notes.slice(0, 300));
+  ok(/Hujan sekitar 13:00-17:00/.test(cu.teks) && /70%/.test(cu.teks) && /Open-Meteo/.test(cu.teks), "kotak cuaca dari internet: jam, peluang, sumber", cu.teks);
+  ok(cu.hujan === true && /Hujan sudah dihitung/.test(cu.notes), "centang hujan terisi dan masuk hitungan", cu.notes.slice(0, 300));
   ok(cu.cache && cu.cache.tanggal === today && cu.cache.jamHujan.join(",") === "13,14,15,16", "prakiraan disimpan 3 jam di HP", JSON.stringify(cu.cache));
   await page.unroute("**/api.open-meteo.com/**");
   await page.evaluate(() => localStorage.removeItem("cuaca-openmeteo"));
@@ -438,6 +440,9 @@ async function main(){
 
   console.log("10. tema biru, rekomendasi rute otomatis, briefing Claude (tiruan)");
   await page.goto(url + "index.html?tahap4", { waitUntil:"load" });
+  await page.waitForFunction(() => document.querySelector("#n-steps .step"));
+  /* jam dibekukan ke 09:30 supaya sisa hari cukup untuk berpindah tempat, jam berapa pun uji ini dijalankan */
+  await setField(page, "n-jam", 9.5); await setField(page, "n-pulang", 21.5);
   await page.waitForFunction(() => document.querySelector("#rek-list .rek-item"));
   const tema = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
   ok(tema.toUpperCase() === "#1A56C4", "tema terang memakai aksen biru", tema);
@@ -455,12 +460,12 @@ async function main(){
     const tanpaDead = simulate(Object.assign({}, o, { deadKm:0 })).net, bawaan = simulate(o).net;
     return { n:d.length, urut, here: here && here.id, hereKm: here && here.kmPindah, basis: SEKARANG.rek.basis && SEKARANG.rek.basis.id,
       tampil: document.querySelectorAll("#rek-list .rek-item").length, top: document.querySelector("#rek-list .rek-item.top .rek-body b").textContent,
-      faktor: document.getElementById("rek-faktor").textContent, arah: document.querySelector("#rek-list a.linkbtn") && document.querySelector("#rek-list a.linkbtn").getAttribute("href"),
+      faktor: document.getElementById("rek-catatan").textContent, arah: document.querySelector("#rek-list a.linkbtn") && document.querySelector("#rek-list a.linkbtn").getAttribute("href"),
       deltaHere: here && here.selisih, tanpaDead, bawaan, jkt: d.find(x => x.id === "cbd").kmPindah > 20 };
   });
   ok(rk.n === 9 && rk.urut, "9 tempat dibandingkan, urut dari sisa hari terbesar", JSON.stringify(rk));
   ok(rk.here === "karawaci" && rk.hereKm === 0 && rk.basis === "karawaci" && rk.deltaHere === 0, "posisi sekarang jadi acuan tanpa km pindah", JSON.stringify(rk));
-  ok(rk.tampil === 3 && /baterai 65%/.test(rk.faktor) && /blok pagi akhir/.test(rk.faktor) && /pulang 21:30/.test(rk.faktor), "3 kartu teratas dan baris faktor", rk.faktor);
+  ok(rk.tampil === 3 && /baterai 65%/.test(rk.faktor) && /jam lewat peak pagi/.test(rk.faktor) && /pulang 21:30/.test(rk.faktor), "3 kartu teratas dan faktor di balik Kenapa?", rk.faktor);
   ok(/google\.com\/maps\/dir\/\?api=1&destination=-6\.\d+,106\.\d+/.test(rk.arah || ""), "tombol arah ke Google Maps", rk.arah);
   ok(rk.tanpaDead >= rk.bawaan && rk.jkt, "deadKm=0 tidak menghitung km kosong dua kali; CBD jauh dari Karawaci", JSON.stringify({ t:rk.tanpaDead, b:rk.bawaan }));
   await page.evaluate(() => document.getElementById("rek-toggle").click());
@@ -509,11 +514,11 @@ async function main(){
       const rows = [...document.querySelectorAll("#p-steps .step")].map(s => ({ t:s.querySelector(".t").innerText.replace(/\s+/g, " "), cls:s.className, d:(s.querySelector(".a .dt")||{}).innerText || "", cum:(s.querySelector(".v")||{}).innerText || "" }));
       return { rows, hint:document.getElementById("jedahint").innerText, net:document.getElementById("p-net").innerText, side:document.getElementById("p-side").innerText, rehat:JSON.stringify(rehatDariUI()) };
     });
-    const jedaRow = bebas.rows.find(r => /jeda/.test(r.t));
+    const jedaRow = bebas.rows.find(r => /istirahat/.test(r.t));
     ok(jedaRow && /12:00.13:30/.test(jedaRow.t), "jeda bebas 12:00–13:30 tampil persis sebagai satu baris", JSON.stringify(jedaRow));
     ok(bebas.rehat === "[12,13.5]" && /12:00.13:30 \(90 menit\)/.test(bebas.hint), "kolom dari–sampai menjadi rentang [12,13.5] dan keterangannya", bebas.rehat + " | " + bebas.hint);
-    const kerja = bebas.rows.filter(r => /jam$/.test(r.t) && !/jeda/.test(r.t));
-    ok(kerja.length > 3 && kerja.every(r => /order .* km berbayar .* baterai \d+→\d+%/.test(r.d)), "tiap langkah kerja memuat ≈ order, km berbayar, dan baterai a→b%", JSON.stringify(kerja.map(r => r.d)));
+    const kerja = bebas.rows.filter(r => /jam$/.test(r.t) && !/istirahat/.test(r.t));
+    ok(kerja.length > 3 && kerja.every(r => /order .* km berpenumpang .* baterai \d+%→\d+%/.test(r.d)), "tiap langkah kerja memuat ≈ order, km berpenumpang, dan baterai a→b%", JSON.stringify(kerja.map(r => r.d)));
     ok(/≈ Order/.test(bebas.side) && /\/order/.test(bebas.side), "ringkasan memuat perkiraan order dan Rp/order", bebas.side.slice(0, 300));
     const rekap = bebas.rows[bebas.rows.length - 1];
     const cumRekap = (rekap.cum.match(/Rp [\d.]+/g) || []).pop();
@@ -548,7 +553,7 @@ async function main(){
       return { t, keluar: jamKeluarSekarang(), manual: jamManual, hidup: document.getElementById("jamhidup").textContent, src: document.getElementById("src-jam").textContent };
     });
     const dalamJam = jam.t >= 3.5 && jam.t <= 23.5;
-    ok(!dalamJam || (!jam.manual && Math.abs(jam.keluar - jam.t) < 0.02 && /ikut jam, tepat ke menit/.test(jam.src)), "mesin memakai jam sekarang tepat ke menit", JSON.stringify(jam));
+    ok(!dalamJam || (!jam.manual && Math.abs(jam.keluar - jam.t) < 0.02 && /otomatis/.test(jam.src)), "mesin memakai jam sekarang tepat ke menit", JSON.stringify(jam));
     ok(/^\d\d:\d\d$/.test(jam.hidup), "jam hidup tampil HH:MM", jam.hidup);
     await fresh.close();
   }
@@ -568,7 +573,7 @@ async function main(){
     ok(!dalamJam || tampil, "halaman Mulai hari terbuka sendiri saat aplikasi dibuka", JSON.stringify({ jam, tampil }));
     if (!tampil) await ci.evaluate(() => bukaCheckin());
     const auto = await ci.$eval("#ci-auto", e => e.innerText);
-    ok(/Yang sudah diketahui mesin/.test(auto) && /posisi:/.test(auto), "halaman menyebut yang sudah diketahui mesin (hari, jam, posisi)", auto);
+    ok(/Sudah terisi otomatis/.test(auto) && /posisi:/.test(auto), "halaman menyebut yang sudah diketahui mesin (hari, jam, posisi)", auto);
     await setField(ci, "ci-soc", 72); await setField(ci, "ci-zona", "tng"); await setField(ci, "ci-filter", 1);
     await setField(ci, "ci-rehat", "custom"); await setField(ci, "ci-rehat-dari", 12); await setField(ci, "ci-rehat-sampai", 13.5);
     await setField(ci, "ci-gps", false);
@@ -578,7 +583,7 @@ async function main(){
       mulai:MULAI_HARI && MULAI_HARI.soc, jangkar:Baterai.terakhir(), est:document.getElementById("socest").innerText, status:document.getElementById("hari-status").innerText }));
     ok(sesudah.hidden && sesudah.soc === "72" && sesudah.mulai === 72, "Mulai hari menutup halaman dan mengisi baterai 72% di tab Sekarang", JSON.stringify(sesudah));
     ok(sesudah.plan && sesudah.plan.rehat === "[12,13.5]" && sesudah.plan.filter === 1 && sesudah.plan.zona === "tng", "isian menjadi rencana hari ini (jeda 12:00–13:30, filter 1, Tangerang)", JSON.stringify(sesudah.plan));
-    ok(sesudah.jangkar && sesudah.jangkar.soc === 72 && /perkiraan mesin/.test(sesudah.src) && /Perkiraan mesin/.test(sesudah.est), "jangkar baterai 72% dan keterangan perkiraan", JSON.stringify({ j:sesudah.jangkar, src:sesudah.src, est:sesudah.est }));
+    ok(sesudah.jangkar && sesudah.jangkar.soc === 72 && /perkiraan/.test(sesudah.src) && /Perkiraan/.test(sesudah.est), "jangkar baterai 72% dan keterangan perkiraan", JSON.stringify({ j:sesudah.jangkar, src:sesudah.src, est:sesudah.est }));
     const est2 = await ci.evaluate(() => { const j = Baterai.terakhir(); return Baterai.perkiraan(j.jam + 2, { bat:30.08, zona:"tng", rehat:"none" }); });
     ok(est2 && est2.soc < 72 && est2.soc > 40 && !est2.gps, "dua jam kemudian perkiraan turun menurut model blok jam", JSON.stringify(est2));
     /* titik GPS 10 menit terpisah, akurasi 20 m (laju masuk akal; goyangan < 1,5x akurasi diabaikan) */
