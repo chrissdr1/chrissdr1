@@ -21,6 +21,7 @@ await p.evaluate(() => document.getElementById("peta-toggle").click());
 await p.waitForFunction(() => document.querySelectorAll("#peta .pin").length > 0);
 await p.evaluate(() => document.getElementById("petabox").scrollIntoView());
 await p.screenshot({ path:OUT + "/peta.png" });
+await p.evaluate(() => document.getElementById("rek").scrollIntoView()); await p.screenshot({ path:OUT + "/rek.png" });
 await p.click("#t-log"); await p.evaluate(() => document.getElementById("sk-panel").scrollIntoView()); await p.screenshot({ path:OUT + "/log.png" });
 await p.click("#t-plan"); await p.evaluate(() => document.getElementById("acara-daftar").scrollIntoView({ block:"center" })); await p.screenshot({ path:OUT + "/acara.png" });
 await p.click("#t-tanya"); await p.evaluate(() => document.getElementById("ai-panel").scrollIntoView()); await p.screenshot({ path:OUT + "/tanya.png" });
