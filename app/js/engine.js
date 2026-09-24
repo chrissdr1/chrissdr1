@@ -149,7 +149,9 @@ function simulate(o){
     segs.push({n:b.n,s:b.s,e:b.e,on:net>0,rate:eff});
   });
 
-  var deadKm=z.dead, deadHours=deadKm/CALIB.kecepatan, cap=o.bat;
+  /* o.deadKm: pemanggil (rekomendasi rute) sudah menghitung km kosong dari
+     posisi sebenarnya, jadi km kosong bawaan wilayah tidak dihitung dua kali. */
+  var deadKm=(typeof o.deadKm === "number") ? o.deadKm : z.dead, deadHours=deadKm/CALIB.kecepatan, cap=o.bat;
   /* Pakai sisa baterai yang sebenarnya kalau diberikan (tab Sekarang);
      kalau tidak, anggap berangkat 90% atau penuh bila ada charger rumah. */
   var startSoC = (typeof o.soc === "number" && o.soc > 0)

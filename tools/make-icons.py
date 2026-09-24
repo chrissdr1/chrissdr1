@@ -5,7 +5,7 @@ import zlib, struct, sys, pathlib
 
 OUT = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else pathlib.Path("/home/user/chrissdr1/app/icons")
 OUT.mkdir(parents=True, exist_ok=True)
-BG = (0x00, 0x71, 0x3C); FG = (0xFF, 0xFF, 0xFF); SOFT = (0xDD, 0xEB, 0xE1)
+BG = (0x1A, 0x56, 0xC4); FG = (0xFF, 0xFF, 0xFF); SOFT = (0xDD, 0xE7, 0xF8)   # tema biru (Ibu suka biru)
 
 def png(size):
     px = bytearray()
@@ -45,9 +45,9 @@ for s in (192, 512):
     (OUT / f"icon-{s}.png").write_bytes(png(s))
 
 (OUT / "icon.svg").write_text('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-<rect width="100" height="100" rx="22" fill="#00713C"/>
-<path d="M22 78 L78 22" stroke="#DDEBE1" stroke-width="24" stroke-linecap="butt"/>
-<path d="M28 72 L72 28" stroke="#00713C" stroke-width="3.5" stroke-dasharray="7 7"/>
+<rect width="100" height="100" rx="22" fill="#1A56C4"/>
+<path d="M22 78 L78 22" stroke="#DDE7F8" stroke-width="24" stroke-linecap="butt"/>
+<path d="M28 72 L72 28" stroke="#1A56C4" stroke-width="3.5" stroke-dasharray="7 7"/>
 <circle cx="74" cy="26" r="7.5" fill="#fff"/>
 </svg>
 ''', encoding="utf-8")

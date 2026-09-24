@@ -4,9 +4,10 @@
    mesin cuma satu bit: hujan atau tidak, plus jamnya.
 
    Hasilnya berbentuk sama dengan CUACA di data.js, jadi terapkanCuaca() di
-   app.js tidak perlu tahu dari mana datangnya. Disimpan 3 jam di HP supaya
-   tidak memanggil ulang tiap pindah tab. Kalau internet tidak ada, kembali
-   ke CUACA bawaan, dan kotak cuaca mengatakannya. */
+   app.js tidak perlu tahu dari mana datangnya, ditambah perJam (peluang dan
+   curah tiap jam) untuk pita 24 jam di kotak cuaca. Disimpan 3 jam di HP
+   supaya tidak memanggil ulang tiap pindah tab. Kalau internet tidak ada,
+   kembali ke CUACA bawaan, dan kotak cuaca mengatakannya. */
 "use strict";
 
 var Cuaca = (function(){
@@ -24,12 +25,13 @@ var Cuaca = (function(){
   function olah(json, hariIni){
     var h = json && json.hourly;
     if (!h || !h.time) throw new Error("bentuk jawaban tidak dikenal");
-    var jamHujan = [], maxP = 0, jamMaxP = null, totalMm = 0;
+    var jamHujan = [], perJam = [], maxP = 0, jamMaxP = null, totalMm = 0;
     for (var i = 0; i < h.time.length; i++){
       if (String(h.time[i]).slice(0, 10) !== hariIni) continue;
       var jam = parseInt(String(h.time[i]).slice(11, 13), 10);
       var p = h.precipitation_probability ? h.precipitation_probability[i] : null;
       var mm = h.precipitation ? h.precipitation[i] : null;
+      perJam.push({ j:jam, p:(p == null ? 0 : p), mm:(mm == null ? 0 : mm) });
       if (p != null && p > maxP){ maxP = p; jamMaxP = jam; }
       if (mm != null) totalMm += mm;
       if ((p != null && p >= AMBANG_PELUANG) || (mm != null && mm >= AMBANG_MM)) jamHujan.push(jam);
@@ -41,7 +43,7 @@ var Cuaca = (function(){
         (Math.round(totalMm * 10) / 10).toLocaleString("id-ID") + " mm di " + TITIK.nama + "."
       : "Peluang hujan di bawah " + AMBANG_PELUANG + "% sepanjang hari (tertinggi " + Math.round(maxP) + "%) di " + TITIK.nama + ".";
     return { tanggal:hariIni, hujan:hujan, jam:jamTeks, ringkas:ringkas, sumber:"Open-Meteo",
-             diambil:new Date().toISOString(), jamHujan:jamHujan };
+             diambil:new Date().toISOString(), jamHujan:jamHujan, perJam:perJam };
   }
 
   /* Promise<cuaca|null>. null = tidak ada prakiraan hari ini yang bisa dipercaya. */
@@ -56,5 +58,16 @@ var Cuaca = (function(){
       ["catch"](function(){ return (c && c.tanggal === hariIni) ? c : null; });
   }
 
-  return { ambil:ambil, baca:baca, olah:olah, URL:URL_, TITIK:TITIK };
+  /* Pita 24 jam: satu kotak per jam, makin gelap makin besar peluang hujannya. */
+  function pita(c){
+    if (!c || !c.perJam || !c.perJam.length) return "";
+    var jamNow = new Date().getHours();
+    return '<div class="jamstrip" role="img" aria-label="Peluang hujan per jam hari ini">' + c.perJam.map(function(x){
+      var lvl = x.p >= 70 ? 3 : x.p >= 50 ? 2 : x.p >= 30 ? 1 : 0;
+      return '<i class="l' + lvl + (x.j === jamNow ? " now" : "") + '" title="' + dua(x.j) + ":00 · " + Math.round(x.p) + "%" +
+             (x.mm ? " · " + x.mm + " mm" : "") + '"></i>';
+    }).join("") + '</div><div class="jamaxis"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>';
+  }
+
+  return { ambil:ambil, baca:baca, olah:olah, pita:pita, URL:URL_, TITIK:TITIK };
 })();

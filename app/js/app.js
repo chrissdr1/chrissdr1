@@ -622,6 +622,8 @@ function runNow(){
   SEKARANG = { v:v, langkah:langkah, proyeksi:proyeksi, sisa:sisa, gap:gap,
                insentif:insentifHarian, blok:blk, r:r, L:L, o:o,
                usableKm:usableKm, butuh:butuh, soc:soc, stay:stay };
+  SEKARANG.rek = renderRekomendasi(o, L, soc, stay);
+  briefingOtomatis();
 
   var nn=[];
   /* Didahulukan dari semua catatan lain: kalau jamnya salah, semua angka di
@@ -1741,7 +1743,7 @@ function terapkanCuaca(c){
       (c.ringkas ? " " + c.ringkas : "") +
       ' <span style="opacity:.7">&mdash; ' + (c.sumber || "BMKG") +
       (c.diambil ? ", diambil " + hhmm(new Date(c.diambil).getHours() + new Date(c.diambil).getMinutes()/60) : "") +
-      "</span></span>";
+      "</span>" + Cuaca.pita(c) + "</span>";
     if (c.hujan){
       if (!el("n-hujan").dataset.touched) el("n-hujan").checked = true;
       if (!el("p-hujan").dataset.touched && el("p-tgl").value === c.tanggal) el("p-hujan").checked = true;
@@ -1821,6 +1823,7 @@ function pasangAI(){
     sampler = ns || null;
     el("ask").disabled = !(sampler && rows.length >= 3);
     tandaiAI();
+    briefingOtomatis();
     if (sampler && sampler.sumber === "api" && Acara.perluSegar() && navigator.onLine !== false)
       setTimeout(function(){ segarkanAcara(true); }, 4000);
   })["catch"](function(){ sampler = null; tandaiAI(); });
@@ -1970,3 +1973,100 @@ window.addEventListener("online", function(){ jalankanSinkron(); });
 document.addEventListener("visibilitychange", function(){ if (!document.hidden && Sinkron.aktif()) jalankanSinkron(); });
 tandaiSinkron();
 if (Sinkron.aktif()) jalankanSinkron();
+
+/* ---------------- rekomendasi rute otomatis ---------------- */
+var rekSemua = false;
+function renderRekomendasi(o, L, soc, stay){
+  var box = el("rek"); if (!box) return null;
+  var h = Rekomendasi.hitung(o, L, soc, stay);
+  el("rek-faktor").textContent = Rekomendasi.faktor(o, soc).join(" · ");
+  if (!h.daftar.length){
+    el("rek-list").innerHTML = '<div class="empty">Sisa waktu terlalu pendek untuk berpindah tempat.</div>';
+    el("rek-catatan").textContent = ""; return h;
+  }
+  var tampil = rekSemua ? h.daftar : h.daftar.slice(0, 3);
+  el("rek-list").innerHTML = tampil.map(function(x, i){
+    var sel = x.diSini ? "acuan" : (x.selisih >= 0 ? "+" : "−") + rp(Math.abs(x.selisih)) + " dibanding tetap di sini";
+    var gerak = x.diSini ? "Tetap di sini."
+      : "Pindah " + Math.round(x.kmPindah) + " km, ±" + Math.round(x.jamPindah * 60) + " menit, tiba " + hhmm(x.tiba) +
+        " dengan baterai ±" + x.socTiba + "%" + (x.socTiba < x.res ? " (di bawah ambang pulang " + x.res + "%)" : "") + ".";
+    return '<div class="rek-item' + (i === 0 ? " top" : "") + (x.diSini ? " here" : "") + '">' +
+      '<div class="rek-rank">' + (i + 1) + "</div>" +
+      '<div class="rek-body"><b>' + esc(x.n) + "</b>" +
+      '<span class="rek-num">' + rp(x.sisa) + " <em>sisa hari, sebelum insentif</em></span>" +
+      "<i>" + gerak + " " + rapi(x.saran.h) + "." + (x.sesi ? " " + x.sesi + "× ngecas." : "") + " Pulang " + Math.round(x.kmHome) + " km.</i>" +
+      '<span class="rek-delta ' + (x.selisih > 0 ? "up" : x.selisih < 0 ? "dn" : "") + '">' + sel + "</span>" +
+      (x.diSini ? "" : '<a class="linkbtn" target="_blank" rel="noopener" href="' + Rekomendasi.tautanArah(x.lat, x.lon) + '">Arahkan lewat Google Maps</a>') +
+      "</div></div>";
+  }).join("") + (h.daftar.length > 3
+    ? '<button type="button" class="linkbtn" id="rek-toggle">' + (rekSemua ? "Tampilkan 3 teratas saja" : "Lihat semua " + h.daftar.length + " tempat") + "</button>" : "");
+  var t = el("rek-toggle");
+  if (t) t.addEventListener("click", function(){ rekSemua = !rekSemua; runNow(); });
+  el("rek-catatan").innerHTML = "Dihitung mesin yang sama dengan proyeksi di bawah: hari, jam, wilayah tarif (Tangerang, Jakarta, bandara), " +
+    "jarak pindah dari posisi Ibu, baterai setelah pindah, cuaca, acara, dan jarak pulang. <b>Tempat-tempat di wilayah tarif yang sama hanya " +
+    "berbeda karena jarak</b>; mesin ini belum punya data permintaan per tempat, jadi kalimat sarannya yang membedakan, bukan angkanya.";
+  return h;
+}
+
+/* ---------------- briefing otomatis dari Claude ----------------
+   Satu paragraf pendek tiap kali blok jam (atau wilayah) berganti, disusun dari
+   rekomendasi mesin dan konteks yang sama dengan tab Tanya. Disimpan di HP
+   supaya membuka ulang halaman tidak membayar dua kali. Bisa dimatikan di
+   tab Tanya. Tanpa sambungan Claude, kotaknya tidak muncul sama sekali. */
+var LSBRIEF = "briefing-claude", briefingJalan = false, briefingKunci = null, briefingTimer = null;
+function briefingAktif(){ try { return localStorage.getItem("briefing-otomatis") !== "0"; } catch (e) { return true; } }
+function kunciBriefing(){ return SEKARANG ? iso(new Date()) + "|" + SEKARANG.blok.n + "|" + SEKARANG.L.z : null; }
+function bacaBriefing(){ try { return JSON.parse(localStorage.getItem(LSBRIEF) || "null"); } catch (e) { return null; } }
+function renderBriefing(b, status){
+  var n = el("briefing"); if (!n) return;
+  if (!b && !status){ n.hidden = true; return; }
+  n.hidden = false;
+  n.innerHTML = '<div class="ai-head"><span class="eyebrow">Briefing dari Claude' + (b ? " &middot; " + b.jam : "") + "</span>" +
+    '<button type="button" class="linkbtn" id="briefing-segar">Segarkan</button></div>' +
+    '<div class="ai-out">' + (b ? esc(b.teks) : "") + "</div>" +
+    (status ? '<div class="status">' + esc(status) + "</div>" : "");
+  var s = el("briefing-segar"); if (s) s.addEventListener("click", function(){ jalankanBriefing(true); });
+}
+function jalankanBriefing(paksa){
+  if (!sampler || !SEKARANG || briefingJalan) return Promise.resolve();
+  var kunci = kunciBriefing(), lama = bacaBriefing();
+  var lamaCocok = (lama && lama.kunci === kunci) ? lama : null;
+  if (!paksa && lamaCocok){ renderBriefing(lamaCocok); return Promise.resolve(); }
+  briefingJalan = true; renderBriefing(lamaCocok, "Menyusun briefing…");
+  var rek = SEKARANG.rek ? SEKARANG.rek.daftar.slice(0, 5).map(function(x, i){
+    return (i + 1) + ". " + x.n + ": sisa hari Rp " + Math.round(x.sisa).toLocaleString("id-ID") +
+           (x.diSini ? " (posisi sekarang)" : ", pindah " + Math.round(x.kmPindah) + " km, tiba " + hhmm(x.tiba)) +
+           " -- " + rapi(x.saran.h);
+  }).join("\n") : "(belum ada)";
+  var prompt =
+    "Kamu asisten pribadi Shanti, pengemudi GrabCar listrik yang tinggal di Modernland, Tangerang. Panggil dia Ibu. " +
+    "Tulis BRIEFING SINGKAT untuk saat ini: paling banyak 5 kalimat, bahasa Indonesia hangat dan lugas, tanpa pembuka, " +
+    "tanpa daftar bernomor, tanpa judul. Isinya: (1) apa yang sebaiknya dilakukan sekarang dan ke mana, (2) satu alasan " +
+    "berangka dari data di bawah, (3) satu hal yang perlu diwaspadai hari ini (cuaca, acara, baterai, atau jam pulang). " +
+    "Pakai HANYA data di bawah; jangan mengarang angka; kalau bertumpu pada asumsi, sebut dalam beberapa kata.\n\n" +
+    "=== REKOMENDASI MESIN, URUT DARI TERBAIK (nilai ini, jangan diulang mentah) ===\n" + rek + "\n\n" + konteksTanya();
+  return sampler(prompt, { modelTier:"default" }).then(function(res){
+    var j = new Date();
+    var b = { kunci:kunci, teks:String(res.text || "").trim(), jam:hhmm(j.getHours() + j.getMinutes()/60), dibuat:j.toISOString() };
+    try { localStorage.setItem(LSBRIEF, JSON.stringify(b)); } catch (e) {}
+    briefingJalan = false; renderBriefing(b);
+  }, function(err){
+    briefingJalan = false;
+    var c = (err && err.code) || "error";
+    renderBriefing(lamaCocok, c === "rate_limited" ? "Terlalu sering; coba lagi nanti." : "Briefing gagal (" + c + ").");
+  });
+}
+function briefingOtomatis(){
+  if (!SEKARANG) return;
+  if (!briefingAktif() || !sampler){ renderBriefing(null); briefingKunci = null; return; }
+  var kunci = kunciBriefing(), lama = bacaBriefing();
+  if (lama && lama.kunci === kunci){ if (briefingKunci !== kunci){ briefingKunci = kunci; renderBriefing(lama); } return; }
+  if (briefingKunci === kunci) return;   /* sudah dijadwalkan atau sedang berjalan untuk kunci ini */
+  briefingKunci = kunci;
+  clearTimeout(briefingTimer); briefingTimer = setTimeout(function(){ jalankanBriefing(false); }, 2000);
+}
+el("ai-briefing").checked = briefingAktif();
+el("ai-briefing").addEventListener("change", function(){
+  try { localStorage.setItem("briefing-otomatis", this.checked ? "1" : "0"); } catch (e) {}
+  briefingKunci = null; briefingOtomatis();
+});
