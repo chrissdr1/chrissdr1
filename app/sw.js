@@ -3,7 +3,7 @@
    kali ada file yang berubah (samakan dengan TERBIT di js/data.js -- tes
    memeriksanya). Strategi: sajikan dari cache dulu supaya cepat, lalu ambil
    versi baru di latar belakang untuk pembukaan berikutnya. */
-var VERSION = "2026-09-24.2";
+var VERSION = "2026-09-24.3";
 var CACHE = "shanti-" + VERSION;
 var ASSETS = [
   "./", "index.html", "style.css", "manifest.webmanifest", "rute-700k.html",
