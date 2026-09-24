@@ -205,6 +205,8 @@ async function main(){
   /* Internet luar dimatikan supaya hasilnya pasti: cuaca jatuh ke cadangan, ubin peta kosong. */
   await ctx.route("**/api.open-meteo.com/**", r => r.abort());
   await ctx.route("**/tile.openstreetmap.org/**", r => r.abort());
+  await ctx.route("**/api.anthropic.com/**", r => r.abort());
+  await ctx.route("**/api.github.com/**", r => r.abort());
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", e => errors.push("pageerror: " + e.message));
@@ -405,8 +407,27 @@ async function main(){
   ok(w.r3.status === "tersinkron" && w.r3.puts === 2, "tanpa perubahan tidak menulis ulang", JSON.stringify(w.r3));
   ok(w.auth === "Bearer tok-uji" && /Aktif · x\/y/.test(w.stat), "token dikirim sebagai Bearer, status panel", `${w.auth} | ${w.stat}`);
 
+  console.log("9. tautan pengaturan (#kunci=…&repo=…&token=…)");
+  /* Query "?tautan" memaksa navigasi penuh: pindah ke URL yang cuma beda pagar (#)
+     tidak memuat ulang dokumen, jadi pengaturannya tidak akan terbaca. */
+  await page.goto(url + "index.html?tautan#kunci=sk-ant-tautan&repo=anak/data-ibu&token=github_pat_tautan", { waitUntil:"load" });
+  await page.waitForFunction(() => document.querySelector("#n-steps .step"));
+  const tl = await page.evaluate(() => ({
+    kunci: AI.getKey(), cfg: Sinkron.cfg(), hash: location.hash, href: location.href,
+    flag: document.getElementById("tautan").hidden ? "" : document.getElementById("tautan").textContent,
+    aistat: document.getElementById("aistat").textContent, skstat: document.getElementById("sk-stat").textContent }));
+  ok(tl.kunci === "sk-ant-tautan" && tl.cfg.repo === "anak/data-ibu" && tl.cfg.token === "github_pat_tautan", "kunci dan token tersimpan dari tautan", JSON.stringify(tl));
+  ok(tl.hash === "" && !/kunci=/.test(tl.href), "tautan dihapus dari alamat", tl.href);
+  ok(/kunci Claude, sinkron GitHub \(anak\/data-ibu\)/.test(tl.flag), "kotak pemberitahuan menyebut apa yang tersimpan", tl.flag);
+  ok(/Kunci tersimpan/.test(tl.aistat) && /Aktif · anak\/data-ibu/.test(tl.skstat), "panel Tanya dan Catatan langsung memakai pengaturan itu", `${tl.aistat} | ${tl.skstat}`);
+  await page.goto(url + "index.html", { waitUntil:"load" });
+  await page.waitForFunction(() => document.querySelector("#n-steps .step"));
+  const tl2 = await page.evaluate(() => ({ kunci: AI.getKey(), flag: document.getElementById("tautan").hidden }));
+  ok(tl2.kunci === "sk-ant-tautan" && tl2.flag === true, "tanpa tautan: pengaturan tetap, kotak tidak muncul lagi");
+  await page.evaluate(() => { AI.setKey(""); Sinkron.setCfg(null); });
+
   if (process.env.ORIG_HTML){
-    console.log("9. uji emas terhadap artifact asli");
+    console.log("10. uji emas terhadap artifact asli");
     const orig = await ctx.newPage();
     await orig.goto("file://" + path.resolve(process.env.ORIG_HTML), { waitUntil:"load" });
     await orig.waitForFunction(() => document.querySelector("#n-steps .step"));

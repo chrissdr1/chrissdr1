@@ -1768,6 +1768,39 @@ window.addEventListener("online", segarkanCuaca);
 el("n-hujan").addEventListener("change", function(){ this.dataset.touched = "1"; });
 el("p-hujan").addEventListener("change", function(){ this.dataset.touched = "1"; });
 
+/* ---------------- tautan pengaturan ----------------
+   Mengetik kunci sepanjang 100 huruf di HP mengundang salah ketik. Anak bisa
+   membuat tautan sekali pakai dari komputernya dan mengirimnya ke HP Ibu:
+     https://chrissdr1.github.io/chrissdr1/#kunci=sk-ant-...&repo=pemilik/nama&token=github_pat_...
+   Bagian setelah # tidak pernah dikirim ke server mana pun (browser tidak
+   menyertakannya dalam permintaan). Halaman membacanya, menyimpannya di HP
+   ini, lalu menghapusnya dari alamat supaya tidak tinggal di riwayat browser.
+   Harus berjalan SEBELUM pasangAI() dan sinkron, yang membaca simpanan itu. */
+var PENGATURAN_DARI_TAUTAN = [];
+(function(){
+  var h = location.hash ? location.hash.slice(1) : "";
+  if (!h || h.indexOf("=") < 0) return;
+  var p = {};
+  h.split("&").forEach(function(kv){
+    var i = kv.indexOf("=");
+    if (i > 0){ try { p[decodeURIComponent(kv.slice(0, i))] = decodeURIComponent(kv.slice(i + 1)).trim(); } catch (e) {} }
+  });
+  if (p.kunci){ AI.setKey(p.kunci); PENGATURAN_DARI_TAUTAN.push("kunci Claude"); }
+  if (p.token){
+    var c = Sinkron.cfg();
+    Sinkron.setCfg({ repo:(p.repo || c.repo || Sinkron.BAWAAN.repo), path:Sinkron.BAWAAN.path, token:p.token });
+    PENGATURAN_DARI_TAUTAN.push("sinkron GitHub" + (p.repo ? " (" + p.repo + ")" : ""));
+  }
+  if (!PENGATURAN_DARI_TAUTAN.length) return;
+  try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+  var n = el("tautan");
+  if (n){
+    n.hidden = false; n.className = "flag";
+    n.innerHTML = '<span class="tag">Pengaturan</span><span><b>Tersimpan dari tautan: ' + PENGATURAN_DARI_TAUTAN.join(", ") +
+      ".</b> Tautannya sudah dihapus dari alamat; tidak perlu disimpan. Kalau pengaturannya ditolak, pesannya muncul di tab Tanya atau Catatan.</span>";
+  }
+})();
+
 /* ---------------- sambungan ke Claude ---------------- */
 function tandaiAI(){
   var st = AI.status(), e = el("aistat"), k = AI.getKey();
