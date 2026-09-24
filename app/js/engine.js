@@ -205,11 +205,16 @@ function jamTempuhRumah(L, jam, km){
    tempat diturunkan dari jarak terukur ke rumah (km terukur / garis lurus),
    dibatasi 1,3-2,2; pasangan memakai rata-rata geometrisnya. Untuk pasangan
    yang salah satunya rumah, jarak terukurnya dipakai langsung. */
+function ruasTerukur(A, B){
+  if (typeof RUAS_TERUKUR === "undefined") return null;
+  return RUAS_TERUKUR[A.id + ">" + B.id] || RUAS_TERUKUR[B.id + ">" + A.id] || null;
+}
 function jarakAntar(A, B){
   if (!A || !B || A.lat == null || B.lat == null) return 0;
   if (A.id === B.id) return 0;
   if (A.id === "kota") return B.pergi || B.home;
   if (B.id === "kota") return A.home;
+  var ru = ruasTerukur(A, B); if (ru) return ru.km;
   var lurus = jarakLurus(A.lat, A.lon, B.lat, B.lon);
   function liku(L){ var d = jarakLurus(RUMAH.lat, RUMAH.lon, L.lat, L.lon); return Math.max(1.3, Math.min(2.2, d > 0.5 ? L.home / d : 1.35)); }
   return lurus * Math.sqrt(liku(A) * liku(B));
@@ -219,6 +224,11 @@ function jarakAntar(A, B){
    memakai rata-ratanya, diskalakan kalibrasi. */
 function jamTempuhAntar(A, B, jam){
   var km = jarakAntar(A, B); if (!km) return 0;
+  var ru = ruasTerukur(A, B);
+  if (ru && ru.mnt){   /* menit lancar terukur; jam sibuk x1,6 (Tangerang) / x1,9 (arah Jakarta) */
+    var arahJkt = (A.z === "jkt" || B.z === "jkt");
+    return ru.mnt / 60 * (jamSibuk(jam) ? (arahJkt ? 1.9 : 1.6) : 1) * (KEC_BAWAAN / Math.max(10, CALIB.kecepatan));
+  }
   function v(L){
     if (L && L.mnt){ var m = jamSibuk(jam) ? L.mnt.sibuk : L.mnt.lancar; return (L.pergi || L.home) / (m / 60); }
     return CALIB.kecepatan / faktorMacet(jam, L ? L.z : "tng");
@@ -409,7 +419,14 @@ function simulate(o){
   if (adaUrutan){
     var sebelum = o.tempatAwal || null, kk = 0;
     pieces.forEach(function(p){
-      if (p.jeda) return;
+      if (p.jeda){
+        /* istirahat >= 1,5 jam dianggap pulang ke rumah (km & baterai pindah
+           dihitung, waktunya diserap istirahat); istirahat pendek di tempat */
+        var R = (p.w >= 1.5 && !o.stay) ? LOKMAP.kota : sebelum;
+        if (R && sebelum && R.id !== sebelum.id){ p.pindahKm = jarakAntar(sebelum, R); p.tempat = R; }
+        if (R) sebelum = R;
+        return;
+      }
       var T = LOKMAP[o.urutan[kk++]] || sebelum || LOKMAP.kota;
       p.tempat = T; p.zonaT = ZONA[T.z] || z;
       p.pindahKm = sebelum ? jarakAntar(sebelum, T) : 0;
@@ -447,7 +464,9 @@ function simulate(o){
   var adaJkt = adaUrutan ? kerja.some(function(p){ return p.tempat && p.tempat.z === "jkt"; }) : (o.zona === "jkt" || o.zona === "mix");
   var floor = adaJkt ? 0.25 : 0.20;
   var ambangPulang = 0.15 + kmHome / kmPerFrac;
-  var fullSesi = cap > 35 ? 1.0 : 0.85;   /* jam untuk 15->90%; asumsi dari 40 kW yang menurun */
+  /* jam untuk 15->90% (tanpa 7 menit colok/bayar): Rute 700K 20->80% = 35 menit
+     Dynamic / 45 menit Premium di DC 40 kW, ditambah pelambatan di atas 80%. */
+  var fullSesi = cap > 35 ? 0.88 : 0.72;
 
   kerja.forEach(function(p){
     var zp = p.zonaT || z, bobot = p.tempat ? bobotTempat(p.tempat.id, p.b.n) : 1;
@@ -473,12 +492,12 @@ function simulate(o){
     gross += g; effHours += jam; kmKerja += p.kmH * jam; paidKm += pk; trips += pk / p.tripKm;
     chargeHours += p.casPakai || 0; hilangRp += p.grossH * (p.casPakai || 0);
     if (jam > 0 && p.rateH < murah) murah = p.rateH;
-    if (p.b.n === "Siang" || p.b.n === "Malam" || p.b.n === "Pagi akhir") adaMal = true;
+    if (p.b.n === "Siang" || p.b.n === "Malam") adaMal = true;   /* parkir mal: sirkuit siang / malam mal tutup */
     perBlok.push({ n:p.b.n, s:p.s, e:p.e, jam:jam, gross:g, paidKm:pk, trips:pk / p.tripKm, km:p.kmH * jam,
                    rateH:p.rateH, mult:p.mult, sesi:p.sesi || null });
   });
   var deadJamPakai = tl.matiPakai;
-  var kmPindah = 0; kerja.forEach(function(p){ kmPindah += p.pindahKm || 0; });
+  var kmPindah = 0; pieces.forEach(function(p){ kmPindah += p.pindahKm || 0; });
   var kmTotal = kmKerja + deadKm + kmHome + kmPindah;
   var listrik = kmTotal / kmkwh * TARIF_KWH;
   var blockNet = gross - listrik;   /* jam yang hilang sudah tidak ada di gross */

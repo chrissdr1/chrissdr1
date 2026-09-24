@@ -39,6 +39,7 @@ var Peluang = (function(){
 
   function bolehKe(S, T, p){
     if (p.s >= 20 && T.home > S.home + 1) return false;            /* kompas: malam hanya mendekat ke rumah */
+    if (p.s >= 20 && T.z === "jkt") return false;                  /* "jam 20:00 seharusnya sudah tidak di Jakarta" (Rute 700K) */
     if (p.s >= 21 && T.z === "jkt" && S.id !== T.id) return false; /* Jakarta tidak dimasuki lagi setelah 21:00 */
     if (T.id === "bandara" && S.id !== T.id && p.w < 1) return false; /* antre bandara butuh waktu */
     return true;
@@ -71,16 +72,19 @@ var Peluang = (function(){
     var beam = [{ urutan:[], skor:0, akhir:awal, jatah:o.filter, pindah:0, jatahGrup:{} }];
     kerja.forEach(function(p){
       var berikut = [];
+      /* istirahat panjang sebelum potongan ini: Ibu berangkat lagi dari rumah */
+      var idx = pieces.indexOf(p), jedaSebelum = idx > 0 && pieces[idx - 1].jeda && pieces[idx - 1].w >= 1.5 && !o.stay;
       beam.forEach(function(st){
+        var S = jedaSebelum ? LOKMAP.kota : st.akhir;
         KANDIDAT.forEach(function(id){
           var T = LOKMAP[id];
-          if (!bolehKe(st.akhir, T, p)) return;
-          var pindah = st.pindah + (st.akhir.id === T.id ? 0 : 1);
+          if (!bolehKe(S, T, p)) return;
+          var pindah = st.pindah + (S.id === T.id ? 0 : 1);
           if (pindah > maksPindah) return;
           /* satu jatah per grup peak (pagi/sore), bukan per potongan */
           var g = grup(p.b), jatahSisa = st.jatah;
           var sudah = st.jatahGrup[g];
-          var t = taksir(st.akhir, T, p, sudah ? 1 : jatahSisa);
+          var t = taksir(S, T, p, sudah ? 1 : jatahSisa);
           var jg = salin(st.jatahGrup);
           if (t.pakaiJatah && !sudah){ jatahSisa--; jg[g] = true; }
           berikut.push({ urutan:st.urutan.concat([id]), skor:st.skor + t.skor, akhir:T, jatah:jatahSisa, pindah:pindah, jatahGrup:jg });

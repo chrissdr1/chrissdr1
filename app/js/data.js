@@ -20,7 +20,10 @@ var SHAPE = {
   0: {"Subuh":26000,"Peak pagi":28000,"Pagi akhir":30000,"Siang":32000,"Jam mati":28000,
       "Pra-peak":34000,"Peak sore":44000,"Malam":40000,"Larut":26000}
 };
-var DAYMULT = {1:1.03, 2:0.95, 3:0.95, 4:0.98, 5:1.15, 6:1.00, 0:0.97};
+/* Pengali hari: ASUMSI (Rute 700K hanya kualitatif: Jumat terbaik, Selasa/Rabu
+   terlemah, "libur Minggu Rp100 ribu lebih mahal daripada libur Rabu" -> Minggu
+   di atas Rabu). Terkalibrasi dari catatan harian bila cukup hari. */
+var DAYMULT = {1:1.03, 2:0.95, 3:0.95, 4:0.98, 5:1.15, 6:1.02, 0:1.05};
 var DAYNAME = {1:"Senin",2:"Selasa",3:"Rabu",4:"Kamis",5:"Jumat",6:"Sabtu",0:"Minggu"};
 /* dead = km kosong untuk mencapai pangkalan di awal sif.
    pulang = km khas dari titik terakhir hari itu kembali ke Modernland. */
@@ -70,6 +73,46 @@ var BASE_RPKM = 2900, BASE_E = 369;
    dasar Rute 700K: 152 km berbayar / 18 trip = 8,4 km. */
 var TRIP_KM = { "Subuh":18, "Peak pagi":12, "Pagi akhir":7, "Siang":6, "Jam mati":6,
                 "Pra-peak":8, "Peak sore":10, "Malam":8, "Larut":10 };
+/* Bobot permintaan per TEMPAT per blok jam: kepadatan order relatif rata-rata
+   wilayah tarifnya pada blok yang sama (1 = sama; 0,6-1,4). Bukan Rp/jam:
+   stasiun padat order di peak (1,3) tapi tripnya pendek -- panjang trip
+   ditangani TRIP_KM/TRIP_ZONA. Diturunkan dari narasi Rute 700K (matriks
+   "Turun di ... Pagi/Siang/Sore/Malam", Mengarahkan orderan, Peringkat rute)
+   untuk 9 tempat inti; 12 tempat luar murni asumsi (keyakinan rendah) karena
+   dokumen tidak membahasnya. Terkalibrasi perlahan oleh catatan harian
+   (CALIB.bobotTempat, dikalikan). Dipakai simulate() lewat bobotTempat(). */
+/* Ruas antar tempat yang TERUKUR di Rute 700K (km jalan; menit lancar bila ada).
+   Kunci "a>b"; ruas tanpa arah balik dipakai dua arah. Yang bertanda ~ di
+   dokumen (Jakbar-CBD, Bandara-CBD) ikut dimuat sebagai perkiraan. */
+var RUAS_TERUKUR = {
+  "alsut>serpong":{km:6.2, mnt:10}, "serpong>bsd":{km:11.4, mnt:14}, "bsd>alsut":{km:9.4},
+  "alsut>jakbar":{km:14.6, mnt:16}, "stasiun>bandara":{km:19.0}, "bandara>stasiun":{km:22.9},
+  "jakbar>cbd":{km:12, mnt:14, kira:true}, "bandara>cbd":{km:25, kira:true}
+};
+var BOBOT_TEMPAT = {
+  kota:      {"Subuh":1.3, "Peak pagi":1.2, "Pagi akhir":1, "Siang":0.9, "Jam mati":0.9, "Pra-peak":0.8, "Peak sore":1, "Malam":1.1, "Larut":1.1},   /* cluster (Modernland) + Tangcity·Metropol · keyakinan sedang */
+  stasiun:   {"Subuh":0.8, "Peak pagi":1.3, "Pagi akhir":0.6, "Siang":0.6, "Jam mati":0.6, "Pra-peak":0.9, "Peak sore":1.3, "Malam":0.8, "Larut":0.6},   /* stasiun · keyakinan tinggi */
+  karawaci:  {"Subuh":0.8, "Peak pagi":1, "Pagi akhir":1.1, "Siang":1.2, "Jam mati":1.1, "Pra-peak":1.1, "Peak sore":1.1, "Malam":1.2, "Larut":0.9},   /* campuran (Supermal · Siloam RS · UPH · k · keyakinan sedang */
+  alsut:     {"Subuh":0.8, "Peak pagi":1, "Pagi akhir":1, "Siang":1.2, "Jam mati":1, "Pra-peak":1.2, "Peak sore":1.2, "Malam":1.3, "Larut":1.1},   /* campuran (kantor Prominence·Synergy · Li · keyakinan sedang */
+  serpong:   {"Subuh":0.8, "Peak pagi":0.9, "Pagi akhir":1, "Siang":1.2, "Jam mati":1, "Pra-peak":1, "Peak sore":1.1, "Malam":1.3, "Larut":1},   /* mal (Summarecon · ruko · Scientia · Beth · keyakinan sedang */
+  bsd:       {"Subuh":0.8, "Peak pagi":1.2, "Pagi akhir":1, "Siang":1.2, "Jam mati":1, "Pra-peak":1.3, "Peak sore":1.3, "Malam":1.2, "Larut":1},   /* kantor (GOP · Digital Hub) + stasiun Raw · keyakinan tinggi */
+  bandara:   {"Subuh":0.9, "Peak pagi":0.9, "Pagi akhir":1, "Siang":1.1, "Jam mati":0.7, "Pra-peak":1, "Peak sore":1.1, "Malam":1.4, "Larut":1.2},   /* bandara · keyakinan tinggi */
+  jakbar:    {"Subuh":0.8, "Peak pagi":0.9, "Pagi akhir":0.9, "Siang":1, "Jam mati":0.9, "Pra-peak":1.1, "Peak sore":0.9, "Malam":0.9, "Larut":0.8},   /* campuran (kantor Kebon Jeruk·Slipi · mal · keyakinan sedang */
+  cbd:       {"Subuh":0.7, "Peak pagi":1.2, "Pagi akhir":0.9, "Siang":0.7, "Jam mati":0.7, "Pra-peak":1.2, "Peak sore":1.4, "Malam":0.9, "Larut":0.7},   /* kantor (Sudirman · SCBD · Kuningan · Ras · keyakinan tinggi */
+  ciledug:   {"Subuh":0.8, "Peak pagi":1, "Pagi akhir":0.8, "Siang":0.8, "Jam mati":0.7, "Pra-peak":0.8, "Peak sore":1, "Malam":0.8, "Larut":0.7},   /* luar (perumahan padat, tng) · keyakinan rendah */
+  bintaro:   {"Subuh":0.8, "Peak pagi":1, "Pagi akhir":0.8, "Siang":0.9, "Jam mati":0.7, "Pra-peak":0.9, "Peak sore":1, "Malam":0.9, "Larut":0.7},   /* luar (perumahan + komersial, tng) · keyakinan rendah */
+  cikupa:    {"Subuh":0.7, "Peak pagi":0.9, "Pagi akhir":0.7, "Siang":0.7, "Jam mati":0.6, "Pra-peak":0.7, "Peak sore":0.9, "Malam":0.7, "Larut":0.6},   /* luar (industri, tng barat) · keyakinan rendah */
+  jaksel:    {"Subuh":0.7, "Peak pagi":1, "Pagi akhir":0.8, "Siang":0.8, "Jam mati":0.7, "Pra-peak":1, "Peak sore":1.1, "Malam":0.9, "Larut":0.8},   /* luar (campuran kantor·komersial Blok M,  · keyakinan rendah */
+  jaktim:    {"Subuh":0.7, "Peak pagi":0.9, "Pagi akhir":0.8, "Siang":0.8, "Jam mati":0.7, "Pra-peak":0.9, "Peak sore":0.9, "Malam":0.8, "Larut":0.7},   /* luar (simpul transit Cawang, jkt, jauh) · keyakinan rendah */
+  jakut:     {"Subuh":0.7, "Peak pagi":0.9, "Pagi akhir":0.8, "Siang":0.9, "Jam mati":0.7, "Pra-peak":0.9, "Peak sore":0.9, "Malam":0.9, "Larut":0.7},   /* luar (mal Kelapa Gading, jkt, jauh) · keyakinan rendah */
+  depok:     {"Subuh":0.7, "Peak pagi":0.9, "Pagi akhir":0.8, "Siang":0.8, "Jam mati":0.7, "Pra-peak":0.8, "Peak sore":0.9, "Malam":0.8, "Larut":0.7},   /* luar (perumahan·kampus, jkt, jauh) · keyakinan rendah */
+  bekasi:    {"Subuh":0.7, "Peak pagi":0.9, "Pagi akhir":0.8, "Siang":0.8, "Jam mati":0.7, "Pra-peak":0.8, "Peak sore":0.9, "Malam":0.8, "Larut":0.7},   /* luar (perumahan·industri, jkt, jauh) · keyakinan rendah */
+  cengkareng:{"Subuh":0.8, "Peak pagi":0.9, "Pagi akhir":0.8, "Siang":0.8, "Jam mati":0.8, "Pra-peak":0.9, "Peak sore":0.9, "Malam":0.9, "Larut":0.8},   /* luar (perumahan padat dekat bandara, jkt · keyakinan rendah */
+  cisauk:    {"Subuh":0.7, "Peak pagi":0.9, "Pagi akhir":0.7, "Siang":0.7, "Jam mati":0.6, "Pra-peak":0.7, "Peak sore":0.9, "Malam":0.7, "Larut":0.6},   /* luar (stasiun Cisauk·Intermoda, tng sela · keyakinan rendah */
+  balaraja:  {"Subuh":0.6, "Peak pagi":0.8, "Pagi akhir":0.7, "Siang":0.7, "Jam mati":0.6, "Pra-peak":0.7, "Peak sore":0.8, "Malam":0.7, "Larut":0.6},   /* luar (industri, tng barat jauh) · keyakinan rendah */
+  bogor:     {"Subuh":0.7, "Peak pagi":0.8, "Pagi akhir":0.8, "Siang":0.8, "Jam mati":0.7, "Pra-peak":0.8, "Peak sore":0.8, "Malam":0.8, "Larut":0.7},   /* luar (kota satelit, jkt, jauh) · keyakinan rendah */
+};
+
 var TRIP_ZONA = { tng:1.0, mix:1.15, jkt:1.5, apt:1.8 };
 var BASE_TRIP_KM = 8.4;
 var TARGET_DAY = 515000, TARGET_MONTH = 13400000;
@@ -784,7 +827,7 @@ var WATAK_ARTI = {
 
 var PRESETS = [
   {n:"8 jam · dua peak",k:5.25,p:20.5,r:"duapeak"},
-  {n:"Split dua peak",k:5.25,p:21.5,r:"full"}, {n:"Pagi saja",k:5.25,p:11,r:"none"},
+  {n:"Split dua peak",k:5.25,p:21.5,r:"duapeak"}, {n:"Pagi + sore, istirahat siang",k:5.25,p:21.5,r:"full"}, {n:"Pagi saja",k:5.25,p:11,r:"none"},
   {n:"Sore–malam",k:15,p:23,r:"none"}, {n:"Penuh tanpa jeda",k:5.25,p:21.5,r:"none"},
   {n:"Siang–malam",k:11,p:23,r:"none"}, {n:"Subuh + split",k:3.5,p:21.5,r:"full"}
 ];

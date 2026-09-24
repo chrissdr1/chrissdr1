@@ -2357,7 +2357,9 @@ function bukaCheckin(){
      Sekarang, yang sudah mengikuti ngecas/ketikan), bukan isian pagi. */
   el("ci-soc").value = parseFloat(el("n-soc").value) || (m ? m.soc : 90);
   el("ci-bat").value = String(m ? m.bat : (pl ? pl.bat : parseFloat(el("n-bat").value)));
-  el("ci-keluar").value = String(m ? m.keluar : (pl ? pl.keluar : Math.max(3.5, Math.min(23.5, t))));
+  /* Jam mulai bawaan menurut hari (Rute 700K): Senin 04:45, Sabtu 07:30, Minggu 07:00, lainnya 05:15 -- kecuali sudah lewat */
+  var dow = now.getDay(), mulaiHari = dow === 1 ? 4.75 : dow === 6 ? 7.5 : dow === 0 ? 7 : 5.25;
+  el("ci-keluar").value = String(m ? m.keluar : (pl ? pl.keluar : Math.max(3.5, Math.min(23.5, t > mulaiHari + 0.5 ? t : mulaiHari))));
   el("ci-pulang").value = String(m ? m.pulang : (pl ? pl.pulang : parseFloat(el("n-pulang").value)));
   el("ci-zona").value = m ? m.zona : (pl ? pl.zona : (currentLok().z === "apt" ? "apt" : currentLok().z === "jkt" ? "jkt" : "tng"));
   el("ci-filter").value = String(m ? m.filter : (pl ? pl.filter : parseInt(el("n-filter").value, 10)));
