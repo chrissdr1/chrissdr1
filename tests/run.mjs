@@ -587,6 +587,9 @@ async function main(){
     await setField(ci, "cas-ke", 85); await ci.click("#cas-selesai");
     const cas = await ci.evaluate(() => ({ soc:document.getElementById("n-soc").value, j:Baterai.terakhir(), status:document.getElementById("hari-status").innerText }));
     ok(cas.soc === "85" && cas.j.soc === 85 && cas.j.sumber === "ngecas", "Selesai ngecas ke 85% menjadi jangkar baru", JSON.stringify(cas));
+    /* Mengetik: ketikan yang belum selesai ("7") tidak boleh ditimpa perkiraan mesin. */
+    const setengah = await ci.evaluate(() => { const e = document.getElementById("n-soc"); e.value = "7"; e.dispatchEvent(new Event("input", { bubbles:true })); return { v:e.value, src:document.getElementById("src-soc").textContent }; });
+    ok(setengah.v === "7" && /diketik/.test(setengah.src), "ketikan yang belum selesai tidak ditimpa perkiraan", JSON.stringify(setengah));
     await setField(ci, "n-soc", 60);
     const ketik = await ci.evaluate(() => ({ j:Baterai.terakhir(), src:document.getElementById("src-soc").textContent }));
     ok(ketik.j.soc === 60 && ketik.j.sumber === "diketik", "angka baterai yang diketik sendiri menjadi jangkar", JSON.stringify(ketik));

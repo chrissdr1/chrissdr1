@@ -591,12 +591,15 @@ function advise(blk, L, o){
       p:"14:00&ndash;15:15 paling sepi. Memaksa di sini <b>membakar baterai untuk hasil terkecil</b>. Pastikan daya cukup untuk peak sore plus pulang."};
   }
   if (blk.n==="Pra-peak"){
-    if (L.z==="tng" && o.filter>=1) return {k:"good",h:"Kalau mau Jakarta, berangkat sekarang",
+    var telat = o.keluar > 15.5;   /* lewat 15:30 tidak boleh lagi disuruh berangkat ke Jakarta */
+    if (L.z==="tng" && o.filter>=1 && !telat) return {k:"good",h:"Kalau mau Jakarta, berangkat sekarang",
       r:"Tol &rarr; Jakarta Barat / CBD &middot; batas 15:30",
       p:"Peak sore di Jakarta lebih tinggi daripada di Tangerang &mdash; <b>tapi hanya kalau tiba sebelum arus keluar kota memadat</b>, dan jatah filter masih ada untuk pulang berbayar. Lewat 15:30, batalkan."};
     if (L.z==="tng") return {k:"warn",h:"Ambil posisi di Tangerang",
       r:"Green Office Park &middot; Prominence &middot; Karawaci",
-      p:"Jatah filter habis, Jakarta terlalu berisiko &mdash; pulangnya bisa 18&ndash;30 km kosong. <b>Berdiri di kawasan kantor 20 menit sebelum bubaran.</b>"};
+      p:(telat ? "Sudah lewat batas 15:30 untuk berangkat ke Jakarta &mdash; arus keluar kota mulai memadat, tibanya kesorean. "
+               : "Jatah filter habis, Jakarta terlalu berisiko &mdash; pulangnya bisa 18&ndash;30 km kosong. ") +
+        "<b>Berdiri di kawasan kantor 20 menit sebelum bubaran.</b>"};
     return {k:"good",h:"Bertahan di Jakarta sampai peak sore",
       r:"Pangkal di kawasan kantor &middot; keluar 20:30 dengan filter",
       p:"Anda sudah di zona termahal. Bertahan tiga jam ke depan lebih untung daripada pulang sekarang &mdash; asal keluarnya nanti berpenumpang."};

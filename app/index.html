@@ -20,10 +20,10 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="checkin" id="checkin" hidden>
+<div class="checkin" id="checkin" role="dialog" aria-modal="true" aria-labelledby="ci-judul" hidden>
   <div class="checkin-card">
     <div class="eyebrow">Mulai hari &middot; <span id="ci-tgl"></span></div>
-    <h2>Hallo, Shanti. Bagaimana keadaan sekarang?</h2>
+    <h2 id="ci-judul">Hallo, Shanti. Bagaimana keadaan sekarang?</h2>
     <p class="checkin-sub">Isi sebentar supaya mesinnya menghitung dari keadaan Ibu yang sebenarnya, bukan dari asumsi. Setelah ini baterai diperkirakan sendiri sepanjang hari; kalau selesai ngecas, tekan tombolnya di tab Sekarang.</p>
     <div class="grid">
       <div class="f"><label for="ci-soc">Baterai sekarang %</label><input id="ci-soc" type="number" inputmode="numeric" min="1" max="100" value="90"></div>

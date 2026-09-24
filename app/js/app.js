@@ -379,7 +379,8 @@ function gpsOtomatisAktif(){
 /* Odometer GPS: selama halaman terlihat dan izin lokasi sudah ada, tiap
    perpindahan posisi dicatat ke jejak baterai (Baterai.catatFix). Tidak
    menggambar ulang halaman -- hanya menambah km dan menggeser penanda peta. */
-var odometerId = null;
+var odometerId = null, odometerTerpasang = false;
+function hentikanOdometer(){ if (odometerId != null && navigator.geolocation){ navigator.geolocation.clearWatch(odometerId); odometerId = null; } }
 function pasangOdometer(){
   if (!navigator.geolocation || !navigator.geolocation.watchPosition) return;
   function mulai(){
@@ -392,9 +393,11 @@ function pasangOdometer(){
       if (Peta.ada()) Peta.posisi(la, lo, POSISI_GPS.akurasi);
     }, function(){}, { enableHighAccuracy:true, maximumAge:15000, timeout:30000 });
   }
-  function berhenti(){ if (odometerId != null){ navigator.geolocation.clearWatch(odometerId); odometerId = null; } }
   mulai();
-  document.addEventListener("visibilitychange", function(){ if (document.hidden) berhenti(); else mulai(); });
+  if (!odometerTerpasang){
+    odometerTerpasang = true;
+    document.addEventListener("visibilitychange", function(){ if (document.hidden) hentikanOdometer(); else mulai(); });
+  }
 }
 function pasangGpsOtomatis(){
   if (!navigator.geolocation || !gpsOtomatisAktif()) return;
@@ -515,7 +518,8 @@ function renderPlanCheck(nowT, dpt, lokZ){
   var seharusnya = sofar.gross;   /* "sudah dapat" itu pendapatan kotor, dibandingkan dengan yang kotor juga */
   var selisih = dpt - seharusnya;
   var cls = selisih >= 0 ? "up" : "dn";
-  var drift = lokZ !== PLAN.zona;
+  var ZONA_LOK = { tng:["tng"], mix:["tng","jkt"], jkt:["jkt"], apt:["apt","tng"] };
+  var drift = (ZONA_LOK[PLAN.zona] || [PLAN.zona]).indexOf(lokZ) < 0;
   var jeda = rehatRange(PLAN.rehat);
   var sedangJeda = jeda && nowT >= jeda[0] && nowT < jeda[1];
 
@@ -586,7 +590,7 @@ function runNow(){
   o.kmHome = kmHome; o.stay = stay;
   /* Insentif dihitung untuk SEHARI: jam yang sudah dikerjakan sejak mulai
      (dari rencana hari ini, atau jam mulai yang diisi) ditambah jam sisa. */
-  var mulaiHari = planAktif ? PLAN.keluar : (typeof MULAI_HARI === "number" ? MULAI_HARI : (dpt > 0 ? 5.25 : o.keluar));
+  var mulaiHari = planAktif ? PLAN.keluar : ((MULAI_HARI && typeof MULAI_HARI.keluar === "number") ? Math.min(MULAI_HARI.keluar, MULAI_HARI.jam) : (dpt > 0 ? 5.25 : o.keluar));
   o.jamSebelum = Math.max(0, Math.min(o.keluar, o.pulang) - mulaiHari);
   if (planAktif){ var jd = rehatRange(PLAN.rehat); if (jd) o.jamSebelum -= Math.max(0, Math.min(o.keluar, jd[1]) - jd[0]); }
   o.jamSebelum = Math.max(0, o.jamSebelum);
@@ -594,7 +598,12 @@ function runNow(){
   var r = simulate(o);
   var insentifHarian = r.insentif;
   var sisa = r.blockNet - r.feeCharge - r.parkir;
-  var proyeksi = dpt + r.net;
+  /* "Sudah dapat" adalah angka KOTOR dari aplikasi; listrik yang sudah
+     terbakar sejak mulai (model km per blok) dikurangkan supaya proyeksinya
+     bersih seperti angka sisa hari. */
+  var kmSejak = (dpt > 0 && o.keluar > mulaiHari) ? Baterai.kmModel(mulaiHari, o.keluar, o.zona, planAktif ? PLAN.rehat : "none") : 0;
+  var listrikSejak = kmSejak / CALIB.kmkwh * TARIF_KWH;
+  var proyeksi = dpt - listrikSejak + r.net;
   renderPlanCheck(o.keluar, dpt, L.z);
   AKTUAL = { jam:o.keluar, dpt:dpt, lok:L.n, home:Math.round(kmHome*10)/10,
              tanggal:iso(new Date()) };
@@ -608,35 +617,44 @@ function runNow(){
     ? "Kurang <b>"+rp(gap)+"</b> dari rata-rata harian Rp 515.000"
     : "<b>Sudah di atas rata-rata harian.</b> Kelebihan "+rp(-gap)+" masuk saldo bulanan";
 
-  var usableKm = ((soc-10)/100)*o.bat*CALIB.kmkwh;
+  /* Satu ambang untuk semua: lantai mesin (20%, 25% Jakarta) untuk "masih
+     boleh terima order", dan ambang pulang mesin (15% + km pulang) untuk
+     "minimal saat mulai pulang" -- bukan 10% di satu tempat dan L.res di
+     tempat lain. */
+  var resMin = Math.max(10, Math.round(r.ambangPulang*100));
+  var usableKm = Math.max(0, soc/100 - r.floor)*o.bat*CALIB.kmkwh;   /* km sampai lantai */
   var butuh = r.km + kmHome;
   var blk = blockAt(o.keluar, ctx.shapeDay);
 
   el("n-side").innerHTML = [
-    ["Blok sekarang", blk.n], ["Sisa jam", (o.pulang-o.keluar).toFixed(1)+" j"],
+    ["Blok sekarang", blk.n], ["Sisa jam", r.jamDinding.toFixed(1)+" j kerja"+(r.jedaJam > 0.01 ? " &middot; jeda "+r.jedaJam.toFixed(1)+" j" : "")],
     ["Perkiraan sisa", rp(sisa)], ["Insentif hari ini", rp(insentifHarian)],
-    ["&asymp; Order sisa", Math.round(r.trips)+" &middot; "+Math.round(r.paidKm)+" km bayar"],
+    ["&asymp; Order sisa", Math.round(r.trips)+" &middot; "+Math.round(r.paidKm)+" km bayar"]
+  ].concat(dpt > 0 ? [["Listrik sejak "+hhmm(mulaiHari), "&minus;"+rp(listrikSejak)+" &middot; &asymp;"+Math.round(kmSejak)+" km"]] : []).concat([
     ["Km sampai pulang", Math.round(butuh)+" km"],
-    ["Daya tersedia", Math.round(usableKm)+" km"], ["Pulang dari sini", Math.round(kmHome)+" km"],
-    ["Sisa daya minimum", L.res+"%"],
+    ["Daya sampai lantai "+Math.round(r.floor*100)+"%", Math.round(usableKm)+" km"], ["Pulang dari sini", Math.round(kmHome)+" km"],
+    ["Minimal saat mulai pulang", resMin+"%"],
     ["Tiba di rumah", "&asymp; "+Math.round(Math.max(0, r.socTiba)*100)+"%"+(r.sessions ? " &middot; "+r.sessions+"&times; ngecas" : "")]
-  ].map(function(x){ return "<div><span>"+x[0]+"</span><b>"+x[1]+"</b></div>"; }).join("");
+  ]).map(function(x){ return "<div><span>"+x[0]+"</span><b>"+x[1]+"</b></div>"; }).join("");
 
   /* Baterai jadi banner terpisah, supaya judul kartu selalu mencerminkan
      lokasi dan blok jam — bukan tertimpa peringatan daya. */
   var bw = el("batwarn");
-  if (soc < L.res && !stay){
+  if (soc < resMin && !stay){
     bw.hidden = false; bw.className = "batwarn";
     bw.innerHTML = '<span class="tag">Daya kritis</span><span><b>Ngecas sekarang, sebelum menerima order lagi.</b> '+
-      "Dari "+L.n+" Anda butuh minimal <b>"+L.res+"%</b> untuk pulang dengan cadangan &mdash; sekarang "+soc+
+      "Dari "+L.n+" Anda butuh minimal <b>"+resMin+"%</b> untuk pulang dengan cadangan 15% &mdash; sekarang "+soc+
       "%. Tolak order berikutnya, atau pulang sekarang juga." +
       (spkluTeks(spkluUntuk(L)) ? " Terdekat dari sini: " + spkluTeks(spkluUntuk(L)) +
         " <span style=\"opacity:.75\">(jarak jalan)</span>." : "") + "</span>";
-  } else if (usableKm < butuh && !o.rumah){
+  } else if (r.sessions > 0){
+    var s1 = r.sesi[0];
     bw.hidden = false; bw.className = "batwarn mild";
-    bw.innerHTML = '<span class="tag">Perlu 1 sesi</span><span>Sampai pulang perlu sekitar <b>'+
+    bw.innerHTML = '<span class="tag">Perlu '+r.sessions+' sesi</span><span>Sampai pulang perlu sekitar <b>'+
       Math.round(butuh)+" km</b>, daya sekarang cukup untuk <b>"+Math.round(usableKm)+
-      " km</b>. Sisipkan satu sesi ngecas di blok termurah &mdash; sudah ditandai oranye di urutan langkah di bawah." +
+      " km</b> sebelum menyentuh lantai "+Math.round(r.floor*100)+"%. Sesi pertama <b>pukul "+hhmm(s1.jam)+" di "+s1.blok.toLowerCase()+
+      " ("+Math.round(s1.dari*100)+"&rarr;"+Math.round(s1.ke*100)+"%, &plusmn;"+Math.round(s1.durasi*60)+" menit)</b>"+
+      (s1.diJeda ? ", di dalam jeda" : (s1.peak ? ", <b>terpaksa di jam peak</b>" : ", di blok termurah"))+" &mdash; ditandai oranye di urutan langkah di bawah." +
       (spkluTeks(spkluUntuk(L)) ? " Terdekat dari sini: " + spkluTeks(spkluUntuk(L)) +
         " <span style=\"opacity:.75\">(jarak jalan)</span>." : "") + "</span>";
   } else { bw.hidden = true; }
@@ -670,7 +688,7 @@ function runNow(){
     '</h3><p class="route">'+v.r+"</p><p>"+v.p+"</p>";
 
   var langkah = buildSteps(o, r,
-    { cum:dpt, markNow:true, kmHome:kmProtokol, stay:stay, L:L, verdict:v });
+    { cum:dpt - listrikSejak, markNow:true, kmHome:kmProtokol, stay:stay, L:L, verdict:v });
   renderSteps(el("n-steps"), langkah, "Urutan dari " + L.n);
   catatProyeksi(dateStr, proyeksi);
   SEKARANG = { v:v, langkah:langkah, proyeksi:proyeksi, sisa:sisa, gap:gap,
@@ -691,9 +709,11 @@ function runNow(){
       "atas dihitung untuk jam itu, bukan untuk sekarang</b>. Jam segini tarifnya memang "+
       "tidak pernah diukur dan tidak ada di model. <b>Kalau Ibu masih di jalan: pulang.</b>"));
   }
-  nn.push(note("","Protokol pulang","Mulai mengarah pulang pukul <b>"+
-    hhmm(o.pulang-Math.max(0.5,kmHome/CALIB.kecepatan+0.25))+"</b> &mdash; "+Math.round(kmHome)+
-    " km dari sini, plus cadangan."));
+  var jamTempuhPulang = kmProtokol / CALIB.kecepatan * faktorMacet(o.pulang - 0.5, o.zona);
+  var mulaiPulang = Math.min(o.pulang - Math.max(0.5, jamTempuhPulang + 0.25), (ctx.dow === 0 && !ctx.holi) ? 20.5 : 22);
+  nn.push(note("","Protokol pulang","Mulai mengarah pulang pukul <b>"+hhmm(Math.max(o.keluar, mulaiPulang))+"</b> &mdash; "+
+    Math.round(kmProtokol)+" km, &plusmn;"+Math.round(jamTempuhPulang*60)+" menit"+
+    (faktorMacet(o.pulang - 0.5, o.zona) > 1 ? " (jam macet)" : "")+", plus cadangan. Sama dengan langkah penutup di bawah."));
   /* Kalau sesi ngecas terpaksa jatuh di blok peak, penyebabnya hampir
      selalu berangkat dengan baterai rendah — sebutkan, jangan dibiarkan. */
   var ngecasDiPeak = Array.prototype.some.call(
@@ -964,21 +984,24 @@ function runPlan(){
     });
   });
 
+  /* Sif terbaik dipilih dari yang SAH: jam efektif > 12 melanggar batas
+     pengemudi angkutan umum, jadi tidak boleh dinobatkan sebagai acuan. */
   var best=-1, res=PRESETS.map(function(p){
     var rr=simulate({ctx:ctx,keluar:p.k,pulang:p.p,rehat:p.r,zona:o.zona,filter:o.filter,
       bat:o.bat,rumah:o.rumah,hujan:o.hujan,acara:o.acara});
-    if (rr.net>best) best=rr.net; return {p:p,r:rr};
+    var sah = rr.effHours <= 12;
+    if (sah && rr.net>best) best=rr.net; return {p:p,r:rr,sah:sah};
   });
   el("cmphead").textContent = ctx.name+(ctx.holi?" · tanggal merah":"")+" · "+ZONA[o.zona].label;
   el("cmp").innerHTML = res.map(function(x){
-    return '<tr'+(x.r.net===best?' class="best"':"")+'><td class="n">'+x.p.n+"</td><td>"+
+    return '<tr'+(x.sah && x.r.net===best?' class="best"':"")+'><td class="n">'+x.p.n+(x.sah?"":' <em class="man">&gt;12 jam</em>')+"</td><td>"+
       hhmm(x.p.k)+"&ndash;"+hhmm(x.p.p)+"</td><td>"+x.r.effHours.toFixed(1)+" j</td><td>"+
       rp(x.r.net)+"</td><td>"+rp(x.r.perHour)+"</td></tr>";
   }).join("");
   var gap=best-r.net;
   el("p-vs").innerHTML = gap>5000
-    ? "Target Rp 515.000 &middot; sif terbaik <b>"+rp(best)+"</b>, selisih "+rp(gap)
-    : "Target Rp 515.000 &middot; <b>ini sif terbaik untuk kondisi itu</b>";
+    ? "Target Rp 515.000 &middot; sif sah terbaik <b>"+rp(best)+"</b>, selisih "+rp(gap)
+    : "Target Rp 515.000 &middot; <b>ini sif terbaik untuk kondisi itu</b>" + (r.effHours > 12 ? " (tapi lewat batas 12 jam)" : "");
 }
 
 /* ---------------- TANYA ----------------
@@ -1607,7 +1630,13 @@ el("p-save").addEventListener("click", function(){
     filter:parseInt(el("p-filter").value,10), bat:parseFloat(el("p-bat").value),
     rumah:el("p-rumah").checked, hujan:el("p-hujan").checked, acara:el("p-acara").checked });
   sinkronNanti();
-  el("p-status").textContent = "Tersimpan. Tab Sekarang akan membandingkan ke rencana ini.";
+  /* Rencana HARI INI langsung mengisi tab Sekarang, supaya urutan langkah dan
+     protokol pulang dihitung untuk jam pulang yang sama. */
+  if (PLAN.date === iso(new Date())){
+    el("n-pulang").value = String(PLAN.pulang); el("n-bat").value = String(PLAN.bat);
+    el("n-filter").value = String(PLAN.filter); el("n-rumah").checked = !!PLAN.rumah;
+  }
+  el("p-status").textContent = "Tersimpan. Tab Sekarang mengikuti rencana ini (jam pulang, baterai, jatah filter, jeda).";
   el("p-status").className = "status ok";
   runNow();
 });
@@ -1651,7 +1680,7 @@ document.getElementById("todaysub").textContent = hd ? hd[0] : "";
 renderLok("kota");
 fillTimes(el("n-jam"),3.5,23.5,9.5);
 fillTimes(el("n-pulang"),9,24,21.5);
-fillTimes(el("p-keluar"),3.5,17,5.25);
+fillTimes(el("p-keluar"),3.5,23,5.25);
 fillTimes(el("p-pulang"),9,24,21.5);
 var t = Math.round((now.getHours()+now.getMinutes()/60)*4)/4;
 if (t>=3.5 && t<=23.5) el("n-jam").value = t;
@@ -1678,7 +1707,10 @@ el("n-lok").addEventListener("change", function(){
    ikutJam menyetel .value lewat program dan itu tidak memicu "change",
    jadi sampai di sini artinya Ibu sendiri yang memilih. */
 el("n-jam").addEventListener("change", function(){ jamManual = true; jamManualSejak = Date.now(); tandaiJam(); }, true);
-/* Angka baterai yang Ibu ketik sendiri menjadi jangkar baru perkiraan. */
+/* Angka baterai yang Ibu ketik sendiri menjadi jangkar baru perkiraan.
+   Selama mengetik (input) kolom ditandai "diketik" supaya perkiraan mesin
+   tidak menimpa ketikan yang belum selesai; jangkarnya dibuat saat change. */
+el("n-soc").addEventListener("input", function(){ this.dataset.touched = "1"; }, true);
 el("n-soc").addEventListener("change", function(){
   this.dataset.touched = "1";
   var v = parseFloat(this.value);
@@ -1699,7 +1731,7 @@ el("n-gpsauto").checked = gpsOtomatisAktif();
 el("n-gpsauto").addEventListener("change", function(){
   try { localStorage.setItem("gps-otomatis", this.checked ? "1" : "0"); } catch (e) {}
   if (this.checked){ gpsTerakhir = 0; pasangGpsOtomatis(); }
-  else { setLokSumber("manual");
+  else { hentikanOdometer(); setLokSumber("manual");
     setGpsHint("Deteksi otomatis dimatikan. Tekan Lokasi saya kalau perlu."); }
 });
 tandaiLok();
@@ -2330,7 +2362,8 @@ function bukaCheckin(){
   el("checkin").hidden = false;
   try { el("ci-soc").focus(); } catch (e) {}
 }
-function tutupCheckin(){ el("checkin").hidden = true; }
+function tutupCheckin(){ el("checkin").hidden = true; try { el("ci-buka").focus(); } catch (e) {} }
+document.addEventListener("keydown", function(e){ if (e.key === "Escape" && !el("checkin").hidden) tutupCheckin(); });
 fillTimes(el("ci-keluar"), 3.5, 23.5, 5.25);
 fillTimes(el("ci-pulang"), 9, 24, 21.5);
 fillTimes(el("ci-rehat-dari"), 3.5, 23.75, 12);
@@ -2358,7 +2391,8 @@ el("ci-mulai").addEventListener("click", function(){
   el("n-bat").value = String(m.bat); el("n-pulang").value = String(m.pulang);
   el("n-filter").value = String(m.filter); el("n-rumah").checked = m.rumah; el("n-dpt").value = m.dpt;
   /* Rencana hari ini = isian ini, supaya jeda, jam mulai, dan insentif sehari ikut. */
-  savePlan({ date:m.date, keluar:Math.min(keluar, Math.round(jam * 4) / 4), pulang:m.pulang, rehat:m.rehat, zona:m.zona,
+  var keluarPlan = Math.max(3.5, Math.min(23, Math.min(keluar, Math.round(jam * 4) / 4)));
+  savePlan({ date:m.date, keluar:keluarPlan, pulang:Math.max(m.pulang, keluarPlan + 0.5), rehat:m.rehat, zona:m.zona,
              filter:m.filter, bat:m.bat, rumah:m.rumah, hujan:el("n-hujan").checked, acara:el("n-acara").checked });
   ["p-keluar", "p-pulang", "p-zona", "p-filter", "p-bat"].forEach(function(id){
     el(id).value = String({ "p-keluar":PLAN.keluar, "p-pulang":PLAN.pulang, "p-zona":PLAN.zona, "p-filter":PLAN.filter, "p-bat":PLAN.bat }[id]);
@@ -2376,7 +2410,6 @@ el("ci-lewati").addEventListener("click", function(){
   tutupCheckin();
 });
 el("ci-buka").addEventListener("click", bukaCheckin);
-el("checkin").addEventListener("keydown", function(e){ if (e.key === "Escape") tutupCheckin(); });
 
 /* ---------------- kunci TomTom ---------------- */
 function tandaiTomTom(){
