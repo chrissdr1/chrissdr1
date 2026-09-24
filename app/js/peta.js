@@ -1,11 +1,11 @@
 /* Peta di tab Sekarang: posisi Ibu (GPS), rumah, 21 titik terukur, dan 19
    SPKLU, di atas peta OpenStreetMap lewat Leaflet (vendor/leaflet).
 
-   Yang TIDAK ada di sini: lapisan kemacetan langsung. Tidak ada sumber
-   gratis untuk itu di Jabodetabek; Google, TomTom, dan HERE semuanya butuh
-   kunci berbayar. Jalan keluarnya satu tombol yang membuka Google Maps
-   dengan lapisan lalu lintas menyala tepat di posisi Ibu -- itu data yang
-   sama yang dipakai semua orang, gratis, dan selalu terbaru.
+   Lapisan kemacetan langsung: tanpa kunci tidak ada (Google, TomTom, HERE
+   semuanya butuh kunci), jadi ada tombol yang membuka Google Maps dengan
+   lapisan lalu lintas menyala tepat di posisi Ibu. Dengan kunci TomTom
+   (jatah gratis harian ada; anak yang mendaftar) ubin "traffic flow" TomTom
+   ditumpangkan langsung di peta ini.
 
    Ubin peta diambil dari internet saat dilihat; tanpa sinyal, penanda tetap
    tampil di atas latar kosong. */
@@ -13,6 +13,22 @@
 
 var Peta = (function(){
   var map = null, posMarker = null, posCircle = null, sudahFokusPosisi = false;
+  var LS_TT = "tomtom-key", lapisanTT = null;
+
+  /* Kunci TomTom (opsional): dengan kunci ini ubin "traffic flow" TomTom
+     ditumpangkan di peta. Bentuk URL ubin dari ingatan dokumentasi TomTom
+     Traffic API v4 (flow tiles, gaya relative0) -- PERLU VERIFIKASI saat
+     kunci pertama kali dipakai; kalau ubinnya tidak muncul, cek README. */
+  function kunciTomTom(){ try { return localStorage.getItem(LS_TT) || ""; } catch (e) { return ""; } }
+  function setKunciTomTom(k){ try { if (k) localStorage.setItem(LS_TT, k); else localStorage.removeItem(LS_TT); } catch (e) {} pasangTomTom(); }
+  function urlTomTom(k){ return "https://{s}.api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=" + encodeURIComponent(k); }
+  function pasangTomTom(){
+    if (!map) return;
+    var k = kunciTomTom();
+    if (lapisanTT){ map.removeLayer(lapisanTT); lapisanTT = null; }
+    if (!k) return;
+    lapisanTT = L.tileLayer(urlTomTom(k), { subdomains:"abcd", maxZoom:19, opacity:.85, attribution:"Lalu lintas &copy; TomTom" }).addTo(map);
+  }
   var WARNA = { tng:"#00713C", jkt:"#9E2A1E", apt:"#9C6206", rumah:"#12211B" };
 
   function ikon(warna, ukuran){
@@ -41,6 +57,7 @@ var Peta = (function(){
       L.circleMarker([s[2], s[1]], { radius:5, color:"#9C6206", fillColor:"#E5B160", fillOpacity:.95, weight:1.5 })
         .addTo(map).bindPopup("<b>SPKLU</b> " + esc(s[0]) + '<br><span style="opacity:.75">jenis colokan belum tercatat</span>');
     });
+    pasangTomTom();
     map.on("popupopen", function(e){
       var b = e.popup.getElement() && e.popup.getElement().querySelector("[data-lok]");
       if (b) b.addEventListener("click", function(){ if (onPilih) onPilih(b.getAttribute("data-lok")); map.closePopup(); });
@@ -69,5 +86,7 @@ var Peta = (function(){
   }
 
   return { init:init, posisi:posisi, fokus:fokus, refresh:refresh, tautanMacet:tautanMacet,
+           kunciTomTom:kunciTomTom, setKunciTomTom:setKunciTomTom, urlTomTom:urlTomTom,
+           adaTomTom:function(){ return !!lapisanTT; },
            ada:function(){ return !!map; } };
 })();

@@ -1,15 +1,17 @@
 /* Uji aplikasi di Chromium nyata (Playwright).
    Jalankan:  npm test
-   Opsional:  ORIG_HTML=/path/artifact-asli.html npm test
-              -> membandingkan keluaran mesin dengan artifact satu-berkas yang asli
-                 (uji emas: pemecahan berkas tidak boleh mengubah satu angka pun).
+   (Uji emas terhadap artifact asli dihapus sejak tahap 5: mesin sengaja
+    berubah -- jeda bebas, penempatan sesi ngecas, estimasi order.)
 
    Yang diperiksa:
      1. halaman terbuka tanpa galat konsol, semua tab ada, kartu langkah terisi
      2. "Uji mandiri" bawaan halaman hijau (ribuan kombinasi mesin hitung)
      3. TERBIT (js/data.js) == VERSION (sw.js), manifest sah, service worker aktif dan cache terisi
      4. adapter AI: putaran alat, streaming teks, JSON, dan pemetaan galat -- dengan fetch tiruan
-     5. (bila ORIG_HTML) keluaran identik dengan artifact asli untuk belasan kombinasi masukan */
+     5. logika rencana tahap 5: jeda bebas persis, estimasi order per langkah, rekap = bersih,
+        sesi ngecas (jembatan + jeda), jam nyata sampai ke menit
+     6. halaman Mulai hari, perkiraan baterai (model + odometer GPS), jangkar ngecas,
+        lapisan kemacetan TomTom, faktor macet di rekomendasi */
 import { chromium } from "playwright";
 import http from "node:http";
 import fs from "node:fs";
@@ -204,6 +206,11 @@ async function main(){
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ locale:"id-ID", timezoneId:"Asia/Jakarta", serviceWorkers:"allow" });
   /* Internet luar dimatikan supaya hasilnya pasti: cuaca jatuh ke cadangan, ubin peta kosong. */
+  /* Halaman "Mulai hari" terbuka sendiri sekali sehari; bagian 1-11 tidak mengujinya,
+     jadi ditandai "dilewati" sebelum halaman dimuat -- kecuali halaman uji bagian 12. */
+  await ctx.addInitScript(() => {
+    try { if (!/checkin/.test(location.search)) localStorage.setItem("mulai-hari-lewati", new Date().toLocaleDateString("sv-SE")); } catch (e) {}
+  });
   await ctx.route("**/api.open-meteo.com/**", r => r.abort());
   await ctx.route("**/tile.openstreetmap.org/**", r => r.abort());
   await ctx.route("**/api.anthropic.com/**", r => r.abort());
@@ -490,26 +497,134 @@ async function main(){
   ok(br.cache && br.cache.kunci && br.calls2 === br.calls1, "disimpan di HP; kunci yang sama tidak memanggil lagi", JSON.stringify({ c1:br.calls1, c2:br.calls2, k:br.cache && br.cache.kunci }));
   ok(br.mati && br.hidupLagi, "saklar briefing mematikan dan menghidupkan kotaknya");
 
-  if (process.env.ORIG_HTML){
-    console.log("11. uji emas terhadap artifact asli");
-    const orig = await ctx.newPage();
-    await orig.goto("file://" + path.resolve(process.env.ORIG_HTML), { waitUntil:"load" });
-    await orig.waitForFunction(() => document.querySelector("#n-steps .step"));
+  console.log("11. logika rencana: jeda bebas, estimasi order, rekap, baterai, jam nyata");
+  {
     const fresh = await ctx.newPage();
-    await fresh.goto(url + "index.html?golden", { waitUntil:"load" });
+    await fresh.goto(url + "index.html?tahap5", { waitUntil:"load" });
     await fresh.waitForFunction(() => document.querySelector("#n-steps .step"));
-    /* localStorage dari langkah sebelumnya harus kosong dulu supaya setara */
-    await fresh.evaluate(() => localStorage.clear()); await fresh.reload({ waitUntil:"load" });
-    await fresh.waitForFunction(() => document.querySelector("#n-steps .step"));
-    const [a, b] = await Promise.all([driveAll(orig), driveAll(fresh)]);
-    let same = 0, diff = 0;
-    for (const k of Object.keys(a)) for (const id of Object.keys(a[k])){
-      if (a[k][id] === b[k][id]) same++;
-      else { diff++; ok(false, `${k}/${id} berbeda`, firstDiff(a[k][id], b[k][id])); }
-    }
-    ok(diff === 0, `keluaran identik dengan artifact asli (${same} pembanding)`);
-    await orig.close(); await fresh.close();
-  } else console.log("6. (lewati uji emas: ORIG_HTML tidak diberikan)");
+    for (const [k, v] of Object.entries({ "p-tgl":"2026-09-24", "p-keluar":5.25, "p-pulang":21.5, "p-zona":"tng", "p-bat":30.08, "p-filter":2 })) await setField(fresh, k, v);
+    await setField(fresh, "p-rehat", "custom");
+    await setField(fresh, "p-rehat-dari", 12); await setField(fresh, "p-rehat-sampai", 13.5);
+    const bebas = await fresh.evaluate(() => {
+      const rows = [...document.querySelectorAll("#p-steps .step")].map(s => ({ t:s.querySelector(".t").innerText.replace(/\s+/g, " "), cls:s.className, d:(s.querySelector(".a .dt")||{}).innerText || "", cum:(s.querySelector(".v")||{}).innerText || "" }));
+      return { rows, hint:document.getElementById("jedahint").innerText, net:document.getElementById("p-net").innerText, side:document.getElementById("p-side").innerText, rehat:JSON.stringify(rehatDariUI()) };
+    });
+    const jedaRow = bebas.rows.find(r => /jeda/.test(r.t));
+    ok(jedaRow && /12:00.13:30/.test(jedaRow.t), "jeda bebas 12:00–13:30 tampil persis sebagai satu baris", JSON.stringify(jedaRow));
+    ok(bebas.rehat === "[12,13.5]" && /12:00.13:30 \(90 menit\)/.test(bebas.hint), "kolom dari–sampai menjadi rentang [12,13.5] dan keterangannya", bebas.rehat + " | " + bebas.hint);
+    const kerja = bebas.rows.filter(r => /jam$/.test(r.t) && !/jeda/.test(r.t));
+    ok(kerja.length > 3 && kerja.every(r => /order .* km berbayar .* baterai \d+→\d+%/.test(r.d)), "tiap langkah kerja memuat ≈ order, km berbayar, dan baterai a→b%", JSON.stringify(kerja.map(r => r.d)));
+    ok(/≈ Order/.test(bebas.side) && /\/order/.test(bebas.side), "ringkasan memuat perkiraan order dan Rp/order", bebas.side.slice(0, 300));
+    const rekap = bebas.rows[bebas.rows.length - 1];
+    const cumRekap = (rekap.cum.match(/Rp [\d.]+/g) || []).pop();
+    ok(/rekap/.test(rekap.t) && cumRekap === bebas.net, "kumulatif baris rekap bertemu angka bersih", `${cumRekap} vs ${bebas.net}`);
+
+    /* Sesi ngecas: jeda pendek 13:00–15:00 -> paling banyak jembatan kecil + isi di jeda, tak ada sesi 90% di blok kerja disusul sesi jeda */
+    await setField(fresh, "p-rehat", "short");
+    const pendek = await fresh.evaluate(() => {
+      const rows = [...document.querySelectorAll("#p-steps .step")].map(s => ({ t:s.querySelector(".t").innerText.replace(/\s+/g, " "), cls:s.className, s:s.querySelector(".a span").innerText }));
+      const ctx = dayCtx("2026-09-24");
+      const r = simulate({ ctx, keluar:5.25, pulang:21.5, rehat:"short", zona:"tng", filter:2, bat:30.08, rumah:false, hujan:false, acara:false });
+      return { rows, sesi:r.sesi.map(x => ({ blok:x.blok, dari:Math.round(x.dari*100), ke:Math.round(x.ke*100), diJeda:x.diJeda })), floor:r.floor, socMinKerja:r.socMinKerja, socTiba:r.socTiba,
+               komponen: Math.abs(r.net - (r.blockNet + r.insentif - r.feeCharge - r.parkir)) < 1 };
+    });
+    const charge = pendek.rows.filter(r => /charge/.test(r.cls));
+    ok(charge.length === pendek.sesi.length && charge.length <= 2, "jumlah langkah ngecas = jumlah sesi mesin (≤ 2)", JSON.stringify(pendek.sesi));
+    ok(pendek.sesi.some(x => x.diJeda) && pendek.sesi.every(x => x.diJeda || x.ke - x.dari <= 35), "isi penuh di jeda; sesi di blok kerja hanya jembatan kecil", JSON.stringify(pendek.sesi));
+    ok(pendek.socMinKerja >= pendek.floor - 0.061 && pendek.socTiba >= 0.10 && pendek.komponen, "baterai tidak jauh di bawah lantai, tiba dengan cadangan, bersih = komponennya", JSON.stringify({ min:pendek.socMinKerja, tiba:pendek.socTiba, floor:pendek.floor }));
+
+    /* Jeda panjang boleh sampai 100% (colok di rumah), jeda pendek tetap 90% */
+    const seratus = await fresh.evaluate(() => {
+      const ctx = dayCtx("2026-09-24");
+      const a = simulate({ ctx, keluar:9.5, pulang:21.5, rehat:"full", zona:"mix", filter:2, bat:30.08, rumah:true, hujan:false, acara:false });
+      const b = simulate({ ctx, keluar:5.25, pulang:21.5, rehat:[12, 13], zona:"mix", filter:2, bat:38.88, rumah:false, hujan:false, acara:false });
+      return { a:a.sesi.map(x => [x.blok, Math.round(x.ke*100)]), b:b.sesi.map(x => [x.blok, Math.round(x.ke*100)]) };
+    });
+    ok(seratus.a.some(x => x[0] === "Istirahat" && x[1] > 90) && seratus.b.every(x => x[1] <= 90), "jeda 4,5 jam dengan charger rumah boleh isi > 90% (AC), jeda 1 jam maksimum 90%", JSON.stringify(seratus));
+
+    /* Jam nyata: kolom jam mengikuti jam sampai ke menit, bukan pembulatan 15 menit */
+    const jam = await fresh.evaluate(() => {
+      const d = new Date(), t = d.getHours() + d.getMinutes()/60;
+      return { t, keluar: jamKeluarSekarang(), manual: jamManual, hidup: document.getElementById("jamhidup").textContent, src: document.getElementById("src-jam").textContent };
+    });
+    const dalamJam = jam.t >= 3.5 && jam.t <= 23.5;
+    ok(!dalamJam || (!jam.manual && Math.abs(jam.keluar - jam.t) < 0.02 && /ikut jam, tepat ke menit/.test(jam.src)), "mesin memakai jam sekarang tepat ke menit", JSON.stringify(jam));
+    ok(/^\d\d:\d\d$/.test(jam.hidup), "jam hidup tampil HH:MM", jam.hidup);
+    await fresh.close();
+  }
+
+  console.log("12. Mulai hari, perkiraan baterai, odometer GPS, lapisan TomTom");
+  {
+    let ttCalls = 0;
+    const ci = await ctx.newPage();
+    await ci.route("**/api.tomtom.com/**", r => { ttCalls++; r.abort(); });
+    await ci.goto(url + "index.html?checkin", { waitUntil:"load" });
+    await ci.evaluate(() => { localStorage.removeItem("mulai-hari-lewati"); localStorage.removeItem("mulai-hari"); localStorage.removeItem("baterai-hari"); localStorage.removeItem("buku-setoran-plan"); });
+    await ci.reload({ waitUntil:"load" });
+    await ci.waitForFunction(() => document.querySelector("#n-steps .step"));
+    const jam = await ci.evaluate(() => jamSekarangTepat());
+    const dalamJam = jam >= 3.5 && jam <= 23.5;
+    const tampil = await ci.$eval("#checkin", e => !e.hidden);
+    ok(!dalamJam || tampil, "halaman Mulai hari terbuka sendiri saat aplikasi dibuka", JSON.stringify({ jam, tampil }));
+    if (!tampil) await ci.evaluate(() => bukaCheckin());
+    const auto = await ci.$eval("#ci-auto", e => e.innerText);
+    ok(/Yang sudah diketahui mesin/.test(auto) && /posisi:/.test(auto), "halaman menyebut yang sudah diketahui mesin (hari, jam, posisi)", auto);
+    await setField(ci, "ci-soc", 72); await setField(ci, "ci-zona", "tng"); await setField(ci, "ci-filter", 1);
+    await setField(ci, "ci-rehat", "custom"); await setField(ci, "ci-rehat-dari", 12); await setField(ci, "ci-rehat-sampai", 13.5);
+    await setField(ci, "ci-gps", false);
+    await ci.click("#ci-mulai");
+    const sesudah = await ci.evaluate(() => ({ hidden:document.getElementById("checkin").hidden, soc:document.getElementById("n-soc").value, src:document.getElementById("src-soc").textContent,
+      plan:(PLAN && PLAN.date === iso(new Date())) ? { rehat:JSON.stringify(PLAN.rehat), filter:PLAN.filter, zona:PLAN.zona } : null,
+      mulai:MULAI_HARI && MULAI_HARI.soc, jangkar:Baterai.terakhir(), est:document.getElementById("socest").innerText, status:document.getElementById("hari-status").innerText }));
+    ok(sesudah.hidden && sesudah.soc === "72" && sesudah.mulai === 72, "Mulai hari menutup halaman dan mengisi baterai 72% di tab Sekarang", JSON.stringify(sesudah));
+    ok(sesudah.plan && sesudah.plan.rehat === "[12,13.5]" && sesudah.plan.filter === 1 && sesudah.plan.zona === "tng", "isian menjadi rencana hari ini (jeda 12:00–13:30, filter 1, Tangerang)", JSON.stringify(sesudah.plan));
+    ok(sesudah.jangkar && sesudah.jangkar.soc === 72 && /perkiraan mesin/.test(sesudah.src) && /Perkiraan mesin/.test(sesudah.est), "jangkar baterai 72% dan keterangan perkiraan", JSON.stringify({ j:sesudah.jangkar, src:sesudah.src, est:sesudah.est }));
+    const est2 = await ci.evaluate(() => { const j = Baterai.terakhir(); return Baterai.perkiraan(j.jam + 2, { bat:30.08, zona:"tng", rehat:"none" }); });
+    ok(est2 && est2.soc < 72 && est2.soc > 40 && !est2.gps, "dua jam kemudian perkiraan turun menurut model blok jam", JSON.stringify(est2));
+    /* titik GPS 10 menit terpisah, akurasi 20 m (laju masuk akal; goyangan < 1,5x akurasi diabaikan) */
+    const est3 = await ci.evaluate(() => { const j = Baterai.terakhir(); const t0 = Date.now(); Baterai.catatFix(-6.18, 106.62, t0, 20); Baterai.catatFix(-6.18, 106.70, t0 + 600000, 20); Baterai.catatFix(-6.25, 106.70, t0 + 1200000, 20);
+      Baterai.catatFix(-6.2503, 106.70, t0 + 1300000, 300);   /* fix kasar 300 m: diabaikan */
+      return { km:Baterai.muat().gpsKm, p:Baterai.perkiraan(j.jam + 0.5, { bat:30.08, zona:"tng", rehat:"none" }) }; });
+    ok(est3.km > 15 && est3.p.gps && est3.p.soc < 72, "odometer GPS menjumlahkan jarak antar titik dan dipakai perkiraan", JSON.stringify(est3));
+    await setField(ci, "cas-ke", 85); await ci.click("#cas-selesai");
+    const cas = await ci.evaluate(() => ({ soc:document.getElementById("n-soc").value, j:Baterai.terakhir(), status:document.getElementById("hari-status").innerText }));
+    ok(cas.soc === "85" && cas.j.soc === 85 && cas.j.sumber === "ngecas", "Selesai ngecas ke 85% menjadi jangkar baru", JSON.stringify(cas));
+    /* Mengetik: ketikan yang belum selesai ("7") tidak boleh ditimpa perkiraan mesin. */
+    const setengah = await ci.evaluate(() => { const e = document.getElementById("n-soc"); e.value = "7"; e.dispatchEvent(new Event("input", { bubbles:true })); return { v:e.value, src:document.getElementById("src-soc").textContent }; });
+    ok(setengah.v === "7" && /diketik/.test(setengah.src), "ketikan yang belum selesai tidak ditimpa perkiraan", JSON.stringify(setengah));
+    await setField(ci, "n-soc", 60);
+    const ketik = await ci.evaluate(() => ({ j:Baterai.terakhir(), src:document.getElementById("src-soc").textContent }));
+    ok(ketik.j.soc === 60 && ketik.j.sumber === "diketik", "angka baterai yang diketik sendiri menjadi jangkar", JSON.stringify(ketik));
+    await ci.reload({ waitUntil:"load" }); await ci.waitForFunction(() => document.querySelector("#n-steps .step"));
+    const ulang = await ci.evaluate(() => ({ hidden:document.getElementById("checkin").hidden, soc:document.getElementById("n-soc").value, mulai:!!MULAI_HARI }));
+    ok(ulang.hidden && ulang.mulai && Math.abs(parseFloat(ulang.soc) - 60) <= 3, "dibuka lagi: tidak minta isi ulang, baterai terisi dari perkiraan", JSON.stringify(ulang));
+    await ci.evaluate(() => { localStorage.removeItem("mulai-hari"); localStorage.removeItem("mulai-hari-lewati"); });
+    await ci.reload({ waitUntil:"load" }); await ci.waitForFunction(() => document.querySelector("#n-steps .step"));
+    if (dalamJam) await ci.click("#ci-lewati");
+    const lewat = await ci.evaluate(() => ({ hidden:document.getElementById("checkin").hidden, l:localStorage.getItem("mulai-hari-lewati") === iso(new Date()) }));
+    ok(lewat.hidden && (!dalamJam || lewat.l), "Lewati menutup halaman dan diingat untuk hari ini", JSON.stringify(lewat));
+    await ci.evaluate(() => Peta.setKunciTomTom("kunci-uji"));
+    await ci.click("#peta-toggle");
+    await ci.waitForTimeout(800);
+    const tt = await ci.evaluate(() => ({ ada:Peta.adaTomTom(), url:Peta.urlTomTom("k"), img:!!document.querySelector('img[src*="api.tomtom.com"]') }));
+    ok(tt.ada && /api\.tomtom\.com\/traffic\/map\/4\/tile\/flow/.test(tt.url) && (ttCalls > 0 || tt.img), "kunci TomTom memasang lapisan kemacetan di peta", JSON.stringify({ ...tt, ttCalls }));
+    await ci.goto(url + "index.html?checkin&tautan2#tomtom=abc123", { waitUntil:"load" });
+    await ci.waitForFunction(() => document.querySelector("#n-steps .step"));
+    const tl = await ci.evaluate(() => ({ k:Peta.kunciTomTom(), hash:location.hash, flag:document.getElementById("tautan").innerText }));
+    ok(tl.k === "abc123" && tl.hash === "" && /TomTom/.test(tl.flag), "tautan pengaturan #tomtom= menyimpan kunci", JSON.stringify(tl));
+    const CALIB_KECEPATAN = await ci.evaluate(() => CALIB.kecepatan);
+    const rek = await ci.evaluate(() => {
+      const ctx = dayCtx("2026-09-24"), L = LOKMAP.kota;
+      const h = Rekomendasi.hitung({ ctx, keluar:17.25, pulang:21.5, rehat:"none", zona:"tng", filter:2, bat:30.08, rumah:false, hujan:false, acara:false, soc:70, deadKm:0 }, L, 70, false);
+      const x = h.daftar.find(y => y.id === "cbd");
+      const h2 = Rekomendasi.hitung({ ctx, keluar:11, pulang:21.5, rehat:"none", zona:"tng", filter:2, bat:30.08, rumah:false, hujan:false, acara:false, soc:70, deadKm:0 }, L, 70, false);
+      const y = h2.daftar.find(z => z.id === "cbd");
+      return x ? { macet:x.macet, menit:Math.round(x.jamPindah*60), km:Math.round(x.kmPindah), menitLancar:y ? Math.round(y.jamPindah*60) : null, macetLancar:y && y.macet } : null;
+    });
+    ok(rek && rek.macet === 1.9 && Math.abs(rek.menit - rek.km / CALIB_KECEPATAN * 60) <= 3 && rek.macetLancar === 1 && rek.menitLancar < rek.menit * 0.6,
+       "waktu pindah: jam sibuk = km / kecepatan kalibrasi (sudah macet), di luar jam sibuk 1,9x lebih cepat", JSON.stringify(rek));
+    await ci.close();
+  }
 
   await browser.close(); srv.close();
   console.log(`\n${passed} lolos, ${failed} gagal`);

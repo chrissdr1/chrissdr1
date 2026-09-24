@@ -15,12 +15,17 @@ const ctx = await b.newContext({ viewport:{ width:390, height:844 }, deviceScale
 await ctx.route("**/api.open-meteo.com/**", r => r.abort());
 const p = await ctx.newPage();
 await p.goto(url + "index.html", { waitUntil:"load" }); await p.waitForFunction(() => document.querySelector("#n-steps .step"));
-await p.evaluate(() => document.getElementById("panduan-tutup").click());
+/* Halaman Mulai hari (dibuka paksa supaya tidak bergantung jam) */
+await p.evaluate(() => { document.getElementById("panduan-tutup").click(); bukaCheckin(); });
+await p.screenshot({ path:OUT + "/mulai.png" });
+await p.evaluate(() => { document.getElementById("ci-soc").value = "78"; document.getElementById("ci-gps").checked = false; document.getElementById("ci-mulai").click(); });
+await p.waitForFunction(() => document.getElementById("checkin").hidden);
 await p.screenshot({ path:OUT + "/now.png" });
 await p.evaluate(() => document.getElementById("peta-toggle").click());
 await p.waitForFunction(() => document.querySelectorAll("#peta .pin").length > 0);
 await p.evaluate(() => document.getElementById("petabox").scrollIntoView());
 await p.screenshot({ path:OUT + "/peta.png" });
+await p.evaluate(() => document.getElementById("rek").scrollIntoView()); await p.screenshot({ path:OUT + "/rek.png" });
 await p.click("#t-log"); await p.evaluate(() => document.getElementById("sk-panel").scrollIntoView()); await p.screenshot({ path:OUT + "/log.png" });
 await p.click("#t-plan"); await p.evaluate(() => document.getElementById("acara-daftar").scrollIntoView({ block:"center" })); await p.screenshot({ path:OUT + "/acara.png" });
 await p.click("#t-tanya"); await p.evaluate(() => document.getElementById("ai-panel").scrollIntoView()); await p.screenshot({ path:OUT + "/tanya.png" });

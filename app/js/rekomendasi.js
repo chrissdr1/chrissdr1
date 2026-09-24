@@ -41,19 +41,23 @@ var Rekomendasi = (function(){
         if (asal) kmPindah = jarakDatar(asal.lat, asal.lon, K.lat, K.lon) * LIKU;
         else kmPindah = Math.abs(((L && L.home) || 0) - K.home) + 3;   /* tanpa koordinat: tebakan kasar */
       }
-      var jamPindah = kmPindah / CALIB.kecepatan;
+      /* Kecepatan kalibrasi sudah kecepatan jam sibuk; di luar jam sibuk 1,6x
+         (Tangerang) / 1,9x (arah Jakarta) lebih cepat. macet > 1 hanya label. */
+      var macet = jamSibuk(o.keluar) ? ((K.z === "jkt" || K.z === "mix") ? 1.9 : 1.6) : 1;
+      var jamPindah = kmPindah / CALIB.kecepatan * faktorMacet(o.keluar, K.z);
       var socPindah = (kmPindah / CALIB.kmkwh) / o.bat * 100;
       var keluar = o.keluar + jamPindah;
       if (o.pulang - keluar < 0.5) return;   /* tidak sempat kerja di sana */
       var o2 = salin(o);
       o2.keluar = keluar; o2.zona = K.z; o2.soc = Math.max(1, soc - socPindah);
       o2.deadKm = 0;   /* km kosong sudah dihitung di sini, jangan dihitung lagi oleh wilayah */
+      o2.kmHome = stay ? 0 : K.home; o2.stay = !!stay;
       var r = simulate(o2);
       var biayaPindah = kmPindah * (TARIF_KWH / CALIB.kmkwh);
-      var sisa = r.blockNet - r.feeCharge - biayaPindah;
+      var sisa = r.blockNet - r.feeCharge - r.parkir - biayaPindah;
       var blkTiba = blockAt(Math.min(keluar, 22.9), o.ctx.shapeDay);
       out.push({ id:id, n:K.n, z:K.z, lat:K.lat, lon:K.lon, diSini:diSini,
-                 kmPindah:kmPindah, jamPindah:jamPindah, tiba:keluar, socTiba:Math.round(o2.soc),
+                 kmPindah:kmPindah, jamPindah:jamPindah, macet:macet, tiba:keluar, socTiba:Math.round(o2.soc),
                  sisa:sisa, sesi:r.sessions, kmHome:stay ? 0 : K.home, res:K.res,
                  saran:advise(blkTiba, K, o2), r:r });
     });
