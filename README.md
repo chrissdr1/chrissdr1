@@ -7,69 +7,83 @@ Christopher Delique R /
 # Hallo Shanti — Buku Setoran & Penunjuk Arah
 
 Aplikasi web (PWA, bisa dipasang di HP) untuk pengemudi GrabCar dengan BYD Atto 1
-yang berpangkalan di Modernland, Kota Tangerang. Ini kelanjutan dari dua halaman
-yang dibangun di Claude Code: **Rute 700K** (rencana kerja dan rujukan tarif) dan
-**Hallo Shanti** (buku setoran, kartu langkah berikutnya, perencana sif). Semua
-mesin hitungnya dipindahkan **tanpa mengubah satu angka pun** — tes emas
-membandingkan 149 keluaran dengan artifact aslinya.
+yang berpangkalan di Modernland, Kota Tangerang. Kelanjutan dari dua halaman yang
+dibangun di Claude Code: **Rute 700K** (rencana kerja dan rujukan tarif) dan
+**Hallo Shanti** (buku setoran, kartu langkah berikutnya, perencana sif). Mesin
+hitungnya dipindahkan **tanpa mengubah satu angka pun**: tes emas membandingkan
+keluarannya dengan artifact aslinya.
 
-Isi aplikasi (`app/`):
+**Alamat aplikasi:** https://chrissdr1.github.io/chrissdr1/
 
 | Tab | Fungsi |
 |---|---|
-| **Sekarang** | Posisi (GPS atau pilih sendiri), sisa baterai, sudah dapat berapa → kartu *langkah berikutnya*, urutan sampai pulang, kapan dan di mana ngecas, SPKLU terdekat menurut jarak jalan. |
-| **Catatan** | Catat angka harian dari aplikasi Grab (±1 menit). Setelah 3 hari, Rp/km, insentif, dan km/kWh Ibu sendiri menggantikan asumsi bawaan di seluruh aplikasi. Saldo bulanan menuju Rp 13,4 juta. Cadangan lewat salin-tempel ke WhatsApp. |
-| **Rencana** | Simulasi satu hari: jam keluar, jam pulang, istirahat, wilayah, filter, baterai → perkiraan bersih, urutan langkah, dan perbandingan 7 pola sif. |
-| **Tanya** | Asisten Claude yang tahu isi halaman (catatan, rencana, tarif blok, 183 kecamatan terukur) dan bisa menjalankan mesin hitung yang sama lewat alat. Butuh kunci API, lihat di bawah. |
+| **Sekarang** | Posisi (GPS, peta, atau pilih sendiri), sisa baterai, sudah dapat berapa → kartu *langkah berikutnya*, urutan sampai pulang, kapan dan di mana ngecas, SPKLU terdekat menurut jarak jalan. Peta OpenStreetMap dengan posisi Ibu, titik terukur, SPKLU, dan tombol ke Google Maps berlapis kemacetan. |
+| **Catatan** | Catat angka harian dari aplikasi Grab (±1 menit). Setelah 3 hari, Rp/km, insentif, dan km/kWh Ibu sendiri menggantikan asumsi bawaan. Saldo bulanan menuju Rp 13,4 juta. Sinkron otomatis ke repo GitHub privat milik anak. |
+| **Rencana** | Simulasi satu hari → perkiraan bersih, urutan langkah, perbandingan 7 pola sif. Kalender acara besar: bawaan + hasil pencarian web oleh Claude. |
+| **Tanya** | Asisten Claude yang tahu isi halaman dan bisa menjalankan mesin hitung yang sama lewat alat, plus pencarian web untuk hal yang berubah hari ini. |
 
-Uji mandiri di bagian bawah halaman memeriksa 12 aturan pada ribuan kombinasi
-(urutan langkah, jarak terhadap 183 titik terukur, ekonomi rencana).
+Yang diambil dari internet, dan dari mana:
 
-## Menerbitkan (sekali saja)
+| Data | Sumber | Butuh apa |
+|---|---|---|
+| Cuaca hari ini | Open-Meteo (titik Modernland), diperbarui tiap 3 jam | tidak ada |
+| Peta | Ubin OpenStreetMap | tidak ada |
+| Kemacetan langsung | Google Maps (dibuka lewat tombol, di posisi Ibu) | tidak ada |
+| Acara besar 90 hari | Claude + pencarian web, disegarkan tiap minggu | kunci API Anthropic |
+| Tanya | Claude (`claude-opus-5`) + alat hitung halaman + pencarian web | kunci API Anthropic |
+| Catatan Ibu → anak | GitHub Contents API ke repo privat | token GitHub terbatas |
 
-Aplikasi ini statis: cukup GitHub Pages.
+Tanpa kunci apa pun, semua hitungan tetap jalan dan aplikasi mengatakan apa yang
+sedang tidak aktif. Tidak ada lapisan kemacetan di dalam aplikasi: tidak ada sumber
+gratis untuk itu, dan tombol Google Maps memberi data yang sama tanpa biaya.
 
-1. Gabungkan branch ini ke `master`.
-2. Di GitHub: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-3. Workflow `.github/workflows/pages.yml` menerbitkan folder `app/` setiap ada
-   perubahan di `master`. Alamatnya: `https://chrissdr1.github.io/chrissdr1/`.
+## Pengaturan sekali oleh anak
 
-## Memasang di HP Ibu
-
-1. Buka alamat di atas di Chrome (Android) atau Safari (iPhone).
-2. Android: menu ⋮ → **Tambahkan ke layar utama** / **Instal aplikasi**.
-   iPhone: tombol Bagikan → **Tambah ke Layar Utama**.
-3. Setelah itu aplikasi terbuka tanpa sinyal, dan memperbarui dirinya sendiri saat
-   dibuka dengan internet.
-
-Catatan harian tersimpan di HP itu saja (localStorage). Kalau ganti HP, pakai
-**Salin catatan** di tab Catatan lalu **Pulihkan dari salinan** di HP baru.
-
-## Menyalakan tab Tanya (opsional)
-
-Tab Tanya, tombol *Analisa catatan*, dan pemetaan nama tempat yang tidak dikenal
-memakai Claude lewat SDK resmi `@anthropic-ai/sdk` yang dipanggil langsung dari
-browser. Tanpa kunci, semua hitungan lain tetap jalan dan aplikasi mengatakannya
-terus terang.
+### 1. Kunci API Anthropic (tab Tanya, kalender acara)
 
 1. Buat kunci di console.anthropic.com. Pakai **workspace tersendiri dengan batas
    belanja bulanan**, supaya kalau HP hilang kuncinya tinggal dicabut.
 2. Di aplikasi: tab **Tanya → Sambungan ke Claude → tempel kunci → Simpan**.
    Kunci disimpan di HP itu saja dan hanya dikirim ke `api.anthropic.com`.
 
-Model: tab Tanya dan analisa memakai `claude-opus-5`; pemetaan nama tempat
-memakai `claude-haiku-4-5`. Keduanya diatur di satu tempat: `app/js/ai.js`.
+### 2. Sinkron catatan ke GitHub (tab Catatan)
+
+1. Buat repo **privat** baru, misalnya `chrissdr1/buku-setoran-data` (kosong saja).
+2. Buat token: GitHub → Settings → Developer settings → **Fine-grained tokens** →
+   Generate. Repository access: *Only select repositories* → repo tadi.
+   Permissions → Repository → **Contents: Read and write**. Masa berlaku sesuai selera.
+3. Di aplikasi: tab **Catatan → Terhubung ke anak → isi repo dan token → Simpan**.
+   Setiap "Simpan hari ini" menulis `catatan/shanti.json` ke repo itu. Kalau
+   ganti HP, atur token di HP baru dan catatannya kembali sendiri.
+
+Membaca datanya: buka berkas itu di GitHub, atau tambahkan repo tersebut ke sesi
+Claude Code dan minta analisa. Bentuknya `{ "harian": [ {id, jam, trip, dpt, ins, kmt,
+kmp, kwh, biaya, mnt, cat, diubah}, … ], "rencana": {…} }`.
+
+## Memasang di HP Ibu
+
+1. Buka alamat aplikasi di Chrome (Android) atau Safari (iPhone).
+2. Android: menu ⋮ → **Tambahkan ke layar utama** / **Instal aplikasi**.
+   iPhone: tombol Bagikan → **Tambah ke Layar Utama**.
+3. Aplikasi terbuka tanpa sinyal, dan memperbarui dirinya sendiri saat dibuka
+   dengan internet.
+
+## Menerbitkan
+
+Statis, lewat GitHub Pages. Workflow `.github/workflows/pages.yml` menerbitkan
+folder `app/` setiap ada perubahan di `master`, dan mengaktifkan Pages sendiri
+saat pertama kali jalan (`enablement: true`).
 
 ## Merawat datanya
 
-Semua yang berubah menurut waktu ada di `app/js/data.js`:
+Yang berubah menurut waktu ada di `app/js/data.js`:
 
-| Variabel | Isi | Terakhir |
-|---|---|---|
-| `CUACA` | Prakiraan hari ini (`tanggal`, `hujan`, `jam`, `ringkas`). Kalau tanggalnya bukan hari ini, aplikasi bilang begitu dan meminta centang Hujan diisi sendiri. | 2026-09-23 |
-| `EVENTS` + `EVENTS_SAMPAI` | Konser dan pameran besar di Jakarta/BSD. | sampai 2026-12-27 |
-| `HOLI` + `HOLI_SAMPAI` | Tanggal merah SKB 3 Menteri 2026; 2027 baru tanggal pasti. | sampai 2026-12-25 |
-| `TERBIT` | Tanggal terbit versi ini. **Samakan dengan `VERSION` di `app/sw.js`** setiap kali menerbitkan, supaya cache lama dibuang. Tes memeriksanya. | 2026-09-24 |
+| Variabel | Isi |
+|---|---|
+| `HOLI` + `HOLI_SAMPAI` | Tanggal merah SKB 3 Menteri 2026; 2027 baru tanggal pasti. |
+| `EVENTS` + `EVENTS_SAMPAI` | Kalender acara bawaan (disusun tangan). Hasil web ditambahkan di atasnya, tidak menimpa. |
+| `CUACA` | Cadangan bila Open-Meteo tidak terjangkau. |
+| `TERBIT` | Tanggal terbit versi ini. `VERSION` di `app/sw.js` harus diawali tanggal ini (tes memeriksanya). |
 
 Rujukan lengkap tarif, koridor, dan aturan baterai: `app/rute-700k.html`.
 
@@ -77,17 +91,20 @@ Rujukan lengkap tarif, koridor, dan aturan baterai: `app/rute-700k.html`.
 
 ```
 app/
-  index.html          markup empat tab
-  style.css
+  index.html, style.css
   js/data.js          tarif blok, wilayah, kalender, 183 kecamatan, SPKLU, teks langkah
   js/engine.js        simulasi, urutan langkah, nasihat, jarak pulang, uji mandiri
   js/ai.js            sambungan ke Claude (window.claude di claude.ai, atau SDK + kunci API)
+  js/cuaca.js         prakiraan dari Open-Meteo
+  js/peta.js          peta Leaflet: posisi, titik terukur, SPKLU, tautan kemacetan
+  js/acara.js         kalender acara dari pencarian web
+  js/sinkron.js       sinkron catatan ke repo GitHub privat
   js/app.js           antarmuka dan boot
-  vendor/anthropic-sdk.min.js   bundel SDK resmi (npm run build:sdk)
-  sw.js, manifest.webmanifest, icons/
-  rute-700k.html      dokumen rujukan
-tests/run.mjs         uji Chromium: uji mandiri, service worker, adapter AI (fetch tiruan), uji emas
-tools/sdk-entry.mjs   titik masuk bundel SDK
+  vendor/             anthropic-sdk.min.js (npm run build:sdk), leaflet/
+  sw.js, manifest.webmanifest, icons/, rute-700k.html
+tests/run.mjs         uji Chromium: uji mandiri, service worker, adapter AI, cuaca, peta,
+                      acara, sinkron (semua layanan luar ditiru), uji emas
+tools/                sdk-entry.mjs, make-icons.py
 ```
 
 ## Menguji
@@ -95,8 +112,6 @@ tools/sdk-entry.mjs   titik masuk bundel SDK
 ```
 npm install
 npx playwright install chromium
-npm test                                   # 28 pemeriksaan
+npm test                                      # 48 pemeriksaan
 ORIG_HTML=/path/artifact-asli.html npm test   # + uji emas terhadap artifact satu-berkas
 ```
-
-Memperbarui bundel SDK: `npm run build:sdk`.

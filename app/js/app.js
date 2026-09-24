@@ -1,6 +1,8 @@
 /* Antarmuka: tab Sekarang, Catatan, Rencana, Tanya, dan boot. */
 "use strict";
 
+var POSISI_GPS = null;   /* {lat, lon, akurasi, at} dari deteksi terakhir; dipakai peta */
+
 function renderDayFlag(ctx, dateStr){
   var n = el("dayflag");
   if (ctx.ev){
@@ -298,6 +300,8 @@ function deteksiLokasi(otomatis){
   setGpsHint(otomatis ? "Memeriksa lokasi…" : "Mencari lokasi…");
   navigator.geolocation.getCurrentPosition(function(pos){
     var la = pos.coords.latitude, lo = pos.coords.longitude;
+    POSISI_GPS = { lat:la, lon:lo, akurasi:pos.coords.accuracy || 0, at:Date.now() };
+    petaPosisi();
     var best = null, bestD = Infinity;
     LOK.forEach(function(l){
       if (l.lat == null) return;
@@ -1273,6 +1277,12 @@ function kirimChat(){
     "membuat jawabanmu berdiri di atas angka; jangan panggil kalau angkanya sudah ada di bawah, " +
     "karena tiap panggilan membuat Ibu menunggu lebih lama.\n\n" +
 
+    (sampler.sumber === "api"
+      ? "ALAT KETIGA, web_search, hanya untuk hal yang berubah HARI INI di luar aplikasi: berita kemacetan " +
+        "atau penutupan jalan, banjir, acara mendadak, gangguan di bandara. Sebutkan sumbernya dalam " +
+        "beberapa kata. Jangan dipakai untuk yang sudah ada di data di bawah.\n\n"
+      : "") +
+
     "KALAU DATANYA TIDAK ADA, bilang tidak tahu, lalu sebutkan apa yang perlu dicatat atau " +
     "dicek supaya lain kali bisa dijawab. Jangan mengarang angka, sekali pun.\n\n" +
 
@@ -1284,8 +1294,7 @@ function kirimChat(){
     konteksTanya();
 
   var turns = [{role:"user", content: sistem + "\n\n=== PERTANYAAN IBU ===\n" + q}];
-  CHAT.slice(0,-2).slice(-6).forEach(function(m, i){ /* riwayat singkat */ });
-  var riwayat = CHAT.slice(0,-2).slice(-6);
+  var riwayat = CHAT.slice(0,-2).slice(-12);
   if (riwayat.length){
     turns = riwayat.concat([{role:"user", content: sistem + "\n\n=== PERTANYAAN IBU ===\n" + q}]);
     if (turns[0].role !== "user") turns.shift();
@@ -1294,7 +1303,9 @@ function kirimChat(){
   /* modelTier "complex": penalarannya lebih dalam, tapi jawabannya lebih
      lama -- dan Ibu membacanya sambil di jalan. Kalau terasa lambat,
      turunkan ke "default"; nilainya cuma satu kata di baris ini. */
-  sampler(turns, { modelTier:"complex", tools:alatTanya(), onText:function(ev){
+  var alat = alatTanya();
+  if (sampler.sumber === "api") alat = alat.concat([{ type:"web_search_20260209", name:"web_search", max_uses:3 }]);
+  sampler(turns, { modelTier:"complex", tools:alat, onText:function(ev){
     CHAT[CHAT.length-1].content = ev.text; renderChat();
   }}).then(function(res){
     CHAT[CHAT.length-1].content = res.text;
@@ -1414,9 +1425,11 @@ el("save").addEventListener("click", function(){
      Ibu cukup mengetik satu angka. */
   if (rec.mnt > 0 && AKTUAL && AKTUAL.tanggal === tgl && AKTUAL.home > 0) rec.pkm = AKTUAL.home;
   if (!rec.dpt && !rec.kmt){ el("status").textContent="Isi minimal pendapatan atau km."; el("status").className="status err"; return; }
+  rec.diubah = new Date().toISOString();   /* untuk penggabungan saat sinkron */
   rows = rows.filter(function(r){ return r.id!==rec.id; }); rows.push(rec); sortRows();
   lsWrite(rows); renderAll();
   el("status").textContent="Tersimpan."; el("status").className="status ok";
+  sinkronNanti();
 });
 F.forEach(function(k){ el(k).addEventListener("input", preview); });
 
@@ -1465,7 +1478,7 @@ el("pulihkan").addEventListener("click", function(){
   var ada = {}; rows.forEach(function(r){ ada[r.id] = true; });
   var tambah = 0;
   data.harian.forEach(function(r){ if (r && r.id && !ada[r.id]){ rows.push(r); tambah++; } });
-  sortRows(); lsWrite(rows); renderAll();
+  sortRows(); lsWrite(rows); renderAll(); sinkronNanti();
   w.hidden = true; el("cadteks").value = "";
   setCad(tambah ? (tambah + " hari dipulihkan, total sekarang " + rows.length + " hari.")
                 : "Semua catatan di salinan itu sudah ada di sini.", "ok");
@@ -1477,6 +1490,7 @@ el("p-save").addEventListener("click", function(){
     rehat:el("p-rehat").value, zona:el("p-zona").value,
     filter:parseInt(el("p-filter").value,10), bat:parseFloat(el("p-bat").value),
     rumah:el("p-rumah").checked, hujan:el("p-hujan").checked, acara:el("p-acara").checked });
+  sinkronNanti();
   el("p-status").textContent = "Tersimpan. Tab Sekarang akan membandingkan ke rencana ini.";
   el("p-status").className = "status ok";
   runNow();
@@ -1615,6 +1629,9 @@ muatChat(); renderChat();
 })();
 
 loadPlan(); muatRegistri();
+/* Acara hasil pencarian web yang tersimpan di HP ikut masuk kalender sebelum
+   hitungan pertama, supaya hari ini langsung memakainya. */
+(function(){ var a = Acara.baca(); if (a && a.daftar) Acara.terapkan(a.daftar); })();
 /* Daftar lokasi dibangun di renderLok("kota") di atas, SEBELUM catatan
    lokasi dimuat -- jadi tanpa baris ini semua tempat yang pernah Ibu
    simpan hilang dari daftar tiap kali halaman dibuka lagi. Datanya tidak
@@ -1653,7 +1670,7 @@ el("ujijalan").addEventListener("click", function(){
 });
 
 /* Versi aplikasi, dan kapan kalendernya habis. */
-(function(){
+function renderSegar(){
   var n = el("segar"); if (!n) return;
   var hariIni = iso(new Date());
   function selisihHari(a, b){
@@ -1686,12 +1703,15 @@ el("ujijalan").addEventListener("click", function(){
       "tahun depan, karena SKB-nya belum terbit waktu halaman ini dibuat.");
   }
 
+  var nWeb = Object.keys(EVENTS).filter(function(k){ return EVENTS[k][3] === "web"; }).length;
+  if (nWeb) pesan.push("Kalender acara ditambah <b>" + nWeb + " acara dari pencarian web</b>.");
   n.hidden = false;
   n.className = "flag " + kelas;
   n.innerHTML = '<span class="tag">Umur halaman</span><span>' + pesan.join(" ") + "</span>";
-})();
+}
+renderSegar();
 
-/* Cuaca: ditanam lewat baris CUACA di js/data.js, bukan diambil halaman.
+/* Cuaca: diambil dari Open-Meteo (js/cuaca.js); CUACA di js/data.js hanya cadangan.
 
    Satu baris dulu menelan TIGA keadaan yang sangat berbeda -- belum pernah
    diisi, diisi tapi tanggalnya sudah lewat, dan diisi untuk hari ini -- lalu
@@ -1705,8 +1725,10 @@ el("ujijalan").addEventListener("click", function(){
    bawaannya sampai ada yang menggeser patokan. Kalau begitu keadaannya,
    satu-satunya jalan yang jujur adalah mengatakannya dan menunjuk ke
    centang Hujan, bukan diam. */
-(function(){
-  var c = CUACA, n = el("cuaca"), hariIni = iso(new Date());
+var cuacaTerpasang = null;
+function terapkanCuaca(c){
+  var n = el("cuaca"), hariIni = iso(new Date());
+  cuacaTerpasang = c && c.diambil || null;
   if (c && c.tanggal === hariIni){
     WEATHER = c;
     n.hidden = false;
@@ -1717,7 +1739,9 @@ el("ujijalan").addEventListener("click", function(){
           "Permintaan dan tarif dinamis naik &mdash; tapi hindari titik banjir di Periuk, Ciledug, dan sebagian Jakarta Barat, dan <b>jangan menembus genangan lebih dari 15 cm</b>."
         : "<b>Diperkirakan tidak hujan.</b>") +
       (c.ringkas ? " " + c.ringkas : "") +
-      ' <span style="opacity:.7">&mdash; ' + (c.sumber || "BMKG") + "</span></span>";
+      ' <span style="opacity:.7">&mdash; ' + (c.sumber || "BMKG") +
+      (c.diambil ? ", diambil " + hhmm(new Date(c.diambil).getHours() + new Date(c.diambil).getMinutes()/60) : "") +
+      "</span></span>";
     if (c.hujan){
       if (!el("n-hujan").dataset.touched) el("n-hujan").checked = true;
       if (!el("p-hujan").dataset.touched && el("p-tgl").value === c.tanggal) el("p-hujan").checked = true;
@@ -1728,14 +1752,19 @@ el("ujijalan").addEventListener("click", function(){
   n.hidden = false;
   n.className = "flag quiet";
   n.innerHTML = '<span class="tag">Cuaca hari ini</span><span>' +
-    (c && c.tanggal
-      ? "<b>Prakiraan untuk hari ini belum masuk.</b> Yang tersimpan di halaman ini tertanggal " +
-        c.tanggal + " &mdash; sudah lewat, jadi tidak dipakai."
-      : "<b>Prakiraan cuaca belum pernah masuk ke halaman ini.</b>") +
-    " Halaman ini tidak bisa mengambilnya sendiri. <b>Lihat langitnya, lalu centang " +
+    "<b>Prakiraan hari ini belum terambil dari internet.</b>" +
+    (c && c.tanggal ? " Yang tersimpan tertanggal " + c.tanggal + " &mdash; sudah lewat, jadi tidak dipakai." : "") +
+    " Akan dicoba lagi saat ada sambungan. Sementara itu <b>lihat langitnya, lalu centang " +
     "&ldquo;Hujan&rdquo; sendiri</b> kalau mendung &mdash; seluruh hitungan di bawah langsung ikut menyesuaikan." +
     "</span>";
-})();
+}
+terapkanCuaca(CUACA);
+function segarkanCuaca(){
+  Cuaca.ambil().then(function(c){ if (c && c.diambil !== cuacaTerpasang) terapkanCuaca(c); });
+}
+segarkanCuaca();
+document.addEventListener("visibilitychange", function(){ if (!document.hidden) segarkanCuaca(); });
+window.addEventListener("online", segarkanCuaca);
 el("n-hujan").addEventListener("change", function(){ this.dataset.touched = "1"; });
 el("p-hujan").addEventListener("change", function(){ this.dataset.touched = "1"; });
 
@@ -1759,6 +1788,8 @@ function pasangAI(){
     sampler = ns || null;
     el("ask").disabled = !(sampler && rows.length >= 3);
     tandaiAI();
+    if (sampler && sampler.sumber === "api" && Acara.perluSegar() && navigator.onLine !== false)
+      setTimeout(function(){ segarkanAcara(true); }, 4000);
   })["catch"](function(){ sampler = null; tandaiAI(); });
 }
 el("ai-save").addEventListener("click", function(){
@@ -1788,3 +1819,121 @@ el("ai-clear").addEventListener("click", function(){
   setAiStatus("Kunci dihapus dari HP ini."); tandaiAI();
 });
 pasangAI();
+
+/* ---------------- peta ---------------- */
+function petaLinkMacet(){
+  var a = el("peta-macet"); if (!a) return;
+  var L0 = currentLok(), p = POSISI_GPS;
+  var lat = p ? p.lat : (L0.lat != null ? L0.lat : RUMAH.lat);
+  var lon = p ? p.lon : (L0.lon != null ? L0.lon : RUMAH.lon);
+  a.href = Peta.tautanMacet(lat, lon);
+  el("peta-status").textContent = p ? "dipusatkan di posisi GPS Ibu" : "dipusatkan di " + L0.n;
+}
+function petaPosisi(){
+  if (POSISI_GPS && Peta.ada()) Peta.posisi(POSISI_GPS.lat, POSISI_GPS.lon, POSISI_GPS.akurasi);
+  petaLinkMacet();
+}
+function tampilkanPeta(){
+  var box = el("peta");
+  box.hidden = false; el("peta-actions").hidden = false; el("peta-toggle").textContent = "Sembunyikan peta";
+  Peta.init(box, function(id){
+    renderLok(id); lastLok = id; setLokSumber("manual"); setGpsHint(""); runNow(); petaLinkMacet();
+  });
+  Peta.refresh();
+  var L0 = currentLok();
+  if (!POSISI_GPS && L0.lat != null) Peta.fokus(L0.lat, L0.lon, 12);
+  petaPosisi();
+}
+el("peta-toggle").addEventListener("click", function(){
+  if (el("peta").hidden) tampilkanPeta();
+  else { el("peta").hidden = true; el("peta-actions").hidden = true; this.textContent = "Tampilkan peta"; }
+});
+el("n-lok").addEventListener("change", petaLinkMacet);
+petaLinkMacet();
+
+/* ---------------- kalender acara dari web ---------------- */
+function renderAcara(){
+  var a = Acara.baca(), list = Acara.mendatang(12);
+  el("acara-head").textContent = "Bawaan sampai " + EVENTS_SAMPAI +
+    (a && a.diambil ? " · web " + String(a.diambil).slice(0, 10) : " · web belum diambil");
+  el("acara-daftar").innerHTML = list.length ? list.map(function(x){
+    return '<div class="acara-row"><span class="t">' + x.tanggal + '</span><span class="a"><b>' + esc(x.nama) + "</b> " +
+      esc(x.tempat) + "<em>" + (x.zona === "lokal" ? "wilayah kerja" : "Jakarta") +
+      (x.sumber === "web" ? " · dari pencarian web" : " · kalender bawaan") + "</em></span></div>";
+  }).join("") : '<div class="empty">Belum ada acara mendatang di kalender.</div>';
+}
+function setAcaraStatus(t, cls){ var s = el("acara-status"); s.textContent = t; s.className = "status" + (cls ? " " + cls : ""); }
+function segarkanAcara(otomatis){
+  if (!sampler || sampler.sumber !== "api"){
+    if (!otomatis) setAcaraStatus("Butuh kunci API: isi di tab Tanya, bagian Sambungan ke Claude.", "err");
+    return;
+  }
+  setAcaraStatus("Mencari di web…"); el("acara-segar").disabled = true;
+  Acara.segarkan(sampler).then(function(r){
+    setAcaraStatus(r.total + " acara ditemukan, " + r.jumlah + " masuk kalender.", "ok");
+    renderAcara(); renderSegar();
+    if (EVENTS[iso(new Date())] && !el("n-acara").dataset.touched) el("n-acara").checked = true;
+    runNow(); runPlan();
+  }, function(err){
+    var c = (err && err.code) || "error";
+    setAcaraStatus(c === "rate_limited" ? "Terlalu sering, coba lagi nanti." :
+                   c === "bad_json" ? "Jawaban pencarian tidak bisa dibaca; coba lagi." : "Gagal (" + c + ").", "err");
+  }).then(function(){ el("acara-segar").disabled = false; });
+}
+el("acara-segar").addEventListener("click", function(){ segarkanAcara(false); });
+renderAcara();
+
+/* ---------------- sinkron ke GitHub (untuk anak) ---------------- */
+var sinkronTimer = null, sinkronJalan = false;
+function setSkStatus(t, cls){ var s = el("sk-status"); s.textContent = t; s.className = "status" + (cls ? " " + cls : ""); }
+function tandaiSinkron(){
+  var c = Sinkron.cfg();
+  el("sk-stat").textContent = Sinkron.aktif() ? "Aktif · " + c.repo : "Belum diatur";
+  if (!el("sk-repo").value) el("sk-repo").value = c.repo || Sinkron.BAWAAN.repo;
+  el("sk-token").placeholder = c.token ? "tersimpan · ····" + String(c.token).slice(-4) : "github_pat_…";
+  el("sk-clear").hidden = !c.token;
+}
+function jalankanSinkron(){
+  if (!Sinkron.aktif() || sinkronJalan) return Promise.resolve();
+  sinkronJalan = true; setSkStatus("Menyinkronkan…");
+  return Sinkron.sinkron(rows, PLAN).then(function(r){
+    sinkronJalan = false;
+    if (r.status === "tersinkron"){
+      if (JSON.stringify(r.rows) !== JSON.stringify(rows)){ rows = r.rows; sortRows(); lsWrite(rows); renderAll(); }
+      var j = new Date();
+      setSkStatus("Tersinkron " + hhmm(j.getHours() + j.getMinutes()/60) + " · " + r.jumlah + " hari di repo", "ok");
+    } else if (r.status === "offline") setSkStatus("Tidak ada internet; disinkronkan begitu tersambung.");
+    else if (r.status === "nonaktif") setSkStatus("");
+    else setSkStatus(r.status === "unauthorized" ? "Token ditolak GitHub. Periksa token dan izin Contents-nya." :
+                     r.status === "notfound" ? "Repo tidak ditemukan. Buat dulu repo privatnya, atau periksa namanya." :
+                     "Gagal sinkron (" + r.status + ").", "err");
+  });
+}
+function sinkronNanti(){
+  if (!Sinkron.aktif()) return;
+  clearTimeout(sinkronTimer); sinkronTimer = setTimeout(jalankanSinkron, 1500);
+}
+el("sk-save").addEventListener("click", function(){
+  var repo = el("sk-repo").value.trim() || Sinkron.BAWAAN.repo, tok = el("sk-token").value.trim(), c = Sinkron.cfg();
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)){ setSkStatus("Tulis repo sebagai pemilik/nama-repo.", "err"); return; }
+  if (!tok && !c.token){ setSkStatus("Tempel tokennya dulu.", "err"); return; }
+  Sinkron.setCfg({ repo:repo, path:Sinkron.BAWAAN.path, token:tok || c.token });
+  el("sk-token").value = ""; tandaiSinkron(); setSkStatus("Memeriksa…");
+  Sinkron.uji().then(function(r){
+    setSkStatus(r.privat ? "Repo privat, token diterima." : "PERHATIAN: repo ini PUBLIK, catatan Ibu bisa dibaca siapa saja. Ganti ke repo privat.", r.privat ? "ok" : "err");
+    if (r.privat) return jalankanSinkron();
+  }, function(err){
+    var k = err && err.code;
+    setSkStatus(k === "unauthorized" ? "Token ditolak GitHub." :
+                k === "notfound" ? "Repo tidak ditemukan, atau token tidak punya akses ke sana." : "Gagal (" + k + ").", "err");
+  });
+});
+el("sk-token").addEventListener("keydown", function(e){ if (e.key === "Enter"){ e.preventDefault(); el("sk-save").click(); } });
+el("sk-now").addEventListener("click", function(){ if (!Sinkron.aktif()) setSkStatus("Belum diatur: isi repo dan token dulu.", "err"); else jalankanSinkron(); });
+el("sk-clear").addEventListener("click", function(){
+  Sinkron.setCfg(null); tandaiSinkron(); setSkStatus("Token dihapus dari HP ini. Catatan tetap ada di HP dan di repo.");
+});
+window.addEventListener("online", function(){ jalankanSinkron(); });
+document.addEventListener("visibilitychange", function(){ if (!document.hidden && Sinkron.aktif()) jalankanSinkron(); });
+tandaiSinkron();
+if (Sinkron.aktif()) jalankanSinkron();

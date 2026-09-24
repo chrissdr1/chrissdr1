@@ -16,6 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -124,7 +125,17 @@
       <label class="chk"><input type="checkbox" id="n-rumah"> Charger di rumah</label>
       <label class="chk"><input type="checkbox" id="n-gpsauto" checked> Deteksi lokasi sendiri</label>
     </div>
-    <p class="whytoggle">Kedua centang di atas terisi sendiri dari prakiraan BMKG dan kalender acara. Ubah kalau kenyataannya beda &mdash; ramalan sering meleset, dan acara kecil seperti wisuda atau pameran lokal tidak masuk kalender mana pun.</p>
+    <p class="whytoggle">Kedua centang di atas terisi sendiri dari prakiraan cuaca internet (Open-Meteo) dan kalender acara. Ubah kalau kenyataannya beda &mdash; ramalan sering meleset, dan acara kecil seperti wisuda atau pameran lokal tidak masuk kalender mana pun.</p>
+  </div>
+
+  <div class="petabox" id="petabox">
+    <div class="peta-head"><span class="eyebrow">Peta &middot; posisi, titik terukur, SPKLU</span><button type="button" class="linkbtn" id="peta-toggle">Tampilkan peta</button></div>
+    <div id="peta" hidden></div>
+    <div class="actions" id="peta-actions" hidden>
+      <a class="go" id="peta-macet" href="#" target="_blank" rel="noopener">Lihat kemacetan di Google Maps</a>
+      <span class="status" id="peta-status"></span>
+    </div>
+    <p class="peta-catatan">Hijau Tangerang, merah Jakarta, oranye bandara dan SPKLU, biru posisi Ibu. Ketuk titik lalu &ldquo;Saya di sini&rdquo; untuk memakainya sebagai posisi. <b>Lapisan kemacetan langsung ada di Google Maps</b> (tombol di atas membukanya tepat di posisi Ibu), bukan di peta ini &mdash; tidak ada sumber gratis untuk itu.</p>
   </div>
 
   <div class="plancheck" id="plancheck" hidden></div>
@@ -208,6 +219,23 @@
     <div id="cadwrap" hidden style="margin-top:14px">
       <textarea id="cadteks" rows="5" style="width:100%;font-family:'IBM Plex Mono',monospace;font-size:12px;padding:10px;border:1px solid var(--line-strong);border-radius:3px;background:var(--ground);color:var(--ink)" placeholder="Tempel salinan catatan di sini, lalu tekan Pulihkan sekali lagi."></textarea>
     </div>
+  </div>
+</section>
+
+<section id="sk-panel">
+  <div class="sec-head"><h2>Terhubung ke anak</h2><span class="eyebrow" id="sk-stat"></span></div>
+  <div class="panel">
+    <p style="font-size:14px;color:var(--ink-2);max-width:66ch">Setiap kali Ibu menekan <b>Simpan hari ini</b>, catatannya ikut tersimpan ke repo GitHub privat milik anak Ibu &mdash; tidak perlu salin-tempel lagi, dan kalau ganti HP catatannya kembali sendiri. <b>Diatur sekali oleh anak:</b> buat repo privat, buat token akses terbatas ke repo itu (Contents: read &amp; write), tempel di sini.</p>
+    <div class="grid" style="margin-top:12px">
+      <div class="f"><label for="sk-repo">Repo</label><input id="sk-repo" type="text" autocomplete="off" spellcheck="false" placeholder="pemilik/nama-repo"></div>
+      <div class="f" style="grid-column:1/-1"><label for="sk-token">Token akses</label><div class="ketikrow"><input id="sk-token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_&hellip;" aria-label="Token akses GitHub"><button type="button" id="sk-save">Simpan</button></div></div>
+    </div>
+    <div class="actions">
+      <button class="go ghost" id="sk-now" type="button">Sinkronkan sekarang</button>
+      <button class="go ghost" id="sk-clear" type="button" hidden>Hapus token</button>
+      <span class="status" id="sk-status"></span>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin-top:12px">Token disimpan di HP ini saja dan hanya dikirim ke api.github.com. Kalau ada catatan tanggal yang sama di dua HP, yang disimpan paling akhir yang dipakai; tidak ada yang dihapus.</p>
   </div>
 </section>
 
@@ -300,6 +328,15 @@
     </table>
   </div>
 </section>
+
+<section>
+  <div class="sec-head"><h2>Kalender acara</h2><span class="eyebrow" id="acara-head"></span></div>
+  <div class="panel">
+    <p style="font-size:14px;color:var(--ink-2);max-width:66ch">Konser, festival, dan pameran besar menaikkan permintaan dan mengubah urutan langkah. Kalender bawaan disusun dengan tangan. Tombol di bawah meminta Claude mencari acara 90 hari ke depan lewat web (butuh kunci API di tab Tanya); setelah itu disegarkan sendiri tiap minggu. <b>Hasil web bisa keliru tanggal</b>, jadi centang &ldquo;Acara besar&rdquo; tetap milik Ibu.</p>
+    <div class="actions" style="margin-top:12px"><button class="go ghost" id="acara-segar" type="button">Segarkan dari internet</button><span class="status" id="acara-status"></span></div>
+    <div id="acara-daftar" class="acara-list"></div>
+  </div>
+</section>
 </div>
 
 <div id="v-tanya" hidden>
@@ -344,7 +381,7 @@
 
 <footer>
   <p><b>Kalender tanggal merah</b> memakai SKB 3 Menteri 2026 (17 libur nasional, 8 cuti bersama). Untuk 2027 SKB belum terbit, jadi hanya tanggal pasti yang dimuat &mdash; 1 Januari, 17 Agustus, 25 Desember. Efek hari libur terhadap permintaan adalah penalaran dari pola, bukan hasil pengukuran: libur diperlakukan seperti akhir pekan (tanpa arus komuter, bobot ke mal dan bandara), dan <b>malam sebelum libur panjang</b> diperlakukan sebagai arus keluar kota.</p>
-  <p><b>Kalender acara terakhir diperbarui 9 September 2026</b> dan isinya berhenti di 27 Desember 2026. Dulu di sini tertulis daftarnya &ldquo;disegarkan otomatis setiap tanggal 1&rdquo; &mdash; itu tidak benar, tidak ada yang menjalankannya, dan janji seperti itu justru membuat kalender yang basi terlihat seperti kalender yang terawat. Penyegarannya manual, dan kotak &ldquo;Umur halaman&rdquo; di atas akan memberi tahu kalau sudah lewat. Acara kecil &mdash; wisuda, pameran lokal, hajatan &mdash; tetap Anda isi sendiri lewat centang &ldquo;acara besar&rdquo; dan kolom catatan harian.</p>
+  <p><b>Kalender acara terakhir diperbarui 9 September 2026</b> dan isinya berhenti di 27 Desember 2026. Dulu di sini tertulis daftarnya &ldquo;disegarkan otomatis setiap tanggal 1&rdquo; &mdash; itu tidak benar, tidak ada yang menjalankannya, dan janji seperti itu justru membuat kalender yang basi terlihat seperti kalender yang terawat. Sekarang kalender bawaan itu ditambah hasil pencarian web oleh Claude (tab Rencana &rarr; Kalender acara) bila kunci API terpasang; hasil web ditandai sumbernya karena bisa keliru tanggal. Acara kecil &mdash; wisuda, pameran lokal, hajatan &mdash; tetap Anda isi sendiri lewat centang &ldquo;acara besar&rdquo; dan kolom catatan harian.</p>
   <p>Tarif blok jam, jarak antar kawasan, biaya listrik, dan biaya sesi SPKLU berasal dari <a href="rute-700k.html">Rute 700K</a>. Angkanya <b>bersih operasional</b> &mdash; belum dikurangi cicilan, asuransi, servis, dan ban. Begitu ada 3 hari tercatat, Rp per km, insentif, dan km per kWh Anda otomatis menggantikan asumsi saya di seluruh halaman ini.</p>
 </footer>
 <p style="font-size:12px;color:var(--muted);margin-top:14px">Kode sumber aplikasi ini ada di <a href="https://github.com/chrissdr1/chrissdr1" style="color:var(--accent)">github.com/chrissdr1/chrissdr1</a>. Angka kalender, cuaca, dan acara diubah di <code>app/js/data.js</code>.</p>
@@ -355,6 +392,11 @@
 <script src="js/engine.js"></script>
 <script src="vendor/anthropic-sdk.min.js"></script>
 <script src="js/ai.js"></script>
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="js/cuaca.js"></script>
+<script src="js/peta.js"></script>
+<script src="js/acara.js"></script>
+<script src="js/sinkron.js"></script>
 <script src="js/app.js"></script>
 <script>
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
