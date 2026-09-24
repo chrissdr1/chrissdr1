@@ -405,3 +405,11 @@ a.go{text-decoration:none; display:inline-block; line-height:1.3; font-family:"I
 #socest{line-height:1.45}
 #socest .linkbtn{margin-left:4px}
 .src-soc.man{color:var(--signal)}
+
+/* Peluang rute: kartu urutan tempat per blok jam */
+.peluang .rute{display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 6px}
+.peluang .rute span{display:inline-flex; flex-direction:column; background:var(--surface-2); border-radius:4px; padding:5px 8px; font-size:12.5px; line-height:1.3; min-width:0}
+.peluang .rute span b{font-family:"IBM Plex Mono",monospace; font-size:10.5px; font-weight:600; color:var(--muted); letter-spacing:.02em}
+.peluang .rute span.jeda{background:var(--accent-soft)}
+.peluang .rute span.cas{outline:2px solid var(--signal); outline-offset:-2px}
+.peluang .rute i{align-self:center; color:var(--muted); font-style:normal}

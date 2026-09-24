@@ -189,6 +189,12 @@
     <p class="rek-catatan" id="rek-catatan"></p>
   </div>
 
+  <div class="rek peluang" id="peluang">
+    <div class="rek-head"><span class="eyebrow">Peluang rute sisa hari &middot; urutan tempat per blok jam</span><span class="eyebrow" id="peluang-info"></span></div>
+    <div id="peluang-list"></div>
+    <p class="rek-catatan" id="peluang-catatan"></p>
+  </div>
+
   <div class="res">
     <div>
       <div class="eyebrow" style="margin-bottom:6px">Proyeksi sampai pulang</div>
@@ -369,6 +375,12 @@
 
   <div class="steps" id="p-steps"></div>
   <div class="notes" id="p-notes"></div>
+
+  <div class="rek peluang" id="p-peluang">
+    <div class="rek-head"><span class="eyebrow">Peluang rute untuk rencana ini &middot; dari rumah</span><span class="eyebrow" id="p-peluang-info"></span></div>
+    <div id="p-peluang-list"></div>
+    <p class="rek-catatan" id="p-peluang-catatan"></p>
+  </div>
 </section>
 
 <section>
@@ -454,6 +466,7 @@
 <script src="js/sinkron.js"></script>
 <script src="js/rekomendasi.js"></script>
 <script src="js/baterai.js"></script>
+<script src="js/peluang.js"></script>
 <script src="js/app.js"></script>
 <script>
 if ("serviceWorker" in navigator && location.protocol !== "file:") {

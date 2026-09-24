@@ -696,6 +696,7 @@ function runNow(){
                insentif:insentifHarian, blok:blk, r:r, L:L, o:o,
                usableKm:usableKm, butuh:butuh, soc:soc, stay:stay };
   SEKARANG.rek = renderRekomendasi(o, L, soc, stay);
+  SEKARANG.peluang = renderPeluang("peluang", o, L, { dpt:dpt });
   briefingOtomatis();
 
   var nn=[];
@@ -988,6 +989,8 @@ function runPlan(){
 
   /* Sif terbaik dipilih dari yang SAH: jam efektif > 12 melanggar batas
      pengemudi angkutan umum, jadi tidak boleh dinobatkan sebagai acuan. */
+  renderPeluang("p-peluang", o, LOKMAP.kota, { rencana:true });
+
   var best=-1, res=PRESETS.map(function(p){
     var rr=simulate({ctx:ctx,keluar:p.k,pulang:p.p,rehat:p.r,zona:o.zona,filter:o.filter,
       bat:o.bat,rumah:o.rumah,hujan:o.hujan,acara:o.acara});
@@ -2443,3 +2446,43 @@ muatMulaiHari();
   bukaCheckin();
 })();
 if (MULAI_HARI) renderSocEstSaja();
+
+
+/* ---------------- peluang rute ----------------
+   Kartu urutan tempat per blok jam (Peluang.hitung), di tab Sekarang dari
+   posisi & jam sekarang, di tab Rencana dari rumah pada jam keluar. */
+function renderPeluang(id, o, L, opsi){
+  var box = el(id); if (!box) return null;
+  opsi = opsi || {};
+  var h;
+  try { h = Peluang.hitung(o, L, { banyak:3 }); } catch (e) { box.hidden = true; return null; }
+  if (!h || !h.daftar.length){ box.hidden = true; return h; }
+  box.hidden = false;
+  var basis = h.basis;
+  el(id + "-info").textContent = (h.awal ? "dari " + h.awal.n : "") + " \u00b7 " + Math.round((o.pulang - o.keluar) * 10) / 10 + " jam";
+  el(id + "-list").innerHTML = h.daftar.map(function(x, i){
+    var chips = x.segmen.map(function(sg){
+      if (sg.jeda) return '<span class="jeda' + (sg.sesi ? " cas" : "") + '"><b>' + hhmm(sg.s) + "\u2013" + hhmm(sg.e) + "</b>istirahat" + (sg.sesi ? " + ngecas " + Math.round(sg.sesi.dari*100) + "\u2192" + Math.round(sg.sesi.ke*100) + "%" : "") + "</span>";
+      return '<span class="' + (sg.sesi ? "cas" : "") + '"><b>' + hhmm(sg.s) + "\u2013" + hhmm(sg.e) + "</b>" + esc(sg.tempat.n) +
+        (sg.pindahKm > 0.5 ? " <em style=\"color:var(--muted)\">(" + Math.round(sg.pindahKm) + " km, " + Math.round(sg.pindahJam*60) + " mnt)</em>" : "") +
+        "<em style=\"color:var(--muted)\">\u2248 " + Math.round(sg.order) + " order \u00b7 " + rp(sg.gross) + "</em>" +
+        (sg.sesi ? "<em style=\"color:var(--signal)\">ngecas " + Math.round(sg.sesi.dari*100) + "\u2192" + Math.round(sg.sesi.ke*100) + "%</em>" : "") + "</span>";
+    }).join('<i>\u2192</i>');
+    var sel = x.diam ? "acuan: tetap di " + esc(h.awal.n) : (x.selisih >= 0 ? "+" : "\u2212") + rp(Math.abs(x.selisih)) + " dibanding tetap di " + esc(h.awal.n);
+    var pertama = x.segmen.filter(function(sg){ return !sg.jeda && sg.pindahKm > 0.5; })[0];
+    return '<div class="rek-item' + (i === 0 ? " top" : "") + (x.diam ? " here" : "") + '">' +
+      '<div class="rek-rank">' + (i + 1) + "</div>" +
+      '<div class="rek-body"><b>' + (x.diam ? "Tetap di " + esc(h.awal.n) : x.pindahN + "\u00d7 pindah, " + Math.round(x.kmPindah) + " km") + "</b>" +
+      '<span class="rek-num">' + rp(x.net) + " <em>bersih sampai pulang" + (opsi.dpt > 0 ? ", belum termasuk yang sudah didapat" : "") + "</em></span>" +
+      '<div class="rute">' + chips + "</div>" +
+      "<i>\u2248 " + Math.round(x.r.trips) + " order \u00b7 " + Math.round(x.r.paidKm) + " km berbayar \u00b7 " + (x.r.sessions ? x.r.sessions + "\u00d7 ngecas \u00b7 " : "") +
+      "tiba \u00b1" + Math.round(Math.max(0, x.r.socTiba)*100) + "% \u00b7 pulang " + Math.round(x.r.kmHome) + " km dari " + esc(x.akhir.n) + ".</i>" +
+      '<span class="rek-delta ' + (x.selisih > 0 ? "up" : x.selisih < 0 ? "dn" : "") + '">' + sel + "</span>" +
+      (pertama ? '<a class="linkbtn" target="_blank" rel="noopener" href="' + Rekomendasi.tautanArah(pertama.tempat.lat, pertama.tempat.lon) + '">Arahkan ke ' + esc(pertama.tempat.n) + " (pindah pertama)</a>" : "") +
+      "</div></div>";
+  }).join("");
+  el(id + "-catatan").innerHTML = "Semua urutan dinilai mesin yang sama dengan proyeksi: tarif blok jam &times; wilayah tarif tempat &times; bobot permintaan tempat, dikurangi listrik, jam dan km pindah (waktu tempuh koridor terukur), sesi ngecas, jatah filter Jakarta, dan cadangan pulang. " +
+    "Aturan Rute 700K yang dipakai: setelah 20:00 hanya mendekat ke rumah, Jakarta tidak dimasuki setelah 21:00, bandara perlu waktu antre. " +
+    "<b>Bobot permintaan per tempat berasal dari narasi Rute 700K, bukan pengukuran</b>; catatan harian Ibu (tempat utama per blok) perlahan mengalibrasinya.";
+  return h;
+}

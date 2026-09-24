@@ -291,6 +291,9 @@ function pilihSesi(pieces, socAwal, floor, ambang, fullSesi, kmPerFrac, deadJam,
     for (var i = 0; i < n; i++){
       var p = pieces[i], s = null;
       if (simpan){ p.socMulai = soc; p.sesi = null; }
+      /* pindah tempat di awal potongan: waktu ikut "mati", km ikut menguras baterai */
+      if (p.pindahJam){ bawaMati += p.pindahJam; }
+      if (p.pindahKm){ soc -= p.pindahKm / kmPerFrac; if (simpan) p.socMulai = soc; }
       var lanjutMasuk = bawaMati + bawaCas;
       if (!p.jeda) cost += Math.min(lanjutMasuk, p.w) * p.rateH;   /* jam terbawa memakan jam kerja potongan ini */
       if (si < idxs.length && idxs[si] === i){
@@ -380,51 +383,83 @@ function pilihSesi(pieces, socAwal, floor, ambang, fullSesi, kmPerFrac, deadJam,
   return out;
 }
 
+/* Bobot permintaan per tempat per blok (BOBOT_TEMPAT di data.js): pengali
+   terhadap rata-rata wilayah tarifnya; 1 bila tidak ada. Terkalibrasi oleh
+   catatan harian lewat CALIB.bobotTempat (dikalikan). */
+function bobotTempat(id, namaBlok){
+  var t = (typeof BOBOT_TEMPAT !== "undefined" && BOBOT_TEMPAT[id]) ? BOBOT_TEMPAT[id] : null;
+  var dasar = (t && typeof t[namaBlok] === "number") ? t[namaBlok] : 1;
+  var kal = (CALIB.bobotTempat && typeof CALIB.bobotTempat[id] === "number") ? CALIB.bobotTempat[id] : 1;
+  return dasar * kal;
+}
+
+/* o.urutan (opsional): tempat (id LOK) per potongan kerja, sepanjang potongBlok(o)
+   -- dipakai pembangkit peluang rute. Dengan itu tiap potongan memakai wilayah
+   tarif tempatnya, bobot permintaan tempat itu, km/jam wilayahnya, dan waktu +
+   km pindah dari tempat sebelumnya (o.tempatAwal untuk potongan pertama). */
 function simulate(o){
   var z = ZONA[o.zona], ctx = o.ctx, hari = ctx.shapeDay;
+  var adaUrutan = !!(o.urutan && o.urutan.length);
   /* Acara dari kalender sudah masuk di ctx.mult; centang "acara besar" hanya
      untuk acara yang Ibu tandai sendiri. Musim gajian: asumsi +5%. */
   var extra = (o.hujan ? 1.20 : 1) * ((o.acara && !ctx.ev) ? 1.15 : 1) * (ctx.gajian ? 1.05 : 1);
   var pieces = potongBlok(o);
   var kerja = pieces.filter(function(p){ return !p.jeda; });
   var jedaJam = 0; pieces.forEach(function(p){ if (p.jeda) jedaJam += p.w; });
+  if (adaUrutan){
+    var sebelum = o.tempatAwal || null, kk = 0;
+    pieces.forEach(function(p){
+      if (p.jeda) return;
+      var T = LOKMAP[o.urutan[kk++]] || sebelum || LOKMAP.kota;
+      p.tempat = T; p.zonaT = ZONA[T.z] || z;
+      p.pindahKm = sebelum ? jarakAntar(sebelum, T) : 0;
+      p.pindahJam = sebelum ? jamTempuhAntar(sebelum, T, p.s) : 0;
+      sebelum = T;
+    });
+    o.tempatAkhir = sebelum;
+  }
 
   /* Jatah Filter Tujuan: tiap peak yang dikerjakan di Jakarta butuh satu jatah
      untuk pulang berbayar (09:00 dan 21:15). Peak tanpa jatah cuma dapat 35%
      kelebihan tarif Jakarta. Jatah diberikan ke peak sore dulu (terbesar). */
   var peakOK = {};
   var dikerjakan = [];
-  kerja.forEach(function(p){ if (PEAKS[p.b.n]){ var g = p.b.n === "Peak sore" ? "sore" : "pagi"; if (dikerjakan.indexOf(g) < 0) dikerjakan.push(g); } });
+  kerja.forEach(function(p){
+    var zp = p.zonaT || z;
+    if (PEAKS[p.b.n] && (adaUrutan ? zp.need : true)){ var g = p.b.n === "Peak sore" ? "sore" : "pagi"; if (dikerjakan.indexOf(g) < 0) dikerjakan.push(g); } });
   var jatah = o.filter;
   ["sore", "pagi"].forEach(function(g){
     if (dikerjakan.indexOf(g) < 0) return;
-    if (!z.need || jatah >= 1){ peakOK[g] = true; if (z.need) jatah--; } else peakOK[g] = false;
+    if ((!adaUrutan && !z.need) || jatah >= 1){ peakOK[g] = true; if (adaUrutan || z.need) jatah--; } else peakOK[g] = false;
   });
   var filterOK = Object.keys(peakOK).every(function(g){ return peakOK[g]; });
-  function multOf(b){
+  function multOf(b, zp){
+    zp = zp || z;
     var g = b.n === "Peak sore" ? "sore" : "pagi";
-    var m = PEAKS[b.n] ? (peakOK[g] ? z.peak : (1 + (z.peak - 1) * 0.35)) : z.off;
+    var m = PEAKS[b.n] ? ((peakOK[g] || !zp.need) ? zp.peak : (1 + (zp.peak - 1) * 0.35)) : zp.off;
     return m * ctx.mult * extra;
   }
 
   var cap = o.bat, kmkwh = CALIB.kmkwh, kmPerFrac = cap * kmkwh;   /* km untuk 100% */
   var soc0 = (typeof o.soc === "number" && o.soc > 0) ? Math.min(1, o.soc/100) : (o.rumah ? 1.00 : 0.90);
-  var deadKm = (typeof o.deadKm === "number") ? o.deadKm : z.dead;
-  var kmHome = o.stay ? 0 : ((typeof o.kmHome === "number") ? o.kmHome : z.pulang);
-  var floor = (o.zona === "jkt" || o.zona === "mix") ? 0.25 : 0.20;
+  var deadKm = adaUrutan ? 0 : ((typeof o.deadKm === "number") ? o.deadKm : z.dead);
+  var kmHome = o.stay ? 0 : (adaUrutan && o.tempatAkhir ? o.tempatAkhir.home : ((typeof o.kmHome === "number") ? o.kmHome : z.pulang));
+  var adaJkt = adaUrutan ? kerja.some(function(p){ return p.tempat && p.tempat.z === "jkt"; }) : (o.zona === "jkt" || o.zona === "mix");
+  var floor = adaJkt ? 0.25 : 0.20;
   var ambangPulang = 0.15 + kmHome / kmPerFrac;
   var fullSesi = cap > 35 ? 1.0 : 0.85;   /* jam untuk 15->90%; asumsi dari 40 kW yang menurun */
 
   kerja.forEach(function(p){
-    p.mult = multOf(p.b);
+    var zp = p.zonaT || z, bobot = p.tempat ? bobotTempat(p.tempat.id, p.b.n) : 1;
+    p.mult = multOf(p.b, zp) * bobot;
     p.grossH = blockGross(p.b, hari) * p.mult;
     p.rateH = blockRate(p.b, hari) * p.mult;
-    p.kmH = p.b.km * z.kmx;
+    p.kmH = p.b.km * zp.kmx;
     p.paidKmH = p.b.km * blockU(p.b, hari) * p.mult;
-    p.tripKm = tripLen(p.b.n, o.zona);
+    p.tripKm = tripLen(p.b.n, p.tempat ? p.tempat.z : o.zona);
   });
 
-  pieces.forEach(function(p){ p.pakai = p.jeda ? 0 : p.kmH * p.w / kmPerFrac; });
+  pieces.forEach(function(p){ p.pakai = p.jeda ? 0 : (p.kmH * p.w + (p.pindahKm || 0)) / kmPerFrac; });
   var socAwal = soc0 - deadKm / kmPerFrac;
   /* Km kosong menuju pangkalan memakan WAKTU juga, bukan hanya baterai. */
   var deadJam = deadKm / CALIB.kecepatan;
@@ -443,7 +478,8 @@ function simulate(o){
                    rateH:p.rateH, mult:p.mult, sesi:p.sesi || null });
   });
   var deadJamPakai = tl.matiPakai;
-  var kmTotal = kmKerja + deadKm + kmHome;
+  var kmPindah = 0; kerja.forEach(function(p){ kmPindah += p.pindahKm || 0; });
+  var kmTotal = kmKerja + deadKm + kmHome + kmPindah;
   var listrik = kmTotal / kmkwh * TARIF_KWH;
   var blockNet = gross - listrik;   /* jam yang hilang sudah tidak ada di gross */
   var jamDinding = Math.max(0.1, (o.pulang - o.keluar) - jedaJam);
@@ -459,7 +495,7 @@ function simulate(o){
   });
 
   return { net:net, blockNet:blockNet, insentif:insentif, feeCharge:feeCharge, parkir:parkir,
-    deadKm:deadKm, deadJam:deadJamPakai, kmHome:kmHome, sessions:sesi.length, sesi:sesi, chargeHours:chargeHours, hilangRp:hilangRp,
+    deadKm:deadKm, deadJam:deadJamPakai, kmHome:kmHome, kmPindah:kmPindah, sessions:sesi.length, sesi:sesi, chargeHours:chargeHours, hilangRp:hilangRp,
     effHours:effHours, jamDinding:jamDinding, jedaJam:jedaJam,
     km:kmKerja, kmTotal:kmTotal, kwh:kmTotal / kmkwh, listrik:listrik,
     gross:gross, trips:trips, paidKm:paidKm, rpOrder:(trips > 0 ? gross / trips : 0),
