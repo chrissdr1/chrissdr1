@@ -123,7 +123,7 @@ kmp, kwh, biaya, mnt, cat, diubah}, … ], "rencana": {…} }`.
 1. **Mulai hari.** Saat aplikasi dibuka (sekali sehari, jam 03:30–23:30) muncul halaman *Mulai hari*: baterai sekarang, varian, jam mulai, rencana pulang, wilayah, jatah filter, sudah dapat, jeda, charger di rumah. Hari, jam, tanggal merah, acara, cuaca, dan posisi GPS diisi mesin. Isian ini menjadi rencana hari itu dan jangkar perkiraan baterai. Bisa dilewati; bisa dibuka lagi lewat tombol **Isi keadaan hari ini**.
 2. **Baterai diperkirakan sendiri.** Dari jangkar terakhir, mesin mengurangi km yang ditempuh: odometer GPS selama halaman terbuka (bila masuk akal) atau model km per jam tiap blok jam dikurangi jeda. Kolom *Sisa baterai* terisi sendiri sampai Ibu mengetik angka lain; angka yang diketik dan tombol **Selesai ngecas ke %** menjadi jangkar baru. Selalu bertanda "perkiraan" dengan keraguannya.
 3. **Rencana dan langkah.** Jeda bebas dari–sampai. Sesi ngecas ditempatkan dengan mencoba semua kombinasi (jeda gratis, blok peak dihindari, lantai 20%/25% boleh ditembus sedikit hanya bila lebih murah daripada satu sesi lagi), diisi secukupnya sampai sesi berikutnya atau sampai pulang dengan cadangan; jeda panjang boleh sampai 100%. Tiap langkah menyebut perkiraan order, km berbayar, Rp/order, dan baterai; baris rekap bertemu angka bersih.
-4. **Rekomendasi rute** dari posisi sekarang memakai faktor macet jam sibuk (×1,6 Tangerang, ×1,9 arah Jakarta) untuk waktu pindah, dan tombol arah ke Google Maps (lalu lintas langsung). Lapisan TomTom opsional di peta.
+4. **Sebaiknya ke mana sekarang** membandingkan sembilan tempat dari posisi sekarang dengan waktu tempuh koridor terukur (tabel Koridor kerja Rute 700K, jam sibuk vs lancar) dan bobot ramainya tiap tempat per blok jam (`BOBOT_TEMPAT`, diturunkan dari Peringkat rute Rute 700K; asumsi bertanda). **Urutan tempat sampai pulang** (`js/peluang.js`) menyusun 3 urutan tempat per blok jam untuk sisa hari, dinilai lengkap oleh mesin yang sama (pindah, ngecas, filter Jakarta, cadangan pulang), dengan aturan Rute 700K: lewat 20:00 hanya mendekat ke rumah, keluar Jakarta sebelum 20:00, bandara perlu antre. Lapisan TomTom opsional di peta.
 5. **Jam nyata.** Tab Sekarang memakai jam sekarang tepat ke menit; pilihan jam manual (untuk "kalau saya keluar jam 15:00?") kedaluwarsa sendiri setelah 20 menit.
 
 ## Memasang di HP Ibu
@@ -139,6 +139,10 @@ kmp, kwh, biaya, mnt, cat, diubah}, … ], "rencana": {…} }`.
 Statis, lewat GitHub Pages. Workflow `.github/workflows/pages.yml` menerbitkan
 folder `app/` setiap ada perubahan di `master`, dan mengaktifkan Pages sendiri
 saat pertama kali jalan (`enablement: true`).
+
+## Kamus istilah di layar
+
+Sapaan satu: **Ibu**. Ngecas (bukan isi daya/top-up), istirahat (bukan jeda), order (bukan trip), km berpenumpang, komplek, filter tujuan, batas aman (20%/25% Jakarta), SPKLU langganan, Waktunya pulang. Nama blok di kode tetap kunci data (`Peak pagi`, `Jam mati`, …); yang tampil memakai `LABEL_BLOK` (Jam sepi, Jelang bubaran, Lewat peak pagi, Malam larut). Penjelasan panjang selalu di balik tombol "Kenapa?". Pengaturan anak (kunci Claude, sinkron GitHub, TomTom, pemeriksaan) dilipat di bawah halaman.
 
 ## Merawat datanya
 
@@ -167,6 +171,7 @@ app/
   js/sinkron.js       sinkron catatan ke repo GitHub privat
   js/rekomendasi.js   rekomendasi rute otomatis dari posisi sekarang (faktor macet jam sibuk)
   js/baterai.js       jejak baterai: jangkar (Mulai hari, selesai ngecas), odometer GPS, model km per blok
+  js/peluang.js       urutan tempat per blok jam (pencarian berkas + simulate dengan o.urutan)
   js/app.js           antarmuka, halaman Mulai hari, dan boot
   vendor/             anthropic-sdk.min.js (npm run build:sdk), leaflet/
   sw.js, manifest.webmanifest, icons/, rute-700k.html
