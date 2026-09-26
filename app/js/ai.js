@@ -34,8 +34,15 @@ var AI = (function(){
   function client(){
     var k = getKey(), C = sdk();
     if (!k || !C) return null;
-    return new C({ apiKey:k, dangerouslyAllowBrowser:true, maxRetries:1 });
+    /* maxRetries:0 -- di jaringan goyah, sebuah permintaan yang sudah
+       diproses/ditagih server tapi responsnya putus di tengah jalan bisa
+       diulang otomatis oleh SDK tanpa terlihat, berpotensi menagih dua kali
+       untuk satu giliran percakapan. */
+    return new C({ apiKey:k, dangerouslyAllowBrowser:true, maxRetries:0 });
   }
+  /* client() null karena dua sebab berbeda -- bedakan supaya pesan ke
+     pengguna tidak menyuruh mengetik ulang kunci yang sebenarnya sudah benar. */
+  function kodeTanpaKlien(){ return sdk() ? "no_key" : "no_sdk"; }
 
   /* Galat SDK -> kode pendek yang dipahami app.js. Dicek dari yang paling khusus. */
   function toErr(err){
@@ -80,7 +87,7 @@ var AI = (function(){
   function run(input, opts){
     opts = opts || {};
     var c = client();
-    if (!c) return Promise.reject({ code:"no_key" });
+    if (!c) return Promise.reject({ code:kodeTanpaKlien() });
     var tier = MODEL[opts.modelTier] ? opts.modelTier : "default";
     var tools = opts.tools || [];
     var messages = normTurns(input);
@@ -140,7 +147,7 @@ var AI = (function(){
   /* Memastikan kunci benar tanpa menghabiskan token: daftar model saja. */
   function uji(){
     var c = client();
-    if (!c) return Promise.reject({ code:"no_key" });
+    if (!c) return Promise.reject({ code:kodeTanpaKlien() });
     return c.models.list({ limit:1 }).then(function(){ return true; }, function(err){ throw toErr(err); });
   }
 

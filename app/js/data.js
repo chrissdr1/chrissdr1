@@ -22,7 +22,10 @@ var SHAPE = {
 };
 /* Pengali hari: ASUMSI (Rute 700K hanya kualitatif: Jumat terbaik, Selasa/Rabu
    terlemah, "libur Minggu Rp100 ribu lebih mahal daripada libur Rabu" -> Minggu
-   di atas Rabu). Terkalibrasi dari catatan harian bila cukup hari. */
+   di atas Rabu). BELUM ada mekanisme yang mengkalibrasi angka ini dari catatan
+   harian -- beda dengan rpkm/ins/kmkwh/tripKm/kecepatan di recalibrate()
+   (engine.js), yang memang dikalibrasi. Angka di bawah tetap tetap sampai
+   diubah tangan. */
 var DAYMULT = {1:1.03, 2:0.95, 3:0.95, 4:0.98, 5:1.15, 6:1.02, 0:1.05};
 var DAYNAME = {1:"Senin",2:"Selasa",3:"Rabu",4:"Kamis",5:"Jumat",6:"Sabtu",0:"Minggu"};
 /* dead = km kosong untuk mencapai pangkalan di awal sif.
@@ -182,7 +185,7 @@ var CUACA = {tanggal:"2026-09-23", hujan:true, jam:"12:00-17:00", ringkas:"Hujan
    worker saat dibuka dengan internet. Yang tetap perlu dikatakan halaman:
    sampai kapan tiap kalendernya terisi. Perbarui TERBIT tiap kali
    menerbitkan (samakan dengan VERSION di sw.js; tes memeriksanya). */
-var TERBIT = "2026-09-24";
+var TERBIT = "2026-09-26";
 var EVENTS_SAMPAI = "2026-12-27";
 var HOLI_SAMPAI = "2026-12-25";
 
@@ -232,6 +235,9 @@ var KATA_BARAT = "Kembangan &middot; Puri &middot; Kedoya &middot; Cengkareng &m
                  "Ciledug &middot; Karawaci &middot; Tangerang &middot; Serpong &middot; BSD &middot; Bintaro";
 
 var STEP_JKT = {
+  "Subuh":{b:"Antar penerbangan pertama dari Jakarta",s:"Jakarta Barat &rarr; Bandara",
+    i:"Order jarang jam ini; ambil apa pun ke arah bandara atau barat.",
+    k:"Sepi di jalan. Penumpang pesawat pertama sama berharganya dijemput dari sisi Jakarta maupun dari Tangerang."},
   "Peak pagi":{b:"Narik di Jakarta Barat&ndash;Sudirman",s:"Puri Indah &rarr; Kebon Jeruk (Jl. Panjang) &rarr; Slipi (Jl. S. Parman) &rarr; Sudirman",
     i:"Tarif tertinggi; mobil listrik bebas ganjil-genap di Sudirman, Rasuna Said, Kuningan.",
     k:"Saat pesaing berpelat ganjil/genap tersaring, koridor Sudirman, Rasuna Said, dan Mega Kuningan terbuka untuk Ibu."},
@@ -252,7 +258,10 @@ var STEP_JKT = {
     k:"Jam terbesar hari ini, dan tiap order ke barat membawa Ibu mendekat ke rumah."},
   "Malam":{b:"Ambil order ke arah rumah saja",s:"Tujuan: "+KATA_BARAT,
     i:"Kalau tujuannya bukan salah satu itu, lewati &mdash; kecuali tarifnya besar sekali.",
-    k:"Lihat nama tujuan di kartu order sebelum menerima; tidak perlu buka peta."}
+    k:"Lihat nama tujuan di kartu order sebelum menerima; tidak perlu buka peta."},
+  "Larut":{b:"Sudah malam &mdash; ambil order ke arah rumah saja",s:"Tujuan: "+KATA_BARAT,
+    i:"Order jarang, dan besok pagi jadi capek kalau menunggu di Jakarta.",
+    k:"Sama seperti Malam: pilih tujuan ke barat saja, atau lewati kalau tidak sepadan dengan besok pagi."}
 };
 /* Mode campuran: berangkat DARI RUMAH, peak pagi menuju Jakarta,
    lalu sengaja berangkat lagi ke Jakarta sebelum peak sore. */

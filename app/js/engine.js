@@ -18,6 +18,19 @@ function fillTimes(sel, from, to, def){
   var h=""; for (var t=from;t<=to;t+=0.25) h+='<option value="'+t+'">'+hhmm(t)+"</option>";
   sel.innerHTML=h; sel.value=def;
 }
+/* fetch dengan batas waktu -- tanpa ini, sinyal HP yang goyah bisa membuat
+   permintaan menggantung tanpa pernah selesai (sukses atau gagal), mengunci
+   status "sedang berjalan" untuk selamanya di pemanggilnya. */
+function fetchTimeout(url, opts, ms){
+  var ctrl = (typeof AbortController === "function") ? new AbortController() : null;
+  var o = {}; if (opts) for (var k in opts) o[k] = opts[k];
+  if (ctrl) o.signal = ctrl.signal;
+  var t = ctrl ? setTimeout(function(){ ctrl.abort(); }, ms || 15000) : null;
+  return fetch(url, o).then(
+    function(r){ if (t) clearTimeout(t); return r; },
+    function(e){ if (t) clearTimeout(t); throw e; }
+  );
+}
 /* Jeda: preset ("duapeak" = dua sif, "full", "short"), "none", "HH:MM-HH:MM",
    atau [dari, sampai] dalam jam desimal. Jeda bebas dipilih Ibu sendiri. */
 function rehatRange(m){
@@ -40,7 +53,7 @@ function rehatTeks(m){ var r = rehatRange(m); return r ? hhmm(r[0]) + "\u2013" +
 var rows = [], sampler = null;
 var LS = "buku-setoran-v1";
 function lsRead(){ try{ return JSON.parse(localStorage.getItem(LS)||"[]"); }catch(e){ return []; } }
-function lsWrite(l){ try{ localStorage.setItem(LS, JSON.stringify(l)); }catch(e){} }
+function lsWrite(l){ try{ localStorage.setItem(LS, JSON.stringify(l)); return true; }catch(e){ return false; } }
 function sortRows(){ rows.sort(function(a,b){ return a.id<b.id?1:a.id>b.id?-1:0; }); }
 
 function derive(r){
@@ -225,12 +238,20 @@ function jarakAntar(A, B){
 function jamTempuhAntar(A, B, jam){
   var km = jarakAntar(A, B); if (!km) return 0;
   var ru = ruasTerukur(A, B);
+  /* Kalau ada angka macet TomTom yang segar untuk pasangan A-B ini, pakai itu
+     di kedua cabang di bawah -- kalau tidak (tanpa kunci, belum sempat
+     diambil, atau gagal), heuristik statis tetap jalan seperti sebelumnya. */
+  var pengaliLive = (typeof Lalulintas !== "undefined") ? Lalulintas.pengaliCache(A, B) : null;
   if (ru && ru.mnt){   /* menit lancar terukur; jam sibuk x1,6 (Tangerang) / x1,9 (arah Jakarta) */
     var arahJkt = (A.z === "jkt" || B.z === "jkt");
-    return ru.mnt / 60 * (jamSibuk(jam) ? (arahJkt ? 1.9 : 1.6) : 1) * (KEC_BAWAAN / Math.max(10, CALIB.kecepatan));
+    var pengaliMacet = (pengaliLive != null) ? pengaliLive : (jamSibuk(jam) ? (arahJkt ? 1.9 : 1.6) : 1);
+    return ru.mnt / 60 * pengaliMacet * (KEC_BAWAAN / Math.max(10, CALIB.kecepatan));
   }
   function v(L){
-    if (L && L.mnt){ var m = jamSibuk(jam) ? L.mnt.sibuk : L.mnt.lancar; return (L.pergi || L.home) / (m / 60); }
+    if (L && L.mnt){
+      var m = (pengaliLive != null) ? (L.mnt.lancar * pengaliLive) : (jamSibuk(jam) ? L.mnt.sibuk : L.mnt.lancar);
+      return (L.pergi || L.home) / (m / 60);
+    }
     return CALIB.kecepatan / faktorMacet(jam, L ? L.z : "tng");
   }
   /* dari/ke rumah: koridor tempat itu sendiri yang terukur, bukan rata-rata */

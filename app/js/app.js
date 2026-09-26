@@ -15,7 +15,7 @@ function renderDayFlag(ctx, dateStr){
   if (ctx.ev){
     var lokal = ctx.ev[2] === "lokal";
     n.hidden = false; n.className = "flag" + (lokal ? "" : " warn");
-    n.innerHTML = '<span class="tag">Acara besar</span><span><b>' + ctx.ev[0] + "</b> di " + ctx.ev[1] + ". " +
+    n.innerHTML = '<span class="tag">Acara besar</span><span><b>' + esc(ctx.ev[0]) + "</b> di " + esc(ctx.ev[1]) + ". " +
       (lokal
         ? "Dekat rumah. Sore/malam ada di sekitar BSD saat acara bubar."
         : "Di Jakarta (26&ndash;30 km). Bubar 22:30&ndash;23:30, tarif tinggi, tapi pulang jauh. Ambil hanya kalau besok Ibu libur.") + "</span>";
@@ -690,6 +690,7 @@ function runNow(){
   SEKARANG.rek = renderRekomendasi(o, L, soc, stay);
   SEKARANG.peluang = renderPeluang("peluang", o, L, { dpt:dpt });
   briefingOtomatis();
+  lalulintasOtomatis(o, L);
 
   var nn=[];
   if (jamLuar && !jamManual){
@@ -734,7 +735,7 @@ function runNow(){
     nn.push(catatan("warn","Hujan sudah dihitung","+"+rp(dh)+". Hindari banjir Periuk, Ciledug, Jakarta Barat; jangan terobos genangan &gt;15 cm."));
   }
   if (ctx.ev){
-    nn.push(catatan("good","Acara sudah dihitung", "<b>"+ctx.ev[0]+"</b> di "+ctx.ev[1]+". "+
+    nn.push(catatan("good","Acara sudah dihitung", "<b>"+esc(ctx.ev[0])+"</b> di "+esc(ctx.ev[1])+". "+
       (ctx.ev[2]==="lokal" ? "Sore/malam ada di sekitar BSD saat bubar." : "Di Jakarta: bubar larut, pulang jauh. Ambil hanya kalau besok libur.")));
   } else if (o.acara){
     var da = dampak(o, {acara:false});
@@ -850,7 +851,7 @@ function runPlan(){
     nn.push(catatan(beda>=0?"good":"warn","Dari lapangan",
       "Jam "+hhmm(AKTUAL.jam)+" sudah dapat <b>"+rp(AKTUAL.dpt)+"</b>, rencana "+rp(sampai.gross)+" \u2014 "+(beda>=0 ? "unggul "+rp(beda) : "tertinggal "+rp(-beda))+"."));
   }
-  if (ctx.ev) nn.push(catatan("good","Acara sudah dihitung","<b>"+ctx.ev[0]+"</b> di "+ctx.ev[1]+"."));
+  if (ctx.ev) nn.push(catatan("good","Acara sudah dihitung","<b>"+esc(ctx.ev[0])+"</b> di "+esc(ctx.ev[1])+"."));
   if (o.hujan){
     var dhp = dampak(o, {hujan:false});
     nn.push(catatan("warn","Hujan sudah dihitung","+"+rp(dhp)+" dibanding hari kering."));
@@ -1447,9 +1448,9 @@ el("save").addEventListener("click", function(){
   if (!rec.dpt && !rec.kmt){ el("status").textContent="Isi minimal pendapatan atau km."; el("status").className="status err"; return; }
   rec.diubah = new Date().toISOString();   /* untuk penggabungan saat sinkron */
   rows = rows.filter(function(r){ return r.id!==rec.id; }); rows.push(rec); sortRows();
-  lsWrite(rows); renderAll();
-  el("status").textContent="Tersimpan."; el("status").className="status ok";
-  sinkronNanti();
+  var tersimpan = lsWrite(rows); renderAll();
+  if (tersimpan){ el("status").textContent="Tersimpan."; el("status").className="status ok"; sinkronNanti(); }
+  else { el("status").textContent="GAGAL disimpan di HP ini (penyimpanan penuh atau mode privat?). Catat angkanya di tempat lain sebelum keluar halaman ini."; el("status").className="status err"; }
 });
 F.forEach(function(k){ el(k).addEventListener("input", preview); });
 
@@ -1498,7 +1499,10 @@ el("pulihkan").addEventListener("click", function(){
   var ada = {}; rows.forEach(function(r){ ada[r.id] = true; });
   var tambah = 0;
   data.harian.forEach(function(r){ if (r && r.id && !ada[r.id]){ rows.push(r); tambah++; } });
-  sortRows(); lsWrite(rows); renderAll(); sinkronNanti();
+  sortRows();
+  var pulihOk = lsWrite(rows); renderAll();
+  if (!pulihOk){ setCad("Gagal menyimpan di HP ini (penyimpanan penuh atau mode privat?). Coba lagi atau bersihkan penyimpanan HP.", "err"); return; }
+  sinkronNanti();
   w.hidden = true; el("cadteks").value = "";
   setCad(tambah ? (tambah + " hari dipulihkan, total sekarang " + rows.length + " hari.")
                 : "Semua catatan di salinan itu sudah ada di sini.", "ok");
@@ -1643,6 +1647,7 @@ el("chatinput").addEventListener("keydown", function(e){
   if (e.key === "Enter"){ e.preventDefault(); kirimChat(); }
 });
 el("chatclear").addEventListener("click", function(){
+  if (CHAT.length && !confirm("Hapus semua riwayat Tanya? Pertanyaan yang sudah dijawab tidak bisa dikembalikan.")) return;
   CHAT = []; simpanChat(); renderChat();
 });
 muatChat(); renderChat();
@@ -1869,7 +1874,8 @@ el("ai-test").addEventListener("click", function(){
   setAiStatus("Memeriksa…");
   AI.uji().then(function(){ setAiStatus("Tersambung.", "ok"); },
     function(err){ var c = err && err.code;
-      setAiStatus(c === "no_key" ? "Belum ada kunci." : c === "unauthorized" ? "Kunci ditolak Anthropic." :
+      setAiStatus(c === "no_key" ? "Belum ada kunci." : c === "no_sdk" ? "SDK tidak termuat — muat ulang halaman dengan internet." :
+                  c === "unauthorized" ? "Kunci ditolak Anthropic." :
                   c === "offline" ? "Tidak ada sambungan internet." : "Gagal (" + c + ").", "err"); });
 });
 el("ai-clear").addEventListener("click", function(){
@@ -1938,7 +1944,10 @@ function segarkanAcara(otomatis){
                    c === "bad_json" ? "Jawaban pencarian tidak bisa dibaca; coba lagi." : "Gagal (" + c + ").", "err");
   }).then(function(){ el("acara-segar").disabled = false; });
 }
-el("acara-segar").addEventListener("click", function(){ segarkanAcara(false); });
+el("acara-segar").addEventListener("click", function(){
+  if (!Acara.perluSegar() && !confirm("Kalender sudah disegarkan minggu ini. Menyegarkan lagi memanggil pencarian web berbayar (sekitar Rp 2.000–5.000). Lanjutkan?")) return;
+  segarkanAcara(false);
+});
 renderAcara();
 
 /* ---------------- sinkron ke GitHub (untuk anak) ---------------- */
@@ -1952,14 +1961,16 @@ function tandaiSinkron(){
   el("sk-clear").hidden = !c.token;
 }
 function jalankanSinkron(){
-  if (!Sinkron.aktif() || sinkronJalan) return Promise.resolve();
+  if (!Sinkron.siap() || sinkronJalan) return Promise.resolve();
   sinkronJalan = true; setSkStatus("Menyinkronkan…");
   return Sinkron.sinkron(rows, PLAN).then(function(r){
     sinkronJalan = false;
     if (r.status === "tersinkron"){
-      if (JSON.stringify(r.rows) !== JSON.stringify(rows)){ rows = r.rows; sortRows(); lsWrite(rows); renderAll(); }
+      var simpanOk = true;
+      if (JSON.stringify(r.rows) !== JSON.stringify(rows)){ rows = r.rows; sortRows(); simpanOk = lsWrite(rows); renderAll(); }
       var j = new Date();
-      setSkStatus("Tersinkron " + hhmm(j.getHours() + j.getMinutes()/60) + " · " + r.jumlah + " hari di repo", "ok");
+      if (simpanOk) setSkStatus("Tersinkron " + hhmm(j.getHours() + j.getMinutes()/60) + " · " + r.jumlah + " hari di repo", "ok");
+      else setSkStatus("Tersinkron dari repo, tapi gagal disimpan di HP ini (penyimpanan penuh?).", "err");
     } else if (r.status === "offline") setSkStatus("Tidak ada internet; disinkronkan begitu tersambung.");
     else if (r.status === "nonaktif") setSkStatus("");
     else setSkStatus(r.status === "unauthorized" ? "Token ditolak GitHub. Periksa token dan izin Contents-nya." :
@@ -1968,8 +1979,21 @@ function jalankanSinkron(){
   });
 }
 function sinkronNanti(){
-  if (!Sinkron.aktif()) return;
+  if (!Sinkron.siap()) return;
   clearTimeout(sinkronTimer); sinkronTimer = setTimeout(jalankanSinkron, 1500);
+}
+/* Diverifikasi lebih dulu (repo privat/publik) sebelum sinkron pertama kali
+   dijalankan -- mencegah catatan tertulis ke repo yang belum sempat diperiksa. */
+function verifikasiLaluSinkron(){
+  Sinkron.uji().then(function(r){
+    Sinkron.tandaiTerverifikasi(r.privat);
+    setSkStatus(r.privat ? "Repo privat, token diterima." : "PERHATIAN: repo ini PUBLIK, catatan Ibu bisa dibaca siapa saja. Ganti ke repo privat.", r.privat ? "ok" : "err");
+    if (r.privat) jalankanSinkron();
+  }, function(err){
+    var k = err && err.code;
+    setSkStatus(k === "unauthorized" ? "Token ditolak GitHub." :
+                k === "notfound" ? "Repo tidak ditemukan, atau token tidak punya akses ke sana." : "Gagal (" + k + ").", "err");
+  });
 }
 el("sk-save").addEventListener("click", function(){
   var repo = el("sk-repo").value.trim() || Sinkron.BAWAAN.repo, tok = el("sk-token").value.trim(), c = Sinkron.cfg();
@@ -1977,24 +2001,22 @@ el("sk-save").addEventListener("click", function(){
   if (!tok && !c.token){ setSkStatus("Tempel tokennya dulu.", "err"); return; }
   Sinkron.setCfg({ repo:repo, path:Sinkron.BAWAAN.path, token:tok || c.token });
   el("sk-token").value = ""; tandaiSinkron(); setSkStatus("Memeriksa…");
-  Sinkron.uji().then(function(r){
-    setSkStatus(r.privat ? "Repo privat, token diterima." : "PERHATIAN: repo ini PUBLIK, catatan Ibu bisa dibaca siapa saja. Ganti ke repo privat.", r.privat ? "ok" : "err");
-    if (r.privat) return jalankanSinkron();
-  }, function(err){
-    var k = err && err.code;
-    setSkStatus(k === "unauthorized" ? "Token ditolak GitHub." :
-                k === "notfound" ? "Repo tidak ditemukan, atau token tidak punya akses ke sana." : "Gagal (" + k + ").", "err");
-  });
+  verifikasiLaluSinkron();
 });
 el("sk-token").addEventListener("keydown", function(e){ if (e.key === "Enter"){ e.preventDefault(); el("sk-save").click(); } });
-el("sk-now").addEventListener("click", function(){ if (!Sinkron.aktif()) setSkStatus("Belum diatur: isi repo dan token dulu.", "err"); else jalankanSinkron(); });
+el("sk-now").addEventListener("click", function(){
+  if (!Sinkron.aktif()) setSkStatus("Belum diatur: isi repo dan token dulu.", "err");
+  else if (!Sinkron.siap()) setSkStatus("Belum diverifikasi aman; memeriksa repo dulu…", "err"), verifikasiLaluSinkron();
+  else jalankanSinkron();
+});
 el("sk-clear").addEventListener("click", function(){
   Sinkron.setCfg(null); tandaiSinkron(); setSkStatus("Token dihapus dari HP ini. Catatan tetap ada di HP dan di repo.");
 });
-window.addEventListener("online", function(){ jalankanSinkron(); });
-document.addEventListener("visibilitychange", function(){ if (!document.hidden && Sinkron.aktif()) jalankanSinkron(); });
+window.addEventListener("online", function(){ if (Sinkron.siap()) jalankanSinkron(); });
+document.addEventListener("visibilitychange", function(){ if (!document.hidden && Sinkron.siap()) jalankanSinkron(); });
 tandaiSinkron();
-if (Sinkron.aktif()) jalankanSinkron();
+if (Sinkron.siap()) jalankanSinkron();
+else if (Sinkron.aktif()) verifikasiLaluSinkron();
 
 /* ---------------- rekomendasi rute otomatis ---------------- */
 var rekSemua = false;
@@ -2009,8 +2031,9 @@ function renderRekomendasi(o, L, soc, stay){
   var tampil = rekSemua ? h.daftar : h.daftar.slice(0, 3);
   el("rek-list").innerHTML = tampil.map(function(x, i){
     var sel = x.diSini ? "kalau tetap di sini" : (x.selisih >= 0 ? "+" : "−") + rp(Math.abs(x.selisih)) + " dibanding tetap di sini";
+    var macetTeks = x.sumberMacet === "tomtom" ? ", macet: TomTom langsung" : (x.macet > 1 ? ", macet: perkiraan jam sibuk" : "");
     var gerak = x.diSini ? "Tetap di sini."
-      : "Pindah " + Math.round(x.kmPindah) + " km (±" + Math.round(x.jamPindah * 60) + " menit" + (x.macet > 1 ? ", jam macet" : "") + "), sampai " + hhmm(x.tiba) +
+      : "Pindah " + Math.round(x.kmPindah) + " km (±" + Math.round(x.jamPindah * 60) + " menit" + macetTeks + "), sampai " + hhmm(x.tiba) +
         (x.socTiba < x.res ? ", baterai kurang untuk pulang — perlu ngecas" : "") + ".";
     return '<div class="rek-item' + (i === 0 ? " top" : "") + (x.diSini ? " here" : "") + '">' +
       '<div class="rek-rank">' + (i + 1) + "</div>" +
@@ -2026,6 +2049,27 @@ function renderRekomendasi(o, L, soc, stay){
   if (t) t.addEventListener("click", function(){ rekSemua = !rekSemua; runNow(); });
   el("rek-catatan").innerHTML = "Dihitung dengan cara yang sama dengan perkiraan di atas: hari, jam, daerah tarif, jarak dan waktu pindah (koridor terukur), baterai, cuaca, acara, jarak pulang, dan ramainya tiap tempat per jam (dari Rute 700K, bukan pengukuran). Yang ikut: " + Rekomendasi.faktor(o, soc).join(", ") + ".";
   return h;
+}
+
+/* Segarkan angka macet TomTom untuk kandidat yang benar-benar tampil,
+   sekali per posisi per jendela 10 menit (sama dengan cache Lalulintas) --
+   supaya tidak memanggil TomTom di setiap keystroke. Tanpa kunci TomTom,
+   Lalulintas.aktif() salah dan fungsi ini tidak melakukan apa pun. */
+var lalulintasTimer = null, lalulintasKunci = null;
+function lalulintasOtomatis(o, L){
+  if (typeof Lalulintas === "undefined" || !Lalulintas.aktif()) return;
+  if (!(L && L.id && LOKMAP[L.id] && L.lat != null)) return;
+  var kunciSekarang = L.id + "@" + Math.floor(Date.now() / (10 * 60 * 1000));
+  if (lalulintasKunci === kunciSekarang) return;
+  lalulintasKunci = kunciSekarang;
+  clearTimeout(lalulintasTimer);
+  lalulintasTimer = setTimeout(function(){
+    var pasangan = Rekomendasi.KANDIDAT
+      .map(function(id){ return LOKMAP[id]; })
+      .filter(function(K){ return K && K.id !== L.id && K.lat != null; })
+      .map(function(K){ return [L, K]; });
+    Lalulintas.segarkan(pasangan).then(function(){ runNow(); });
+  }, 1200);
 }
 
 /* ---------------- briefing otomatis dari Claude ----------------
@@ -2045,7 +2089,12 @@ function renderBriefing(b, status){
     '<button type="button" class="linkbtn" id="briefing-segar">Segarkan</button></div>' +
     '<div class="ai-out">' + (b ? esc(b.teks) : "") + "</div>" +
     (status ? '<div class="status">' + esc(status) + "</div>" : "");
-  var s = el("briefing-segar"); if (s) s.addEventListener("click", function(){ jalankanBriefing(true); });
+  var s = el("briefing-segar"); if (s) s.addEventListener("click", function(){
+    var kunciSekarang = kunciBriefing(), lamaSekarang = bacaBriefing();
+    var sudahAda = lamaSekarang && lamaSekarang.kunci === kunciSekarang;
+    if (sudahAda && !confirm("Saran untuk saat ini sudah ada. Menyusun ulang memanggil Claude lagi (berbayar). Lanjutkan?")) return;
+    jalankanBriefing(true);
+  });
 }
 function jalankanBriefing(paksa){
   if (!sampler || !SEKARANG || briefingJalan) return Promise.resolve();
@@ -2186,7 +2235,7 @@ function muatMulaiHari(){
   if (MULAI_HARI && MULAI_HARI.date !== iso(new Date())) MULAI_HARI = null;
   return MULAI_HARI;
 }
-function simpanMulaiHari(m){ MULAI_HARI = m; try { localStorage.setItem(LSMULAI, JSON.stringify(m)); } catch (e) {} }
+function simpanMulaiHari(m){ MULAI_HARI = m; try { localStorage.setItem(LSMULAI, JSON.stringify(m)); return true; } catch (e) { return false; } }
 function lewatiHariIni(){ try { return localStorage.getItem(LSLEWATI) === iso(new Date()); } catch (e) { return false; } }
 function rehatCI(){
   if (el("ci-rehat").value !== "custom") return "none";
@@ -2255,7 +2304,7 @@ el("ci-mulai").addEventListener("click", function(){
             zona:el("ci-zona").value, filter:parseInt(el("ci-filter").value, 10), dpt:Math.max(0, parseFloat(el("ci-dpt").value) || 0),
             rehat:rehatCI(), rumah:el("ci-rumah").checked };
   var pertama = !MULAI_HARI;
-  simpanMulaiHari(m);
+  var mulaiOk = simpanMulaiHari(m);
   /* Isian pertama hari ini = jangkar awal; buka ulang = jangkar baru tanpa
      menghapus jejak ngecas sebelumnya. */
   if (pertama || !Baterai.terakhir()) Baterai.mulai(jam, soc, "mulai hari"); else Baterai.jangkar(jam, soc, "isi ulang");
@@ -2273,8 +2322,8 @@ el("ci-mulai").addEventListener("click", function(){
   setJedaUI(PLAN.rehat); el("p-rumah").checked = m.rumah; el("p-tgl").value = m.date;
   sinkronNanti();
   tutupCheckin();
-  el("hari-status").textContent = "Mulai jam " + hhmm(jam) + ", baterai " + soc + "%.";
-  el("hari-status").className = "status ok";
+  if (mulaiOk){ el("hari-status").textContent = "Mulai jam " + hhmm(jam) + ", baterai " + soc + "%."; el("hari-status").className = "status ok"; }
+  else { el("hari-status").textContent = "Mulai jam " + hhmm(jam) + ", baterai " + soc + "% — tapi GAGAL disimpan di HP ini (penyimpanan penuh?), bisa hilang kalau aplikasi ditutup."; el("hari-status").className = "status err"; }
   if (el("ci-gps").checked) deteksiLokasi(false);
   runNow(); runPlan();
 });
@@ -2285,12 +2334,18 @@ el("ci-lewati").addEventListener("click", function(){
 el("ci-buka").addEventListener("click", bukaCheckin);
 
 /* ---------------- kunci TomTom ---------------- */
+function tomtomStatusTeks(s){
+  return s === "ok" ? "Lapisan kemacetan TomTom aktif di peta." :
+         s === "error" ? "Kunci TomTom ditolak atau ubinnya gagal dimuat — periksa kunci di dasbor TomTom." :
+         s === "cek" ? "Memeriksa lapisan kemacetan TomTom… (tampilkan peta untuk melihatnya)" : "";
+}
 function tandaiTomTom(){
   var k = Peta.kunciTomTom();
   el("tt-key").placeholder = k ? "tersimpan · ····" + k.slice(-4) : "Kunci TomTom (opsional)";
   el("tt-clear").hidden = !k;
-  el("tt-status").textContent = k ? "Lapisan kemacetan TomTom aktif di peta (tampilkan peta untuk melihatnya)." : "";
+  el("tt-status").textContent = tomtomStatusTeks(k ? Peta.statusTomTom() : "belum");
 }
+Peta.onStatusTomTom(function(){ tandaiTomTom(); });
 el("tt-save").addEventListener("click", function(){
   var k = el("tt-key").value.trim();
   if (!k){ el("tt-status").textContent = "Tempel kuncinya dulu."; return; }

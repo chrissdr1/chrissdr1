@@ -25,14 +25,17 @@ def png(size):
                 # same direction as icon.svg; y grows downward so the diagonal is u+v=1
                 d = (u + v - 1) / 1.4142          # perpendicular distance from the diagonal
                 t = (u - v + 1) / 2               # position along the road, 0 = bottom-left
-                if abs(d) < 0.12 and 0.22 < t < 0.78:
+                # Band kept inside the standard maskable safe zone (80% / radius 0.40
+                # from centre): with half-width 0.11 the corners reach ~0.37, not 0.41
+                # like the wider band this replaced.
+                if abs(d) < 0.11 and 0.25 < t < 0.75:
                     c = SOFT
                     # dashed centre line
-                    if abs(d) < 0.018 and int(t * 9) % 2 == 0 and 0.28 < t < 0.72:
+                    if abs(d) < 0.018 and int(t * 9) % 2 == 0 and 0.30 < t < 0.70:
                         c = BG
-                # home dot at the top-right end of the road
-                hx, hy = 0.74, 0.26
-                if (u-hx)**2 + (v-hy)**2 < 0.075**2:
+                # home dot at the top-right end of the road (also inside the safe zone)
+                hx, hy = 0.72, 0.28
+                if (u-hx)**2 + (v-hy)**2 < 0.07**2:
                     c = FG
             row += bytes(c) + bytes([a])
         px += row
@@ -46,9 +49,9 @@ for s in (192, 512):
 
 (OUT / "icon.svg").write_text('''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
 <rect width="100" height="100" rx="22" fill="#1A56C4"/>
-<path d="M22 78 L78 22" stroke="#DDE7F8" stroke-width="24" stroke-linecap="butt"/>
-<path d="M28 72 L72 28" stroke="#1A56C4" stroke-width="3.5" stroke-dasharray="7 7"/>
-<circle cx="74" cy="26" r="7.5" fill="#fff"/>
+<path d="M25 75 L75 25" stroke="#DDE7F8" stroke-width="22" stroke-linecap="butt"/>
+<path d="M31 69 L69 31" stroke="#1A56C4" stroke-width="3.2" stroke-dasharray="7 7"/>
+<circle cx="72" cy="28" r="7" fill="#fff"/>
 </svg>
 ''', encoding="utf-8")
 print("icons written to", OUT)

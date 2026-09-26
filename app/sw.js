@@ -3,11 +3,11 @@
    kali ada file yang berubah (samakan dengan TERBIT di js/data.js -- tes
    memeriksanya). Strategi: sajikan dari cache dulu supaya cepat, lalu ambil
    versi baru di latar belakang untuk pembukaan berikutnya. */
-var VERSION = "2026-09-24.7";
+var VERSION = "2026-09-26.1";
 var CACHE = "shanti-" + VERSION;
 var ASSETS = [
   "./", "index.html", "style.css", "manifest.webmanifest", "rute-700k.html",
-  "js/data.js", "js/engine.js", "js/ai.js", "js/cuaca.js", "js/peta.js", "js/acara.js", "js/sinkron.js", "js/rekomendasi.js", "js/baterai.js", "js/peluang.js", "js/app.js",
+  "js/data.js", "js/engine.js", "js/ai.js", "js/cuaca.js", "js/peta.js", "js/lalulintas.js", "js/acara.js", "js/sinkron.js", "js/rekomendasi.js", "js/baterai.js", "js/peluang.js", "js/app.js",
   "vendor/anthropic-sdk.min.js", "vendor/leaflet/leaflet.js", "vendor/leaflet/leaflet.css",
   "vendor/leaflet/images/marker-icon.png", "vendor/leaflet/images/marker-icon-2x.png",
   "vendor/leaflet/images/marker-shadow.png", "vendor/leaflet/images/layers.png", "vendor/leaflet/images/layers-2x.png",
@@ -15,13 +15,32 @@ var ASSETS = [
 ];
 
 self.addEventListener("install", function(e){
-  e.waitUntil(caches.open(CACHE).then(function(c){ return c.addAll(ASSETS); }).then(function(){ return self.skipWaiting(); }));
+  /* Satu-satu, bukan addAll(): sinyal HP yang goyah saat pemasangan pertama
+     bisa membuat SATU aset gagal diambil -- addAll membatalkan SEMUANYA
+     kalau begitu, dan mode offline yang dijanjikan tidak pernah siap tanpa
+     pesan apa pun. allSettled menyimpan yang berhasil dan mencatat yang gagal
+     di console; aset yang gagal akan diambil ulang lewat strategi cache-first
+     yang sudah ada di "fetch" begitu ada sinyal lagi. */
+  e.waitUntil(caches.open(CACHE).then(function(c){
+    return Promise.all(ASSETS.map(function(a){
+      return c.add(a)["catch"](function(err){ console.warn("sw: gagal precache " + a, err); });
+    }));
+  }).then(function(){ return self.skipWaiting(); }));
 });
 
 self.addEventListener("activate", function(e){
   e.waitUntil(caches.keys().then(function(keys){
-    return Promise.all(keys.filter(function(k){ return k !== CACHE; }).map(function(k){ return caches.delete(k); }));
-  }).then(function(){ return self.clients.claim(); }));
+    var lamaAda = keys.some(function(k){ return k !== CACHE; });   /* bukan pemasangan pertama */
+    return Promise.all(keys.filter(function(k){ return k !== CACHE; }).map(function(k){ return caches.delete(k); }))
+      .then(function(){ return lamaAda; });
+  }).then(function(lamaAda){
+    return self.clients.claim().then(function(){
+      if (!lamaAda) return;
+      return self.clients.matchAll().then(function(cs){
+        cs.forEach(function(c){ c.postMessage({ type:"sw-updated", version:VERSION }); });
+      });
+    });
+  }));
 });
 
 self.addEventListener("fetch", function(e){

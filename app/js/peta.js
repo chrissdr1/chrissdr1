@@ -14,6 +14,8 @@
 var Peta = (function(){
   var map = null, posMarker = null, posCircle = null, sudahFokusPosisi = false;
   var LS_TT = "tomtom-key", lapisanTT = null;
+  var statusTT = "belum", statusTTCb = null;   /* belum | cek | ok | error */
+  function laporStatusTT(s){ statusTT = s; if (statusTTCb) statusTTCb(s); }
 
   /* Kunci TomTom (opsional): dengan kunci ini ubin "traffic flow" TomTom
      ditumpangkan di peta. Bentuk URL ubin dari ingatan dokumentasi TomTom
@@ -26,8 +28,14 @@ var Peta = (function(){
     if (!map) return;
     var k = kunciTomTom();
     if (lapisanTT){ map.removeLayer(lapisanTT); lapisanTT = null; }
-    if (!k) return;
+    if (!k){ laporStatusTT("belum"); return; }
+    laporStatusTT("cek");
     lapisanTT = L.tileLayer(urlTomTom(k), { subdomains:"abcd", maxZoom:19, opacity:.85, attribution:"Lalu lintas &copy; TomTom" }).addTo(map);
+    var pernahOk = false;
+    lapisanTT.on("tileload", function(){ pernahOk = true; laporStatusTT("ok"); });
+    /* Ubin kosong di tepi cakupan wajar; hanya lapor gagal kalau belum pernah
+       satu ubin pun berhasil dimuat (kunci salah/kedaluwarsa/limit harian). */
+    lapisanTT.on("tileerror", function(){ if (!pernahOk) laporStatusTT("error"); });
   }
   var WARNA = { tng:"#00713C", jkt:"#9E2A1E", apt:"#9C6206", rumah:"#12211B" };
 
@@ -88,5 +96,7 @@ var Peta = (function(){
   return { init:init, posisi:posisi, fokus:fokus, refresh:refresh, tautanMacet:tautanMacet,
            kunciTomTom:kunciTomTom, setKunciTomTom:setKunciTomTom, urlTomTom:urlTomTom,
            adaTomTom:function(){ return !!lapisanTT; },
+           statusTomTom:function(){ return statusTT; },
+           onStatusTomTom:function(fn){ statusTTCb = fn; },
            ada:function(){ return !!map; } };
 })();

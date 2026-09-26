@@ -38,8 +38,12 @@ var Rekomendasi = (function(){
       var diSini = !!(L && L.id === K.id);
       var kmPindah = 0;
       var jamPindah = 0;
+      var sumberMacet = "statis";
       if (!diSini){
-        if (L && L.id && LOKMAP[L.id] && L.lat != null){ kmPindah = jarakAntar(L, K); jamPindah = jamTempuhAntar(L, K, o.keluar); }
+        if (L && L.id && LOKMAP[L.id] && L.lat != null){
+          kmPindah = jarakAntar(L, K); jamPindah = jamTempuhAntar(L, K, o.keluar);
+          if (typeof Lalulintas !== "undefined" && Lalulintas.pengaliCache(L, K) != null) sumberMacet = "tomtom";
+        }
         else if (asal){ kmPindah = jarakDatar(asal.lat, asal.lon, K.lat, K.lon) * LIKU; jamPindah = kmPindah / CALIB.kecepatan * faktorMacet(o.keluar, K.z); }
         else { kmPindah = Math.abs(((L && L.home) || 0) - K.home) + 3; jamPindah = kmPindah / CALIB.kecepatan * faktorMacet(o.keluar, K.z); }   /* tanpa koordinat: tebakan kasar */
       }
@@ -57,7 +61,7 @@ var Rekomendasi = (function(){
       var sisa = r.blockNet - r.feeCharge - r.parkir - biayaPindah;
       var blkTiba = blockAt(Math.min(keluar, 22.9), o.ctx.shapeDay);
       out.push({ id:id, n:K.n, z:K.z, lat:K.lat, lon:K.lon, diSini:diSini,
-                 kmPindah:kmPindah, jamPindah:jamPindah, macet:macet, tiba:keluar, socTiba:Math.round(o2.soc),
+                 kmPindah:kmPindah, jamPindah:jamPindah, macet:macet, sumberMacet:sumberMacet, tiba:keluar, socTiba:Math.round(o2.soc),
                  sisa:sisa, sesi:r.sessions, kmHome:stay ? 0 : K.home, res:K.res,
                  saran:advise(blkTiba, K, o2), r:r });
     });

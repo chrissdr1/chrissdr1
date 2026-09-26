@@ -637,6 +637,50 @@ async function main(){
     ok(tempuh.cbdSibuk === 46 && tempuh.cbdLancar === 24 && tempuh.bsdSibuk === 34 && tempuh.mntKotaCbd === 46 && tempuh.kmKotaBsd === 16.7 &&
        tempuh.kmKarSer === tempuh.kmSerKar && tempuh.kmKarSer > 4 && tempuh.kmKarSer < 9,
        "waktu tempuh memakai menit terukur Rute 700K; jarak antar tempat simetris dan masuk akal", JSON.stringify(tempuh));
+
+    /* Peluang.tempatAwal: lokasi ketik-manual (tanpa lat/lon, seperti hasil
+       currentLok() untuk kecamatan custom) tidak boleh diam-diam dianggap di
+       Modernland (LOKMAP.kota) -- harus tebakan kasar berbasis home terdekat. */
+    const awal = await ci.evaluate(() => {
+      const L = { id:"custom:test", n:"Uji jauh", home:72, res:50, z:"tng", luar:1, jauh:1, anchor:"kota" };
+      const terdekat = Peluang.KANDIDAT.map(id => LOKMAP[id]).reduce((a, b) => Math.abs(b.home - 72) < Math.abs(a.home - 72) ? b : a);
+      return { pilihan:Peluang.tempatAwal(L).id, terdekatSeharusnya:terdekat.id };
+    });
+    ok(awal.pilihan === awal.terdekatSeharusnya && awal.pilihan !== "kota",
+       "Peluang.tempatAwal: lokasi manual tanpa koordinat memakai tebakan jarak-ke-rumah, bukan diam-diam Modernland", JSON.stringify(awal));
+
+    /* Lalulintas: angka TomTom langsung menggantikan heuristik statis (opsional,
+       kunci sudah terpasang dari tes di atas). Ganti route ubin-abort dengan
+       fixture sukses khusus endpoint routing (rute lebih spesifik menang). */
+    /* jakbar<->cbd punya menit terukur (RUAS_TERUKUR di data.js) -- pasangan
+       inilah yang benar-benar lewat cabang ru.mnt di jamTempuhAntar. */
+    const base = await ci.evaluate(() => jamTempuhAntar(LOKMAP.jakbar, LOKMAP.cbd, 14) * 60);
+    await ci.route("**/api.tomtom.com/routing/**", r => r.fulfill({ status:200, contentType:"application/json",
+      body:JSON.stringify({ routes:[{ summary:{ travelTimeInSeconds:1560, noTrafficTravelTimeInSeconds:1200 } }] }) }));
+    const live = await ci.evaluate(async () => {
+      await Lalulintas.segarkan([[LOKMAP.jakbar, LOKMAP.cbd]]);
+      return { pengali:Lalulintas.pengaliCache(LOKMAP.jakbar, LOKMAP.cbd), menit:jamTempuhAntar(LOKMAP.jakbar, LOKMAP.cbd, 14) * 60 };
+    });
+    ok(live.pengali && Math.abs(live.pengali - 1.3) < 0.01 && Math.abs(live.menit - base * 1.3) < 0.05,
+       "Lalulintas: pengali TomTom (1,3x) menggantikan heuristik statis untuk pasangan koridor terukur", JSON.stringify({ ...live, base }));
+    /* Kota (pangkalan/posisi bawaan) -> tempat inti lewat cabang v() (menit per
+       tempat, bukan RUAS_TERUKUR) -- pasangan paling sering dipakai di aplikasi
+       nyata, jadi harus ikut memakai angka live juga, bukan cuma pasangan yang
+       kebetulan punya ruasTerukur. */
+    const baseKota = await ci.evaluate(() => jamTempuhAntar(LOKMAP.kota, LOKMAP.cbd, 14) * 60);
+    const liveKota = await ci.evaluate(async () => {
+      await Lalulintas.segarkan([[LOKMAP.kota, LOKMAP.cbd]]);
+      return { pengali:Lalulintas.pengaliCache(LOKMAP.kota, LOKMAP.cbd), menit:jamTempuhAntar(LOKMAP.kota, LOKMAP.cbd, 14) * 60 };
+    });
+    ok(liveKota.pengali && Math.abs(liveKota.menit - baseKota * 1.3) < 0.05,
+       "Lalulintas: kota (posisi bawaan) -> CBD lewat cabang v() juga memakai angka TomTom", JSON.stringify({ ...liveKota, baseKota }));
+    await setField(ci, "n-lok", "jakbar"); await setField(ci, "n-jam", 14);
+    await ci.waitForFunction(() => /TomTom langsung/.test(document.getElementById("rek-list").innerText), null, { timeout:5000 });
+    const kartuTT = await ci.evaluate(() => document.getElementById("rek-list").innerText);
+    ok(/TomTom langsung/.test(kartuTT), "kartu rekomendasi menandai sumber TomTom langsung", kartuTT.slice(0, 300));
+    /* Catatan: baseline "tanpa data live -> heuristik statis" sudah dibuktikan oleh
+       pemeriksaan "waktu pindah Modernland -> CBD ..." dan "waktu tempuh ..." di atas,
+       yang berjalan SEBELUM Lalulintas punya cache apa pun. */
     await ci.close();
   }
 

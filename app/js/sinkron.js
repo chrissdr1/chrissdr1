@@ -19,6 +19,11 @@ var Sinkron = (function(){
   function cfg(){ try { return JSON.parse(localStorage.getItem(LS) || "null") || {}; } catch (e) { return {}; } }
   function setCfg(c){ try { if (c && c.token) localStorage.setItem(LS, JSON.stringify(c)); else localStorage.removeItem(LS); } catch (e) {} }
   function aktif(){ var c = cfg(); return !!(c.token && c.repo); }
+  /* siap(): sudah dikonfigurasi DAN sudah diverifikasi repo-nya privat (lewat uji()).
+     Dipisah dari aktif() supaya catatan tidak pernah tertulis ke repo yang belum
+     sempat diperiksa privat/publik-nya (jendela balapan antara setCfg dan uji). */
+  function siap(){ var c = cfg(); return !!(c.token && c.repo && c.privat === true); }
+  function tandaiTerverifikasi(privat){ var c = cfg(); if (!c.token) return; c.privat = !!privat; setCfg(c); }
   function urlIsi(c){ return "https://api.github.com/repos/" + c.repo + "/contents/" + (c.path || BAWAAN.path); }
   function headers(c){
     return { "Authorization":"Bearer " + c.token, "Accept":"application/vnd.github+json",
@@ -33,7 +38,7 @@ var Sinkron = (function(){
   /* Promise<{data, sha}|null>; null kalau berkasnya belum ada. */
   function tarik(){
     var c = cfg();
-    return fetch(urlIsi(c), { headers:headers(c), cache:"no-store" }).then(function(r){
+    return fetchTimeout(urlIsi(c), { headers:headers(c), cache:"no-store" }, 15000).then(function(r){
       if (r.status === 404) return null;
       if (!r.ok) throw galat(r);
       return r.json().then(function(j){
@@ -47,7 +52,7 @@ var Sinkron = (function(){
     var body = { message:"Catatan " + iso(new Date()) + " (" + (data.harian || []).length + " hari)",
                  content:b64enc(JSON.stringify(data, null, 1)) };
     if (sha) body.sha = sha;
-    return fetch(urlIsi(c), { method:"PUT", headers:headers(c), body:JSON.stringify(body) }).then(function(r){
+    return fetchTimeout(urlIsi(c), { method:"PUT", headers:headers(c), body:JSON.stringify(body) }, 15000).then(function(r){
       if (!r.ok) throw galat(r);
       return r.json().then(function(j){ return j.content && j.content.sha; });
     });
@@ -96,11 +101,12 @@ var Sinkron = (function(){
   function uji(){
     var c = cfg();
     if (!aktif()) return Promise.reject({ code:"no_token" });
-    return fetch("https://api.github.com/repos/" + c.repo, { headers:headers(c), cache:"no-store" }).then(function(r){
+    return fetchTimeout("https://api.github.com/repos/" + c.repo, { headers:headers(c), cache:"no-store" }, 15000).then(function(r){
       if (!r.ok) throw galat(r);
       return r.json().then(function(j){ return { privat:!!j.private, nama:j.full_name }; });
     });
   }
 
-  return { cfg:cfg, setCfg:setCfg, aktif:aktif, sinkron:sinkron, uji:uji, gabung:gabung, BAWAAN:BAWAAN };
+  return { cfg:cfg, setCfg:setCfg, aktif:aktif, siap:siap, tandaiTerverifikasi:tandaiTerverifikasi,
+           sinkron:sinkron, uji:uji, gabung:gabung, BAWAAN:BAWAAN };
 })();

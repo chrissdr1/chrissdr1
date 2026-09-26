@@ -7,15 +7,17 @@
    (pendapatan blok x pengali wilayah x bobot permintaan tempat x jam yang
    tersisa setelah pindah, dikurangi listrik). Aturan Rute 700K yang dipakai
    sebagai batas: setelah 20:00 hanya pindah ke tempat yang lebih dekat
-   rumah (kompas), Jakarta tidak lagi dimasuki setelah 21:00, bandara butuh
+   rumah (kompas) dan Jakarta tidak lagi dimasuki, bandara butuh
    potongan >= 1 jam (antre), paling banyak 4 kali pindah. Urutan terbaik
    lalu dihitung PENUH oleh simulate() (sesi ngecas, jatah filter, jam
    pindah, km pindah, cadangan pulang), diurutkan menurut bersih, dan
    dibandingkan dengan "tetap di tempat sekarang".
 
    Batas yang harus dikatakan: bobot permintaan per tempat (BOBOT_TEMPAT)
-   diturunkan dari narasi Rute 700K, bukan dari pengukuran; ia terkalibrasi
-   perlahan dari catatan harian Ibu (CALIB.bobotTempat). Angka antar
+   diturunkan dari narasi Rute 700K, bukan dari pengukuran, dan BELUM ada
+   mekanisme yang mengkalibrasinya dari catatan harian Ibu (CALIB.bobotTempat
+   dibaca oleh bobotTempat() di engine.js, tapi tidak pernah ditulis oleh
+   recalibrate() -- angka ini tetap sampai diubah tangan). Angka antar
    tempat di wilayah tarif yang sama karena itu hanya seteliti bobot itu. */
 "use strict";
 
@@ -34,13 +36,22 @@ var Peluang = (function(){
       KANDIDAT.forEach(function(id){ var K = LOKMAP[id]; var d = jarakLurus(L.lat, L.lon, K.lat, K.lon); if (d < bd){ bd = d; best = K; } });
       return best;
     }
+    /* Lokasi ketik-manual tanpa koordinat (kecamatan di luar 9 inti): tanpa
+       lintang/bujur tidak bisa dicari yang terdekat sungguhan, jadi dipilih
+       inti dengan jarak-ke-rumah paling mirip -- tebakan kasar yang sama
+       filosofinya dengan rekomendasi.js, supaya tidak diam-diam dianggap di
+       Modernland (0 km) padahal bisa puluhan km jauhnya. */
+    if (L && typeof L.home === "number"){
+      var best2 = null, bd2 = Infinity;
+      KANDIDAT.forEach(function(id){ var K = LOKMAP[id]; var d = Math.abs(L.home - K.home); if (d < bd2){ bd2 = d; best2 = K; } });
+      if (best2) return best2;
+    }
     return LOKMAP.kota;
   }
 
   function bolehKe(S, T, p){
     if (p.s >= 20 && T.home > S.home + 1) return false;            /* kompas: malam hanya mendekat ke rumah */
     if (p.s >= 20 && T.z === "jkt") return false;                  /* "jam 20:00 seharusnya sudah tidak di Jakarta" (Rute 700K) */
-    if (p.s >= 21 && T.z === "jkt" && S.id !== T.id) return false; /* Jakarta tidak dimasuki lagi setelah 21:00 */
     if (T.id === "bandara" && S.id !== T.id && p.w < 1) return false; /* antre bandara butuh waktu */
     return true;
   }

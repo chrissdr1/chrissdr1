@@ -20,6 +20,10 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div class="sw-update" id="sw-update" hidden>
+  <span>Versi baru aplikasi ini sudah siap.</span>
+  <button type="button" id="sw-update-btn">Muat ulang</button>
+</div>
 <div class="checkin" id="checkin" role="dialog" aria-modal="true" aria-labelledby="ci-judul" hidden>
   <div class="checkin-card">
     <div class="eyebrow">Mulai hari &middot; <span id="ci-tgl"></span></div>
@@ -438,6 +442,7 @@
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="js/cuaca.js"></script>
 <script src="js/peta.js"></script>
+<script src="js/lalulintas.js"></script>
 <script src="js/acara.js"></script>
 <script src="js/sinkron.js"></script>
 <script src="js/rekomendasi.js"></script>
@@ -447,7 +452,17 @@
 <script>
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   window.addEventListener("load", function(){ navigator.serviceWorker.register("sw.js").catch(function(){}); });
+  navigator.serviceWorker.addEventListener("message", function(e){
+    if (e.data && e.data.type === "sw-updated"){
+      var n = document.getElementById("sw-update");
+      if (n) n.hidden = false;
+    }
+  });
 }
+(function(){
+  var b = document.getElementById("sw-update-btn");
+  if (b) b.addEventListener("click", function(){ location.reload(); });
+})();
 </script>
 </body>
 </html>

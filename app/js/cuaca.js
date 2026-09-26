@@ -52,7 +52,7 @@ var Cuaca = (function(){
     var segar = c && c.tanggal === hariIni && (Date.now() - Date.parse(c.diambil || 0)) < UMUR_MAKS;
     if (!paksa && segar) return Promise.resolve(c);
     if (typeof fetch !== "function") return Promise.resolve(c && c.tanggal === hariIni ? c : null);
-    return fetch(URL_, { cache:"no-store" })
+    return fetchTimeout(URL_, { cache:"no-store" }, 12000)
       .then(function(r){ if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
       .then(function(j){ var o = olah(j, hariIni); simpan(o); return o; })
       ["catch"](function(){ return (c && c.tanggal === hariIni) ? c : null; });
