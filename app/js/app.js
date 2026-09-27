@@ -1398,7 +1398,7 @@ function renderUji(){
 }
 
 /* ---------------- LOG ---------------- */
-var F=["tgl","jam","trip","dpt","ins","kmt","kmp","kwh","biaya","mnt","cat"];
+var F=["tgl","jam","trip","dpt","ins","kmt","kmp","kwh","biaya","mnt","rating","acc","comp","cat"];
 function preview(){
   var r={}; F.forEach(function(k){ r[k]=el(k).value; });
   var d=derive(r), any=num(r.dpt)>0||num(r.kmt)>0;
@@ -1454,10 +1454,13 @@ function renderHist(){
   el("histempty").style.display = rows.length ? "none" : "block";
   el("hist").innerHTML = rows.slice(0,30).map(function(r){
     var d=derive(r), dt=new Date(r.id+"T00:00:00"), hd=HOLI[r.id];
-    return "<tr><td class=\"n\">"+r.id+(r.cat?' <span style="color:var(--muted)">· '+r.cat+"</span>":"")+
+    return "<tr><td class=\"n\">"+r.id+(r.cat?' <span style="color:var(--muted)">· '+esc(r.cat)+"</span>":"")+
       "</td><td>"+DAYNAME[dt.getDay()].slice(0,3)+(hd?" ●":"")+"</td><td>"+(num(r.jam)||"—")+
       "</td><td>"+(num(r.trip)||"—")+"</td><td>"+(num(r.kmt)||"—")+"</td><td>"+
       (d.util==null?"—":dec(d.util,0)+"%")+"</td><td>"+(d.kmjam==null?"—":dec(d.kmjam,1))+
+      "</td><td>"+(num(r.rating)>0?dec(num(r.rating),1):"—")+
+      "</td><td>"+(num(r.acc)>0?Math.round(num(r.acc))+"%":"—")+
+      "</td><td>"+(num(r.comp)>0?Math.round(num(r.comp))+"%":"—")+
       "</td><td class=\"n\">"+rp(d.net)+"</td></tr>";
   }).join("");
   el("ask").disabled = !(sampler && rows.length>=3);

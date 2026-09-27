@@ -218,6 +218,9 @@
       <div class="f"><label for="kwh">kWh ngecas</label><input id="kwh" type="number" inputmode="decimal" step="0.1" placeholder="34"></div>
       <div class="f"><label for="biaya">Biaya ngecas + parkir (Rp)</label><input id="biaya" type="number" inputmode="numeric" placeholder="155000"></div>
       <div class="f"><label for="mnt">Menit perjalanan pulang</label><input id="mnt" type="number" inputmode="numeric" placeholder="55"><div class="hint" id="mnthint">Dari titik terakhir sampai rumah</div></div>
+      <div class="f"><label for="rating">Rating</label><input id="rating" type="number" inputmode="decimal" step="0.1" min="1" max="5" placeholder="4.9"><div class="hint">Dari menu Performa di app Grab. Boleh kosong</div></div>
+      <div class="f"><label for="acc">Tingkat penerimaan (%)</label><input id="acc" type="number" inputmode="numeric" min="0" max="100" placeholder="85"><div class="hint">Boleh kosong</div></div>
+      <div class="f"><label for="comp">Tingkat penyelesaian (%)</label><input id="comp" type="number" inputmode="numeric" min="0" max="100" placeholder="98"><div class="hint">Boleh kosong</div></div>
       <div class="f"><label for="cat">Catatan hari ini</label><input id="cat" type="text" placeholder="mis. konser ICE BSD"><div class="hint">Acara, cuaca, kejadian</div></div>
     </div>
     <div class="preview">
@@ -255,7 +258,7 @@
   <div class="sec-head"><h2>Riwayat</h2><span class="eyebrow" id="histcount"></span></div>
   <div class="tblwrap">
     <table>
-      <thead><tr><th>Tanggal</th><th>Hari</th><th>Jam</th><th>Order</th><th>Km</th><th>% pnp</th><th>Km pnp/jam</th><th>Bersih</th></tr></thead>
+      <thead><tr><th>Tanggal</th><th>Hari</th><th>Jam</th><th>Order</th><th>Km</th><th>% pnp</th><th>Km pnp/jam</th><th>Rating</th><th>Terima%</th><th>Selesai%</th><th>Bersih</th></tr></thead>
       <tbody id="hist"></tbody>
     </table>
     <div class="empty" id="histempty">Belum ada catatan. Isi malam ini setelah pulang.</div>

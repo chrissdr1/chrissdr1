@@ -116,7 +116,10 @@ tautan WhatsApp.
 
 Membaca datanya: buka berkas itu di GitHub, atau tambahkan repo tersebut ke sesi
 Claude Code dan minta analisa. Bentuknya `{ "harian": [ {id, jam, trip, dpt, ins, kmt,
-kmp, kwh, biaya, mnt, cat, diubah}, … ], "rencana": {…} }`.
+kmp, kwh, biaya, mnt, rating, acc, comp, cat, diubah}, … ], "rencana": {…} }`. `rating`
+(bintang dari menu Performa app Grab), `acc` (tingkat penerimaan %), dan `comp` (tingkat
+penyelesaian %) murni catatan — tidak dipakai mesin hitung mana pun, cuma ditampilkan
+di tabel Riwayat supaya Ibu bisa lihat sendiri kalau ada polanya.
 
 ## Cara kerja hariannya
 

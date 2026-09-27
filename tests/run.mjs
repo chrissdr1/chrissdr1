@@ -702,6 +702,35 @@ async function main(){
     await ci.close();
   }
 
+  console.log("13. Rating, tingkat penerimaan/penyelesaian: dicatat, ditampilkan, tidak pengaruhi mesin");
+  {
+    const pf = await ctx.newPage();
+    await pf.goto(url + "index.html", { waitUntil:"load" });
+    await pf.waitForFunction(() => document.querySelector("#n-steps .step"));
+    await pf.evaluate(() => { localStorage.removeItem("buku-setoran-v1"); document.getElementById("t-log").click(); });
+    for (const [k, v] of Object.entries({ tgl:"2026-09-25", jam:10, trip:16, dpt:400000, ins:100000, kmt:200, kmp:130, kwh:30, biaya:140000 })) await setField(pf, k, v);
+    const semulaRp = await pf.evaluate(() => document.getElementById("pv-net").textContent);
+    for (const [k, v] of Object.entries({ rating:4.8, acc:88, comp:97 })) await setField(pf, k, v);
+    const setelahRp = await pf.evaluate(() => document.getElementById("pv-net").textContent);
+    ok(semulaRp === setelahRp && /Rp/.test(setelahRp), "rating/tingkat penerimaan/penyelesaian tidak mengubah perkiraan bersih", `${semulaRp} vs ${setelahRp}`);
+    await pf.click("#save");
+    const hasil = await pf.evaluate(() => {
+      const baris = JSON.parse(localStorage.getItem("buku-setoran-v1")).find(r => r.id === "2026-09-25");
+      return { rating:baris.rating, acc:baris.acc, comp:baris.comp, histText:document.getElementById("hist").innerText };
+    });
+    ok(hasil.rating === 4.8 && hasil.acc === 88 && hasil.comp === 97, "tersimpan sebagai angka di catatan harian", JSON.stringify(hasil));
+    ok(/4[.,]8/.test(hasil.histText) && /88%/.test(hasil.histText) && /97%/.test(hasil.histText),
+       "tabel Riwayat menampilkan rating, tingkat penerimaan, dan penyelesaian", hasil.histText.slice(0, 200));
+    /* Boleh kosong: hari lain tanpa data ini tidak error dan tampil "—". */
+    await setField(pf, "tgl", "2026-09-26");
+    for (const [k, v] of Object.entries({ rating:"", acc:"", comp:"" })) await setField(pf, k, v);
+    await pf.click("#save");
+    const kosong = await pf.evaluate(() => JSON.parse(localStorage.getItem("buku-setoran-v1")).find(r => r.id === "2026-09-26"));
+    ok(kosong.rating === 0 && kosong.acc === 0 && kosong.comp === 0, "boleh dikosongkan tanpa galat", JSON.stringify(kosong));
+    await pf.evaluate(() => localStorage.removeItem("buku-setoran-v1"));
+    await pf.close();
+  }
+
   await browser.close(); srv.close();
   console.log(`\n${passed} lolos, ${failed} gagal`);
   process.exit(failed ? 1 : 0);
