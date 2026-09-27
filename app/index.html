@@ -2,6 +2,7 @@
 <html lang="id">
 <head>
 <meta charset="utf-8">
+<script>try{var t=localStorage.getItem("tema-warna");if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Hallo Shanti</title>
 <meta name="description" content="Buku setoran, penunjuk arah, dan perencana hari untuk pengemudi GrabCar listrik di Tangerang.">
@@ -61,7 +62,10 @@
     <div class="today" id="today"></div>
   </div>
   <p style="max-width:64ch;color:var(--ink-2);font-size:14.5px">Catatan setoran dan penunjuk arah narik.</p>
-  <button type="button" class="panduan-btn" id="panduan-btn">Cara pakai</button>
+  <div class="mast-actions">
+    <button type="button" class="panduan-btn" id="panduan-btn">Cara pakai</button>
+    <button type="button" class="tema-btn" id="tema-btn" aria-label="Ganti tema warna"></button>
+  </div>
 </header>
 
 <section class="panduan" id="panduan">

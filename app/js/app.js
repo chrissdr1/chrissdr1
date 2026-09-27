@@ -49,6 +49,21 @@ function renderSteps(node, list, title){
   });
   node.innerHTML=h;
 }
+/* Tab Sekarang dipakai sambil mengemudi: sekali lirik cukup lihat langkah
+   sekarang + berikutnya, bukan semua sisa hari (itu untuk tab Rencana,
+   lewat renderSteps langsung, tidak lewat sini). */
+var STEPS_BATAS = 2;
+function renderStepsRingkas(node, list, title){
+  var tampil = stepsSemua ? list : list.slice(0, STEPS_BATAS);
+  var sisa = stepsSemua ? 0 : Math.max(0, list.length - STEPS_BATAS);
+  renderSteps(node, tampil, title);
+  if (sisa > 0 || stepsSemua){
+    node.innerHTML += '<button type="button" class="linkbtn" id="steps-toggle">' +
+      (stepsSemua ? "Tampilkan langkah berikutnya saja" : "Lihat semua " + list.length + " langkah sampai pulang") + "</button>";
+  }
+  var st = el("steps-toggle");
+  if (st) st.addEventListener("click", function(){ stepsSemua = !stepsSemua; runNow(); });
+}
 
 /* ---------------- lokasi yang diketik sendiri ----------------
    Halaman tidak boleh memanggil peta, jadi lokasi bebas dipetakan ke
@@ -682,7 +697,7 @@ function runNow(){
 
   var langkah = buildSteps(o, r,
     { cum:dpt - listrikSejak, markNow:true, kmHome:kmProtokol, stay:stay, L:L, verdict:v });
-  renderSteps(el("n-steps"), langkah, "Langkah sampai pulang");
+  renderStepsRingkas(el("n-steps"), langkah, "Langkah sampai pulang");
   catatProyeksi(dateStr, proyeksi);
   SEKARANG = { v:v, langkah:langkah, proyeksi:proyeksi, sisa:sisa, gap:gap,
                insentif:insentifHarian, blok:blk, r:r, L:L, o:o,
@@ -693,55 +708,76 @@ function runNow(){
   lalulintasOtomatis(o, L);
 
   var nn=[];
+  var URUTAN_NOTE = { bad:0, warn:1, good:3 };   /* default (netral "") = 2 */
+  function tambah(k, judul, isi, kenapa){
+    nn.push({ k:k, s:URUTAN_NOTE.hasOwnProperty(k) ? URUTAN_NOTE[k] : 2, html:catatan(k, judul, isi, kenapa) });
+  }
   if (jamLuar && !jamManual){
     var jn = new Date();
-    nn.push(catatan("bad","Sudah lewat jam",
+    tambah("bad","Sudah lewat jam",
       "Sekarang "+String(jn.getHours()).padStart(2,"0")+":"+String(jn.getMinutes()).padStart(2,"0")+", angka di atas untuk jam <b>"+hhmm(o.keluar)+"</b>. <b>Kalau masih di jalan: pulang.</b>",
-      "Aplikasi hanya punya tarif untuk 03:30\u201323:30; jam di luar itu tidak pernah diukur."));
+      "Aplikasi hanya punya tarif untuk 03:30\u201323:30; jam di luar itu tidak pernah diukur.");
   }
   var ngecasDiPeak = langkah.some(function(x){ return x.cls === "charge" && (x.peak === true || (x.blok && PEAKS[x.blok])); });
-  if (ngecasDiPeak && soc < 85) nn.push(catatan("bad","Ngecas kena jam peak",
+  if (ngecasDiPeak && soc < 85) tambah("bad","Ngecas kena jam peak",
     "Berangkat di atas 85% besok bisa nambah &plusmn;<b>"+rp(blockRate(BASE[1], ctx.shapeDay)*0.6)+"</b>.",
-    "Ngecas terpaksa jatuh di jam peak karena berangkat dengan baterai "+soc+"%. Jam peak bernilai sekitar "+rp(blockRate(BASE[1], ctx.shapeDay))+" per jam."));
-  if (o.keluar < 5.25) nn.push(catatan("warn","Angka subuh masih tebakan",
-    "Tarif 03:30\u201305:15 belum ada catatannya.", "Coba tiga hari, catat di tab Catatan, lalu bandingkan Rp per jamnya dengan peak pagi biasa."));
-  if (L.perkiraan) nn.push(catatan("warn","Jarak masih perkiraan",
-    "Jarak dari "+L.n+" (&plusmn;"+Math.round(L.home)+" km) bisa meleset 20%.", "Tempat ini tidak ada di daftar terukur; perilakunya disamakan dengan "+L.anchor+"."));
-  if (!CALIB.kecUkur) nn.push(catatan("warn","Waktu pulang masih tebakan",
-    "Catat sekali <b>menit perjalanan pulang</b> di tab Catatan supaya pas.", "Perjalanan pulang dihitung "+Math.round(CALIB.kecepatan)+" km/jam di jam sibuk; dari tempat jauh selisih 10 km/jam berarti beda lebih dari satu jam."));
+    "Ngecas terpaksa jatuh di jam peak karena berangkat dengan baterai "+soc+"%. Jam peak bernilai sekitar "+rp(blockRate(BASE[1], ctx.shapeDay))+" per jam.");
+  if (o.keluar < 5.25) tambah("warn","Angka subuh masih tebakan",
+    "Tarif 03:30\u201305:15 belum ada catatannya.", "Coba tiga hari, catat di tab Catatan, lalu bandingkan Rp per jamnya dengan peak pagi biasa.");
+  if (L.perkiraan) tambah("warn","Jarak masih perkiraan",
+    "Jarak dari "+L.n+" (&plusmn;"+Math.round(L.home)+" km) bisa meleset 20%.", "Tempat ini tidak ada di daftar terukur; perilakunya disamakan dengan "+L.anchor+".");
+  if (!CALIB.kecUkur) tambah("warn","Waktu pulang masih tebakan",
+    "Catat sekali <b>menit perjalanan pulang</b> di tab Catatan supaya pas.", "Perjalanan pulang dihitung "+Math.round(CALIB.kecepatan)+" km/jam di jam sibuk; dari tempat jauh selisih 10 km/jam berarti beda lebih dari satu jam.");
   var wk = watakLok(L);
   if (wk){
     var isi = wk.kode.split("").map(function(c){ var a = WATAK_ARTI[c]; return a ? "<b>"+a[0]+":</b> "+a[1] : ""; }).filter(function(x){ return x; }).join(" ");
     var lem = (wk.i >= 0) ? KRLL[wk.i] : 0;
     if (lem) isi += (isi ? " " : "") + "<b>Stasiun:</b> 10:00\u201315:00 kereta tinggal " + Math.round(lem*100) + "%" + (lem <= 0.6 ? " \u2014 jangan menunggu di stasiun jam segitu." : ".");
-    if (isi) nn.push(catatan("","Di sekitar " + wk.kec, isi, "Dari apa yang ada di sana menurut peta, bukan dari jumlah order terukur."));
+    if (isi) tambah("","Di sekitar " + wk.kec, isi, "Dari apa yang ada di sana menurut peta, bukan dari jumlah order terukur.");
   }
-  if (CALIB.live) nn.push(catatan("good","Pakai angka Ibu ("+CALIB.n+" hari)",
-    "Rp "+Math.round(CALIB.rpkm).toLocaleString("id-ID")+"/km, insentif "+rp(CALIB.ins)+", "+dec(CALIB.kmkwh,1)+" km/kWh."));
-  else nn.push(catatan("warn","Masih angka perkiraan","Isi 3 hari di tab Catatan supaya jadi angka Ibu."));
+  if (CALIB.live) tambah("good","Pakai angka Ibu ("+CALIB.n+" hari)",
+    "Rp "+Math.round(CALIB.rpkm).toLocaleString("id-ID")+"/km, insentif "+rp(CALIB.ins)+", "+dec(CALIB.kmkwh,1)+" km/kWh.");
+  else tambah("warn","Masih angka perkiraan","Isi 3 hari di tab Catatan supaya jadi angka Ibu.");
   if (gap>5000 && o.pulang<21.5){
     var tj = tambahanJam(o, r, 1.5);
-    var sampai = tj.sampai, tambah = tj.tambah;
-    if (tambah > 10000) nn.push(catatan("warn","Kalau lanjut 1,5 jam (sampai "+hhmm(sampai)+")","+<b>"+rp(tambah)+"</b>, menutup "+Math.round(Math.min(100,tambah/gap*100))+"% kekurangan."));
-    else if (tambah < -2000) nn.push(catatan("bad","Jangan lanjut","1,5 jam lagi malah rugi &plusmn;"+rp(-tambah)+" (harus ngecas lagi). Kejar besok saja."));
+    var sampai = tj.sampai, tambahRp = tj.tambah;
+    if (tambahRp > 10000) tambah("warn","Kalau lanjut 1,5 jam (sampai "+hhmm(sampai)+")","+<b>"+rp(tambahRp)+"</b>, menutup "+Math.round(Math.min(100,tambahRp/gap*100))+"% kekurangan.");
+    else if (tambahRp < -2000) tambah("bad","Jangan lanjut","1,5 jam lagi malah rugi &plusmn;"+rp(-tambahRp)+" (harus ngecas lagi). Kejar besok saja.");
   }
-  if ((o.pulang - o.keluar) <= 2.5) nn.push(catatan("warn","Cek target insentif Grab",
+  if ((o.pulang - o.keluar) <= 2.5) tambah("warn","Cek target insentif Grab",
     "Sebelum berhenti, lihat sisa target insentif di aplikasi Grab; kalau tinggal 1\u20132 order, selesaikan dulu.",
-    "Insentif di sini dihitung rata menurut jam ("+rp(insentifHarian)+"). Kalau insentif Grab bertingkat, order terakhir menjelang target jauh lebih berharga."));
-  if (gap>100000 && (ctx.dow===2||ctx.dow===3)) nn.push(catatan("","Selasa/Rabu memang sepi","Kejar kekurangannya hari Jumat, jangan narik lewat 12 jam."));
-  if (o.filter===0 && L.z==="jkt") nn.push(catatan("bad","Filter habis di Jakarta","Ambil order apa pun ke arah barat, jangan pulang kosong "+Math.round(kmHome)+" km."));
+    "Insentif di sini dihitung rata menurut jam ("+rp(insentifHarian)+"). Kalau insentif Grab bertingkat, order terakhir menjelang target jauh lebih berharga.");
+  if (gap>100000 && (ctx.dow===2||ctx.dow===3)) tambah("","Selasa/Rabu memang sepi","Kejar kekurangannya hari Jumat, jangan narik lewat 12 jam.");
+  if (o.filter===0 && L.z==="jkt") tambah("bad","Filter habis di Jakarta","Ambil order apa pun ke arah barat, jangan pulang kosong "+Math.round(kmHome)+" km.");
   if (o.hujan){
     var dh = dampak(o, {hujan:false});
-    nn.push(catatan("warn","Hujan sudah dihitung","+"+rp(dh)+". Hindari banjir Periuk, Ciledug, Jakarta Barat; jangan terobos genangan &gt;15 cm."));
+    tambah("warn","Hujan sudah dihitung","+"+rp(dh)+". Hindari banjir Periuk, Ciledug, Jakarta Barat; jangan terobos genangan &gt;15 cm.");
   }
   if (ctx.ev){
-    nn.push(catatan("good","Acara sudah dihitung", "<b>"+esc(ctx.ev[0])+"</b> di "+esc(ctx.ev[1])+". "+
-      (ctx.ev[2]==="lokal" ? "Sore/malam ada di sekitar BSD saat bubar." : "Di Jakarta: bubar larut, pulang jauh. Ambil hanya kalau besok libur.")));
+    tambah("good","Acara sudah dihitung", "<b>"+esc(ctx.ev[0])+"</b> di "+esc(ctx.ev[1])+". "+
+      (ctx.ev[2]==="lokal" ? "Sore/malam ada di sekitar BSD saat bubar." : "Di Jakarta: bubar larut, pulang jauh. Ambil hanya kalau besok libur."));
   } else if (o.acara){
     var da = dampak(o, {acara:false});
-    nn.push(catatan("good","Acara besar sudah dihitung","+"+rp(da)+"."));
+    tambah("good","Acara besar sudah dihitung","+"+rp(da)+".");
   }
-  el("n-notes").innerHTML = nn.join("");
+  /* Kartu bad (kritis) selalu tampil. Selain itu, ringkas ke NOTES_BATAS
+     supaya tidak sampai 10 kartu berbobot sama menumpuk sekali lirik --
+     sisanya di balik satu tombol, pola yang sama dengan #rek-toggle. */
+  nn.sort(function(a, b){ return a.s - b.s; });
+  var NOTES_BATAS = 4;
+  var wajib = nn.filter(function(x){ return x.k === "bad"; });
+  var lain = nn.filter(function(x){ return x.k !== "bad"; });
+  var sisaSlot = Math.max(0, NOTES_BATAS - wajib.length);
+  var tampil = notesSemua ? nn : wajib.concat(lain.slice(0, sisaSlot));
+  var sisa = notesSemua ? [] : lain.slice(sisaSlot);
+  var htmlNotes = tampil.map(function(x){ return x.html; }).join("");
+  if (sisa.length || notesSemua){
+    htmlNotes += '<button type="button" class="linkbtn" id="notes-toggle">' +
+      (notesSemua ? "Tampilkan sedikit saja" : "Lihat " + sisa.length + " catatan lainnya") + "</button>";
+  }
+  el("n-notes").innerHTML = htmlNotes;
+  var ntg = el("notes-toggle");
+  if (ntg) ntg.addEventListener("click", function(){ notesSemua = !notesSemua; runNow(); });
 }
 
 /* Baris status untuk lirikan 3 detik; ketuk untuk membuka panel masukan. */
@@ -1652,6 +1688,41 @@ el("chatclear").addEventListener("click", function(){
 });
 muatChat(); renderChat();
 
+/* Tema warna: Otomatis (ikut HP) -> Terang -> Gelap -> Otomatis. Sudah
+   diterapkan sekali secepat mungkin oleh skrip kecil di <head> (index.html,
+   sebelum style.css dibaca) supaya tidak ada kedipan warna salah sesaat
+   halaman terbuka; di sini cuma tombolnya. */
+(function(){
+  var LS_TEMA = "tema-warna";
+  var URUT = ["", "light", "dark"];
+  var LABEL = { "":"Otomatis (ikut HP)", "light":"Terang", "dark":"Gelap" };
+  var IKON  = { "":"◐", "light":"☀", "dark":"☾" };
+  var metaTerang = document.querySelector('meta[name="theme-color"][media*="light"]');
+  var metaGelap  = document.querySelector('meta[name="theme-color"][media*="dark"]');
+  var WARNA_TERANG = metaTerang ? metaTerang.content : "#1A56C4";
+  var WARNA_GELAP  = metaGelap ? metaGelap.content : "#0B1220";
+
+  function baca(){ try { return localStorage.getItem(LS_TEMA) || ""; } catch (e) { return ""; } }
+  function simpan(v){ try { if (v) localStorage.setItem(LS_TEMA, v); else localStorage.removeItem(LS_TEMA); } catch (e) {} }
+  function terapkan(v){
+    if (v) document.documentElement.dataset.theme = v; else delete document.documentElement.dataset.theme;
+    /* Status bar HP (theme-color) ikut pilihan eksplisit, bukan cuma prefers-color-scheme,
+       supaya tidak ada bar gelap di atas halaman yang dipaksa terang (atau sebaliknya). */
+    if (metaTerang && metaGelap){
+      if (v === "light"){ metaTerang.content = WARNA_TERANG; metaGelap.content = WARNA_TERANG; }
+      else if (v === "dark"){ metaTerang.content = WARNA_GELAP; metaGelap.content = WARNA_GELAP; }
+      else { metaTerang.content = WARNA_TERANG; metaGelap.content = WARNA_GELAP; }
+    }
+    var b = el("tema-btn");
+    if (b){ b.textContent = IKON[v]; b.title = "Tema: " + LABEL[v] + " — sentuh untuk ganti"; }
+  }
+  terapkan(baca());
+  el("tema-btn").addEventListener("click", function(){
+    var skrg = baca(), i = (URUT.indexOf(skrg) + 1) % URUT.length, baru = URUT[i];
+    simpan(baru); terapkan(baru);
+  });
+})();
+
 /* Panduan: terbuka saat pertama kali dibuka, lalu diingat pilihannya. */
 (function(){
   var sudah = false;
@@ -2020,6 +2091,8 @@ else if (Sinkron.aktif()) verifikasiLaluSinkron();
 
 /* ---------------- rekomendasi rute otomatis ---------------- */
 var rekSemua = false;
+var notesSemua = false;
+var stepsSemua = false;
 function renderRekomendasi(o, L, soc, stay){
   var box = el("rek"); if (!box) return null;
   var h = Rekomendasi.hitung(o, L, soc, stay);

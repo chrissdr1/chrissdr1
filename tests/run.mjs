@@ -449,7 +449,25 @@ async function main(){
   await page.emulateMedia({ colorScheme:"dark" });
   const temaGelap = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
   ok(temaGelap.toUpperCase() === "#6FA1FF", "tema gelap memakai aksen biru terang", temaGelap);
-  await page.emulateMedia({ colorScheme:"light" });
+  /* Toggle tema manual (#tema-btn): Otomatis -> Terang -> Gelap -> Otomatis,
+     harus bisa memaksa keluar dari prefers-color-scheme sistem. */
+  await page.click("#tema-btn");   /* otomatis -> terang; sistem masih dark */
+  const paksaTerang = await page.evaluate(() => ({ theme:document.documentElement.dataset.theme,
+    accent:getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() }));
+  ok(paksaTerang.theme === "light" && paksaTerang.accent.toUpperCase() === "#1A56C4",
+     "toggle tema: paksa terang walau sistem gelap", JSON.stringify(paksaTerang));
+  await page.click("#tema-btn");   /* terang -> gelap */
+  await page.emulateMedia({ colorScheme:"light" });   /* sistem terang, tapi dipaksa gelap */
+  const paksaGelap = await page.evaluate(() => ({ theme:document.documentElement.dataset.theme,
+    accent:getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() }));
+  ok(paksaGelap.theme === "dark" && paksaGelap.accent.toUpperCase() === "#6FA1FF",
+     "toggle tema: paksa gelap walau sistem terang", JSON.stringify(paksaGelap));
+  await page.click("#tema-btn");   /* gelap -> otomatis */
+  const kembaliOtomatis = await page.evaluate(() => ({ theme:document.documentElement.dataset.theme || "(kosong)",
+    accent:getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() }));
+  ok(kembaliOtomatis.theme === "(kosong)" && kembaliOtomatis.accent.toUpperCase() === "#1A56C4",
+     "toggle tema: kembali ke otomatis (ikut sistem terang)", JSON.stringify(kembaliOtomatis));
+  await page.evaluate(() => { try { localStorage.removeItem("tema-warna"); } catch (e) {} });
   for (const [k, v] of Object.entries({ "n-jam":9.5, "n-lok":"karawaci", "n-soc":65, "n-dpt":0, "n-pulang":21.5, "n-filter":2, "n-bat":30.08, "n-tujuan":"rumah" })) await setField(page, k, v);
   const rk = await page.evaluate(() => {
     const d = SEKARANG.rek.daftar;

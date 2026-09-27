@@ -185,7 +185,7 @@ var CUACA = {tanggal:"2026-09-23", hujan:true, jam:"12:00-17:00", ringkas:"Hujan
    worker saat dibuka dengan internet. Yang tetap perlu dikatakan halaman:
    sampai kapan tiap kalendernya terisi. Perbarui TERBIT tiap kali
    menerbitkan (samakan dengan VERSION di sw.js; tes memeriksanya). */
-var TERBIT = "2026-09-26";
+var TERBIT = "2026-09-27";
 var EVENTS_SAMPAI = "2026-12-27";
 var HOLI_SAMPAI = "2026-12-25";
 

@@ -40,6 +40,24 @@ body{background:var(--ground); color:var(--ink);
   padding:9px 14px; font:14px/1.3 "IBM Plex Sans",sans-serif; font-weight:600; text-align:center}
 .sw-update button{font:inherit; font-weight:700; background:var(--accent-ink); color:var(--accent);
   border:none; border-radius:6px; padding:5px 14px; cursor:pointer; min-height:32px}
+/* Tanda sentuhan: dipakai di HP sambil menyetir, jadi tap harus terasa
+   terkonfirmasi seketika, bukan menunggu hasil render berubah. :hover
+   sengaja tidak dipakai (bisa "nyangkut" aktif di beberapa browser mobile
+   setelah tap) -- hanya :active. */
+button.go:active, .tab:active, .ketikrow button:active, .chips button:active,
+.panduan-btn:active, .tema-btn:active, .sw-update button:active,
+details.lipat>summary:active, details.kenapa>summary:active{
+  background:var(--surface-2); opacity:.8;
+}
+.tab.on:active{ background:var(--accent); opacity:.85; }
+.linkbtn:active{ opacity:.6; }
+@media (prefers-reduced-motion: no-preference){
+  button.go, .tab, .ketikrow button, .chips button, .panduan-btn, .tema-btn, .sw-update button{
+    transition:transform .1s ease, opacity .1s ease, background-color .1s ease;
+  }
+  button.go:active, .tab:active, .ketikrow button:active, .chips button:active,
+  .panduan-btn:active, .tema-btn:active, .sw-update button:active{ transform:scale(.96); }
+}
 h1,h2,h3{font-family:"Barlow Condensed","Barlow",Impact,sans-serif; font-weight:700; text-wrap:balance}
 h1{font-size:clamp(32px,6vw,48px); line-height:.96; margin:0}
 h2{font-size:clamp(21px,3.2vw,27px); line-height:1.06; margin:0; letter-spacing:.01em}
@@ -58,10 +76,18 @@ header.mast{display:flex; flex-direction:column; gap:10px; border-bottom:2px sol
 .mast a{color:var(--accent); font-weight:600; text-decoration:none; border-bottom:1px solid currentColor}
 
 /* panduan */
-.panduan-btn{align-self:flex-start; font-family:"IBM Plex Sans",sans-serif; font-size:12.5px;
+.mast-actions{display:flex; gap:8px; align-items:center}
+.panduan-btn{font-family:"IBM Plex Sans",sans-serif; font-size:12.5px;
   font-weight:600; padding:7px 14px; border-radius:3px; border:1px solid var(--line-strong);
   background:var(--surface); color:var(--ink-2); cursor:pointer}
 .panduan-btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+/* Toggle tema: Otomatis (ikut HP) -> Terang -> Gelap -> Otomatis. Tanpa ini,
+   warna terkunci ke prefers-color-scheme sistem tanpa jalan keluar -- kalau
+   HP defaultnya mode gelap, biru pekat tema terang tidak pernah terlihat. */
+.tema-btn{font-size:18px; line-height:1; width:36px; height:36px; padding:0; border-radius:3px;
+  border:1px solid var(--line-strong); background:var(--surface); color:var(--ink-2); cursor:pointer;
+  display:flex; align-items:center; justify-content:center}
+.tema-btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
 .panduan{background:var(--surface); border:1px solid var(--line); border-left:4px solid var(--accent);
   border-radius:4px; padding:18px 20px; margin-bottom:22px}
 .panduan[hidden]{display:none}
@@ -171,8 +197,8 @@ button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
   background:var(--alert-soft); color:var(--ink-2)}
 .batwarn.mild{border-left-color:var(--signal); background:var(--signal-soft)}
 .batwarn b{color:var(--ink)}
-.batwarn .tag{font-family:"IBM Plex Mono",monospace; font-size:9.5px; font-weight:600;
-  letter-spacing:.09em; text-transform:uppercase; opacity:.8; white-space:nowrap; padding-top:3px}
+.batwarn .tag{font-family:"IBM Plex Mono",monospace; font-size:11px; font-weight:600;
+  letter-spacing:.09em; text-transform:uppercase; opacity:.88; white-space:nowrap; padding-top:3px}
 
 .verdict{margin-top:15px; background:var(--surface); border:1px solid var(--line);
   border-left:4px solid var(--accent); border-radius:4px; padding:17px 19px;
@@ -184,7 +210,7 @@ button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
 .verdict h3{font-size:clamp(19px,3vw,25px); line-height:1.08}
 .verdict p{font-size:14.2px; color:var(--ink-2)}
 .verdict p b{color:var(--ink)}
-.verdict .route{font-family:"IBM Plex Mono",monospace; font-size:12.5px; color:var(--accent);
+.verdict .route{font-family:"IBM Plex Mono",monospace; font-size:14px; color:var(--accent);
   font-weight:600}
 
 .res{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,236px); gap:20px;
@@ -224,21 +250,21 @@ button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
 .step .a span{display:block; font-family:"IBM Plex Mono",monospace; font-size:11.5px;
   color:var(--accent); margin-top:3px; font-weight:600}
 .step.charge .a span{color:var(--signal)}
-.step .a i{display:block; font-style:normal; font-size:12.5px; color:var(--ink-2); margin-top:5px}
+.step .a i{display:block; font-style:normal; font-size:13.5px; color:var(--ink-2); margin-top:5px}
 .step .v{text-align:right; white-space:nowrap; font-family:"IBM Plex Mono",monospace;
   font-variant-numeric:tabular-nums; font-size:13.5px; font-weight:600; color:var(--ink)}
 .step .v em{display:block; font-style:normal; font-size:10.5px; color:var(--muted); font-weight:400;
   margin-top:3px}
 
 .notes{display:flex; flex-direction:column; gap:9px; margin-top:15px}
-.note{display:flex; gap:10px; align-items:flex-start; font-size:13.5px; padding:10px 13px;
+.note{display:flex; gap:10px; align-items:flex-start; font-size:14.5px; padding:10px 13px;
   border-radius:3px; border-left:3px solid var(--line-strong); background:var(--surface-2)}
 .note.good{border-left-color:var(--accent); background:var(--accent-soft); color:var(--ink-2)}
 .note.warn{border-left-color:var(--signal); background:var(--signal-soft); color:var(--ink-2)}
 .note.bad{border-left-color:var(--alert); background:var(--alert-soft); color:var(--ink-2)}
 .note b{color:var(--ink)}
-.note .tag{font-family:"IBM Plex Mono",monospace; font-size:9.5px; font-weight:600;
-  letter-spacing:.08em; text-transform:uppercase; opacity:.75; white-space:nowrap; padding-top:2px}
+.note .tag{font-family:"IBM Plex Mono",monospace; font-size:11px; font-weight:600;
+  letter-spacing:.08em; text-transform:uppercase; opacity:.85; white-space:nowrap; padding-top:2px}
 
 .cal{display:grid; grid-template-columns:repeat(auto-fit,minmax(164px,1fr)); gap:12px}
 .tile{background:var(--surface); border:1px solid var(--line); border-radius:4px; padding:14px 15px;
@@ -368,7 +394,7 @@ a.go{text-decoration:none; display:inline-block; line-height:1.3; font-family:"I
 .rek-item.here .rek-body b::after{content:" · posisi sekarang"; font-family:"IBM Plex Mono",monospace; font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted)}
 .rek-num{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; font-size:15px; font-weight:600; color:var(--ink)}
 .rek-num em{font-style:normal; font-weight:400; font-size:11px; color:var(--muted)}
-.rek-body i{font-style:normal; font-size:13px; color:var(--ink-2)}
+.rek-body i{font-style:normal; font-size:14px; color:var(--ink-2)}
 .rek-delta{font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--muted)}
 .rek-delta.up{color:var(--accent); font-weight:600} .rek-delta.dn{color:var(--signal)}
 .rek-body .linkbtn{align-self:flex-start; margin-top:2px}
