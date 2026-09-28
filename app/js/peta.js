@@ -8,12 +8,17 @@
    ditumpangkan langsung di peta ini.
 
    Ubin peta diambil dari internet saat dilihat; tanpa sinyal, penibu tetap
-   tampil di atas latar kosong. */
+   tampil di atas latar kosong.
+
+   Garis rute ke tempat yang disarankan (ikut bentuk jalan sungguhan, bukan
+   garis lurus) juga muncul kalau kunci TomTom ada -- lewat gambarRute(),
+   dipanggil app.js dari data yang sama dengan pengali macet (lalulintas.js),
+   jadi tidak ada permintaan TomTom tambahan khusus untuk garis ini. */
 "use strict";
 
 var Peta = (function(){
   var map = null, posMarker = null, posCircle = null, sudahFokusPosisi = false;
-  var LS_TT = "tomtom-key", lapisanTT = null;
+  var LS_TT = "tomtom-key", lapisanTT = null, garisRute = null;
   var statusTT = "belum", statusTTCb = null;   /* belum | cek | ok | error */
   function laporStatusTT(s){ statusTT = s; if (statusTTCb) statusTTCb(s); }
 
@@ -97,10 +102,22 @@ var Peta = (function(){
     return "https://www.google.com/maps/@" + lat.toFixed(5) + "," + lon.toFixed(5) + ",14z/data=!5m1!1e1";
   }
 
+  /* Garis rute (ikut bentuk jalan sungguhan, dari TomTom Routing lewat
+     Lalulintas.poinCache -- tidak memanggil TomTom sendiri) dari posisi Ibu
+     ke tempat yang direkomendasikan. poin null/kosong menghapus garisnya. */
+  function gambarRute(poin){
+    if (!map) return;
+    if (garisRute){ map.removeLayer(garisRute); garisRute = null; }
+    if (poin && poin.length >= 2){
+      garisRute = L.polyline(poin, { color:"#1A56C4", weight:4, opacity:.7 }).addTo(map);
+    }
+  }
+
   return { init:init, posisi:posisi, fokus:fokus, refresh:refresh, tautanMacet:tautanMacet,
            kunciTomTom:kunciTomTom, setKunciTomTom:setKunciTomTom, urlTomTom:urlTomTom,
            adaTomTom:function(){ return !!lapisanTT; },
            statusTomTom:function(){ return statusTT; },
            onStatusTomTom:function(fn){ statusTTCb = fn; },
+           gambarRute:gambarRute, adaRute:function(){ return !!garisRute; },
            ada:function(){ return !!map; } };
 })();

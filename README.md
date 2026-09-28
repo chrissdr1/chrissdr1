@@ -99,6 +99,8 @@ Tanpa kunci, tombol **Lihat kemacetan di Google Maps** membuka Google Maps denga
 
 Bentuk URL ubin (`…/traffic/map/4/tile/flow/relative/{z}/{x}/{y}.png?key=…`) sudah diverifikasi terhadap dokumentasi resmi TomTom Traffic API v4 (Raster Flow Tiles): host tunggal `api.tomtom.com` (bukan subdomain a/b/c/d gaya OSM), gaya `relative`. Jatah gratis harian TomTom ada, tetapi besarannya berubah-ubah; periksa di dasbor TomTom.
 
+Kunci yang sama juga dipakai untuk faktor macet langsung di perkiraan (menggantikan patokan jam sibuk statis) dan garis rute ke tempat yang disarankan di peta (ikut bentuk jalan sungguhan, bukan garis lurus) lewat TomTom Routing API — daftarkan produk *Routing* juga, bukan cuma *Traffic Flow* / *Map Display*, supaya dua fitur ini ikut jalan. Kedua pemanggilan itu memakai respons yang sama (satu permintaan per pasangan tempat, disimpan 10 menit), jadi garis rutenya tidak menambah pemakaian jatah harian.
+
 ### 3. Tautan pengaturan: tidak perlu mengetik apa pun di HP
 
 Rangkai tautan ini di komputer, lalu kirim ke HP Ibu lewat WhatsApp (pesan

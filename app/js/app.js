@@ -706,6 +706,7 @@ function runNow(){
   SEKARANG.peluang = renderPeluang("peluang", o, L, { dpt:dpt });
   briefingOtomatis();
   lalulintasOtomatis(o, L);
+  perbaruiRute();
 
   var nn=[];
   var URUTAN_NOTE = { bad:0, warn:1, good:3 };   /* default (netral "") = 2 */
@@ -1971,6 +1972,17 @@ function petaPosisi(){
   if (POSISI_GPS && Peta.ada()) Peta.posisi(POSISI_GPS.lat, POSISI_GPS.lon, POSISI_GPS.akurasi);
   petaLinkMacet();
 }
+/* Garis rute ke tempat teratas di "Sebaiknya ke mana sekarang?" -- data
+   yang sudah diambil untuk pengali macet (lalulintas.js), bukan permintaan
+   TomTom baru. Kalau tujuannya "tetap di sini" atau datanya belum ada
+   (menunggu Lalulintas.segarkan selesai), garisnya dihapus/tidak muncul. */
+function perbaruiRute(){
+  if (!Peta.ada() || typeof Lalulintas === "undefined") { return; }
+  var h = SEKARANG && SEKARANG.rek, L = SEKARANG && SEKARANG.L;
+  var tujuan = h && h.daftar && h.daftar[0];
+  if (!tujuan || tujuan.diSini || tujuan.lat == null || !L || L.lat == null){ Peta.gambarRute(null); return; }
+  Peta.gambarRute(Lalulintas.poinCache(L, tujuan));
+}
 function tampilkanPeta(){
   var box = el("peta");
   box.hidden = false; el("peta-actions").hidden = false; el("peta-toggle").textContent = "Sembunyikan peta";
@@ -1981,6 +1993,7 @@ function tampilkanPeta(){
   var L0 = currentLok();
   if (!POSISI_GPS && L0.lat != null) Peta.fokus(L0.lat, L0.lon, 12);
   petaPosisi();
+  perbaruiRute();
 }
 el("peta-toggle").addEventListener("click", function(){
   if (el("peta").hidden) tampilkanPeta();

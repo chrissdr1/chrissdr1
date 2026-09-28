@@ -699,6 +699,29 @@ async function main(){
     /* Catatan: baseline "tanpa data live -> heuristik statis" sudah dibuktikan oleh
        pemeriksaan "waktu pindah Modernland -> CBD ..." dan "waktu tempuh ..." di atas,
        yang berjalan SEBELUM Lalulintas punya cache apa pun. */
+
+    /* Garis rute di peta: dari titik legs[].points respons routing yang SAMA
+       dengan yang dipakai untuk pengali macet -- tidak ada permintaan TomTom
+       terpisah untuk garisnya. */
+    await ci.route("**/api.tomtom.com/routing/**", r => r.fulfill({ status:200, contentType:"application/json",
+      body:JSON.stringify({ routes:[{ summary:{ travelTimeInSeconds:1560, noTrafficTravelTimeInSeconds:1200 },
+        legs:[{ points:[{ latitude:-6.20, longitude:106.65 }, { latitude:-6.19, longitude:106.70 }, { latitude:-6.18, longitude:106.75 }] }] }] }) }));
+    await ci.click("#peta-toggle");
+    await ci.waitForTimeout(300);
+    /* Pasangan serpong<->karawaci belum pernah lewat Lalulintas.segarkan() di
+       tes ini (beda dari jakbar/kota->cbd di atas), supaya mock routing yang
+       baru saja dipasang benar-benar dipanggil, bukan kena cache lama. */
+    const rute = await ci.evaluate(async () => {
+      const L = LOKMAP.serpong, tujuan = Object.assign({ diSini:false }, LOKMAP.karawaci);
+      await Lalulintas.segarkan([[L, tujuan]]);
+      SEKARANG.L = L; SEKARANG.rek = { daftar:[tujuan] };
+      perbaruiRute();
+      return { poin:Lalulintas.poinCache(L, tujuan), ada:Peta.adaRute() };
+    });
+    ok(rute.poin && rute.poin.length >= 2 && rute.ada,
+       "garis rute ke tempat teratas digambar dari titik respons routing yang sama dengan pengali macet", JSON.stringify(rute));
+    const kosong = await ci.evaluate(() => { Peta.gambarRute(null); return Peta.adaRute(); });
+    ok(!kosong, "gambarRute(null) menghapus garis rute", JSON.stringify({ kosong }));
     await ci.close();
   }
 

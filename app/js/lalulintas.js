@@ -5,11 +5,19 @@
    engine.js) jatuh balik ke heuristik statis 1,6x/1,9x -- tidak ada satu
    angka pun yang berubah tanpa kunci ini.
 
+   Respons yang sama juga dipakai untuk garis rute di peta (routes[0].
+   legs[].points, lat/lon per titik) lewat poinCache() -- tidak ada
+   panggilan TomTom tambahan untuk itu, cuma membaca ulang bagian lain
+   dari respons yang sudah diambil untuk pengali macet.
+
    Bentuk response ditulis dari dokumentasi TomTom Routing API
    (traffic=true mengembalikan summary.travelTimeInSeconds dan
-   summary.noTrafficTravelTimeInSeconds) -- PERLU VERIFIKASI saat kunci
-   pertama kali dipakai, sama seperti catatan jujur untuk ubin traffic
-   flow di peta.js. Kalau bentuknya beda, sesuaikan olah() di bawah. */
+   summary.noTrafficTravelTimeInSeconds; routeRepresentation=polyline
+   mengembalikan legs[].points sebagai {latitude,longitude}) -- PERLU
+   VERIFIKASI saat kunci pertama kali dipakai, sama seperti catatan
+   jujur untuk ubin traffic flow di peta.js. Kalau bentuknya beda,
+   sesuaikan olah() di bawah; poin yang tidak dikenali diam-diam jadi
+   null dan garis rute tidak digambar, tidak memengaruhi pengali macet. */
 "use strict";
 
 var Lalulintas = (function(){
@@ -31,17 +39,42 @@ var Lalulintas = (function(){
     return c.pengali;
   }
 
+  /* Titik-titik rute (buat digambar di peta) dari respons yang sama dengan
+     pengaliCache -- null kalau belum ada, sudah basi, atau responsnya tidak
+     menyertakan geometri (mis. fixture uji tanpa legs/points). */
+  function poinCache(A, B){
+    var k = kunci(A, B); if (!k) return null;
+    var c = cache[k];
+    if (!c || (Date.now() - c.at) > UMUR_MAKS) return null;
+    return c.poin || null;
+  }
+
   function urlRute(A, B, key){
     return "https://api.tomtom.com/routing/1/calculateRoute/" +
       A.lat.toFixed(5) + "," + A.lon.toFixed(5) + ":" + B.lat.toFixed(5) + "," + B.lon.toFixed(5) +
-      "/json?traffic=true&key=" + encodeURIComponent(key);
+      "/json?traffic=true&routeRepresentation=polyline&key=" + encodeURIComponent(key);
+  }
+
+  function poinDari(route){
+    var legs = route && route.legs; if (!legs || !legs.length) return null;
+    var poin = [];
+    for (var i = 0; i < legs.length; i++){
+      var titik = legs[i] && legs[i].points; if (!titik) continue;
+      for (var j = 0; j < titik.length; j++){
+        var p = titik[j];
+        if (p && typeof p.latitude === "number" && typeof p.longitude === "number") poin.push([p.latitude, p.longitude]);
+      }
+    }
+    return poin.length >= 2 ? poin : null;
   }
 
   function olah(j){
-    var s = j && j.routes && j.routes[0] && j.routes[0].summary;
+    var route = j && j.routes && j.routes[0];
+    var s = route && route.summary;
     var t = s && s.travelTimeInSeconds, t0 = s && s.noTrafficTravelTimeInSeconds;
     if (typeof t !== "number" || typeof t0 !== "number" || !(t0 > 0)) return null;
-    return Math.max(0.5, Math.min(4, t / t0));   /* dijepit: ubin/response aneh tidak boleh membalik urutan rute */
+    return { pengali: Math.max(0.5, Math.min(4, t / t0)),   /* dijepit: ubin/response aneh tidak boleh membalik urutan rute */
+             poin: poinDari(route) };
   }
 
   /* Promise<void>. Ambil satu pasangan dari TomTom kalau kuncinya ada dan
@@ -58,8 +91,8 @@ var Lalulintas = (function(){
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.json();
     }).then(function(j){
-      var p = olah(j);
-      if (p != null) cache[k] = { pengali:p, at:Date.now() };
+      var hasil = olah(j);
+      if (hasil != null) cache[k] = { pengali:hasil.pengali, poin:hasil.poin, at:Date.now() };
     })["catch"](function(){ /* diam-diam gagal */ });
   }
 
@@ -73,5 +106,5 @@ var Lalulintas = (function(){
 
   function aktif(){ return !!(typeof Peta !== "undefined" && Peta.kunciTomTom()); }
 
-  return { pengaliCache:pengaliCache, segarkan:segarkan, aktif:aktif };
+  return { pengaliCache:pengaliCache, poinCache:poinCache, segarkan:segarkan, aktif:aktif };
 })();
