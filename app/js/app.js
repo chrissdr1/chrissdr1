@@ -2419,7 +2419,16 @@ function tandaiTomTom(){
   var k = Peta.kunciTomTom();
   el("tt-key").placeholder = k ? "tersimpan · ····" + k.slice(-4) : "Kunci TomTom (opsional)";
   el("tt-clear").hidden = !k;
-  el("tt-status").textContent = tomtomStatusTeks(k ? Peta.statusTomTom() : "belum");
+  var teks = "";
+  if (k){
+    /* Peta baru dibuat sekali tab Sekarang menekan "Tampilkan peta", jadi
+       simpan kunci di sini (tab Catatan) belum tentu langsung memasang
+       lapisan -- tanpa baris ini layar terlihat diam padahal kuncinya
+       sudah tersimpan (dan akan dipasang begitu peta dibuka). */
+    teks = Peta.ada() ? tomtomStatusTeks(Peta.statusTomTom())
+                       : "Kunci tersimpan. Buka tab Sekarang, lalu tekan \"Tampilkan peta\" untuk melihat lapisan macetnya.";
+  }
+  el("tt-status").textContent = teks;
 }
 Peta.onStatusTomTom(function(){ tandaiTomTom(); });
 el("tt-save").addEventListener("click", function(){
