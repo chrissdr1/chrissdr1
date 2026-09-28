@@ -95,9 +95,9 @@ plus token). Pencarian web harus tidak dimatikan admin di Settings → Privacy.
 
 ### 2b. Lapisan kemacetan TomTom di peta (opsional)
 
-Tanpa kunci, tombol **Lihat kemacetan di Google Maps** membuka Google Maps dengan lapisan lalu lintas tepat di posisi Ibu. Kalau ingin lapisan kemacetan tampil langsung di peta aplikasi, daftarkan akun pengembang TomTom (developer.tomtom.com), buat kunci API dengan produk *Traffic Flow* / *Map Display*, lalu tempel di kolom **Kunci TomTom** di bawah peta, atau kirim lewat tautan pengaturan `#tomtom=…`.
+Tanpa kunci, tombol **Lihat kemacetan di Google Maps** membuka Google Maps dengan lapisan lalu lintas tepat di posisi Ibu. Kalau ingin lapisan kemacetan tampil langsung di peta aplikasi, daftarkan akun pengembang TomTom (developer.tomtom.com), buat kunci API dengan produk *Traffic Flow* / *Map Display*, lalu tempel di tab **Catatan → gulir ke bawah → "Pengaturan anak" (ketuk judulnya untuk membuka) → Lapisan macet TomTom di peta**, atau kirim lewat tautan pengaturan `#tomtom=…`.
 
-Catatan jujur: bentuk URL ubin yang dipakai (`…/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=…`) ditulis dari ingatan dokumentasi TomTom Traffic API v4 dan **perlu diverifikasi** saat kunci pertama kali dipakai. Kalau ubinnya tidak muncul, cek dokumentasi *Traffic Flow Tiles* TomTom dan sesuaikan `urlTomTom` di `app/js/peta.js`. Jatah gratis harian TomTom ada, tetapi besarannya berubah-ubah; periksa di dasbor TomTom.
+Bentuk URL ubin (`…/traffic/map/4/tile/flow/relative/{z}/{x}/{y}.png?key=…`) sudah diverifikasi terhadap dokumentasi resmi TomTom Traffic API v4 (Raster Flow Tiles): host tunggal `api.tomtom.com` (bukan subdomain a/b/c/d gaya OSM), gaya `relative`. Jatah gratis harian TomTom ada, tetapi besarannya berubah-ubah; periksa di dasbor TomTom.
 
 ### 3. Tautan pengaturan: tidak perlu mengetik apa pun di HP
 

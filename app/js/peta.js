@@ -18,19 +18,23 @@ var Peta = (function(){
   function laporStatusTT(s){ statusTT = s; if (statusTTCb) statusTTCb(s); }
 
   /* Kunci TomTom (opsional): dengan kunci ini ubin "traffic flow" TomTom
-     ditumpangkan di peta. Bentuk URL ubin dari ingatan dokumentasi TomTom
-     Traffic API v4 (flow tiles, gaya relative0) -- PERLU VERIFIKASI saat
-     kunci pertama kali dipakai; kalau ubinnya tidak muncul, cek README. */
+     ditumpangkan di peta. Bentuk URL ini SUDAH diverifikasi lewat dokumentasi
+     resmi TomTom Traffic API v4 (Raster Flow Tiles) -- host tunggal
+     api.tomtom.com (TomTom TIDAK memakai subdomain a/b/c/d bergaya OSM;
+     versi awal salah menyangka begitu dan ubinnya gagal dimuat), gaya
+     "relative" (kecepatan relatif terhadap arus bebas -- nilai enum yang
+     sah: absolute, relative, relative-delay, reduced-sensitivity; "relative0"
+     yang dipakai versi awal bukan nilai yang sah). */
   function kunciTomTom(){ try { return localStorage.getItem(LS_TT) || ""; } catch (e) { return ""; } }
   function setKunciTomTom(k){ try { if (k) localStorage.setItem(LS_TT, k); else localStorage.removeItem(LS_TT); } catch (e) {} pasangTomTom(); }
-  function urlTomTom(k){ return "https://{s}.api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=" + encodeURIComponent(k); }
+  function urlTomTom(k){ return "https://api.tomtom.com/traffic/map/4/tile/flow/relative/{z}/{x}/{y}.png?key=" + encodeURIComponent(k); }
   function pasangTomTom(){
     if (!map) return;
     var k = kunciTomTom();
     if (lapisanTT){ map.removeLayer(lapisanTT); lapisanTT = null; }
     if (!k){ laporStatusTT("belum"); return; }
     laporStatusTT("cek");
-    lapisanTT = L.tileLayer(urlTomTom(k), { subdomains:"abcd", maxZoom:19, opacity:.85, attribution:"Lalu lintas &copy; TomTom" }).addTo(map);
+    lapisanTT = L.tileLayer(urlTomTom(k), { maxZoom:19, opacity:.85, attribution:"Lalu lintas &copy; TomTom" }).addTo(map);
     var pernahOk = false;
     lapisanTT.on("tileload", function(){ pernahOk = true; laporStatusTT("ok"); });
     /* Ubin kosong di tepi cakupan wajar; hanya lapor gagal kalau belum pernah
