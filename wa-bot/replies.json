@@ -1,0 +1,21 @@
+{
+  "greeting": {
+    "keywords": ["halo", "hallo", "hai", "pagi", "siang", "sore", "malam"],
+    "reply": "Halo, terima kasih sudah menghubungi kami! Ada yang bisa dibantu? Ketik *harga*, *jam buka*, atau *lokasi* untuk info cepat."
+  },
+  "harga": {
+    "keywords": ["harga", "berapa", "price", "biaya"],
+    "reply": "Untuk info harga terbaru, mohon tunggu ya, admin akan membalas secepatnya. 🙏"
+  },
+  "jam_buka": {
+    "keywords": ["jam buka", "jam operasional", "buka jam berapa", "tutup jam berapa"],
+    "reply": "Kami buka setiap hari pukul 08.00 - 20.00 WIB."
+  },
+  "lokasi": {
+    "keywords": ["lokasi", "alamat", "dimana", "di mana"],
+    "reply": "Lokasi kami: (isi alamat lengkap di sini). Link Google Maps: (isi link di sini)."
+  },
+  "default": {
+    "reply": "Terima kasih atas pesannya. Ini balasan otomatis di luar jam kerja / admin sedang sibuk — pesan Anda sudah tercatat dan akan dibalas langsung sesegera mungkin."
+  }
+}

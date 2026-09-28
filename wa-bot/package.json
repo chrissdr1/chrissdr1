@@ -1,0 +1,15 @@
+{
+  "name": "wa-bot",
+  "private": true,
+  "type": "module",
+  "description": "Auto-reply WhatsApp sederhana berbasis kata kunci, untuk bisnis kecil (dipakai lewat Baileys, tidak resmi dari WhatsApp).",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "@hapi/boom": "^10.0.1",
+    "@whiskeysockets/baileys": "^6.7.9",
+    "pino": "^9.5.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
