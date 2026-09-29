@@ -1467,6 +1467,17 @@ async function main(){
     }
     ok(sama.every(x => x.rek != null && Math.abs(x.utama - x.rek) <= 1 && x.pel != null && Math.abs(x.utama - x.pel) <= 1),
        "angka 'tetap di sini' sama di kartu utama, 'ke mana sekarang', dan 'urutan tempat' (BSD, Jakbar, Bandara, CBD jam 17)", JSON.stringify(sama));
+    /* tempat di daftar yang BUKAN tujuan saran (Ciledug, Bintaro, Cikupa): dulu
+       tanpa pembanding "tetap di sini", semua selisih tampil +Rp0 */
+    const luar = [];
+    for (const lok of ["ciledug", "bintaro", "cikupa"]){
+      await setField(pr, "n-lok", lok); await setField(pr, "n-jam", 12);
+      luar.push(await pr.evaluate(() => { const S = SEKARANG, ins = insentifSebelum(S.o);
+        return { lok:S.L.id, utama:Math.round(S.r.net - ins), rek:S.rek.basis && Math.round(S.rek.basis.sisa), basisId:S.rek.basis && S.rek.basis.tempat && S.rek.basis.tempat.id,
+                 pel:S.peluang && S.peluang.basis && Math.round(S.peluang.basis.net), bedaSelisih:S.rek.daftar.some(x => Math.abs(x.selisih) > 500) }; }));
+    }
+    ok(luar.every(x => x.rek != null && x.basisId === x.lok && Math.abs(x.utama - x.rek) <= 1 && x.pel != null && Math.abs(x.utama - x.pel) <= 1 && x.bedaSelisih),
+       "Ciledug/Bintaro/Cikupa: ada pembanding 'tetap di sini', angkanya sama di tiga kartu, selisih pindah tidak lagi +Rp0 semua", JSON.stringify(luar));
     ok(sama.every(x => x.langkahPulang && x.langkahPulang.indexOf(x.akhirKerja) >= 0),
        "langkah 'Waktunya pulang' mulai persis saat angka berhenti menghitung narik", JSON.stringify(sama.map(x => [x.lok, x.akhirKerja, x.langkahPulang])));
     await setField(pr, "n-lok", "kota"); await setField(pr, "n-soc", 80);

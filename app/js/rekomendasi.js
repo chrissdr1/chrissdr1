@@ -111,7 +111,9 @@ var Rekomendasi = (function(){
     /* Posisi GPS / kecamatan di luar sembilan inti: "tetap di sini" dihitung
        dari titik itu sendiri, supaya selisih tiap kartu punya pembanding. */
     var tp = tempatPosisi(L), daftarK = KANDIDAT.map(function(id){ return LOKMAP[id]; });
-    if (tp && tp.posisi) daftarK.unshift(tp);
+    /* ...termasuk tempat di daftar yang bukan tujuan saran (Ciledug, Bintaro,
+       Cikupa, dst.): dulu tanpa pembanding, semua selisih tampil +Rp0. */
+    if (tp && (tp.posisi || KANDIDAT.indexOf(tp.id) < 0)) daftarK.unshift(tp);
     daftarK.forEach(function(K){
       if (!K) return;
       var x = nilaiSatu(o, L, soc, stay, K, 1);
