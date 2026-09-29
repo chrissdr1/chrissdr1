@@ -590,7 +590,10 @@ function runNow(){
     bat:parseFloat(el("n-bat").value), rumah:el("n-rumah").checked,
     hujan:el("n-hujan").checked, acara:el("n-acara").checked,
     deadKm:0 };   /* Ibu sudah di posisinya: tidak ada km kosong menuju pangkalan */
-  if (o.pulang<=o.keluar){ o.pulang=Math.min(24,o.keluar+0.5); el("n-pulang").value=o.pulang; }
+  /* Dibulatkan ke atas ke kelipatan 15 menit: pilihan "Rencana pulang" hanya
+     berisi kelipatan 15 menit -- nilai lain (mis. 23,83 saat dibuka 23:20)
+     membuat kolomnya kosong dan semua hitungan jadi NaN. */
+  if (!(o.pulang>o.keluar)){ o.pulang=Math.min(24, Math.ceil((o.keluar+0.5)*4)/4); el("n-pulang").value=String(o.pulang); }
 
   var soc = Math.max(1,Math.min(100, parseFloat(el("n-soc").value)||0));
   /* Perkiraan baterai dari jangkar terakhir (Mulai hari / selesai ngecas):
@@ -2399,11 +2402,15 @@ function lalulintasOtomatis(o, L){
    Mesin hitung tidak diubah: ini angka SEKARANG untuk keputusan sekarang. */
 /* runNow pertama berjalan SEBELUM baris ini dieksekusi (urutan skrip), jadi
    nilainya diisi di dalam fungsi, bukan di deklarasi. */
-var jalanAmbil = false, jalanCoba;
+var jalanAmbil, jalanCoba, jalanGagal;
+function jamJam(j){ return hhmm(((j % 24) + 24) % 24); }   /* 24:20 -> 00:20 */
 function renderJalan(o, L, paksa){
   var box = el("jalan"); if (!box) return;
-  if (!jalanCoba) jalanCoba = { pulang:0, kejadian:0 };
-  var ULANG = 3 * 60e3;
+  if (!jalanCoba){ jalanCoba = { pulang:0, kejadian:0 }; jalanGagal = { pulang:0, kejadian:0 }; }
+  /* gagal berturut-turut: tunggu 3, 6, 12, 24, lalu 30 menit (izin kunci
+     yang kurang, sinyal buruk) -- berhasil sekali, kembali 3 menit */
+  function ulang(jenis){ return Math.min(30, 3 * Math.pow(2, Math.max(0, jalanGagal[jenis] - 1))) * 60e3; }
+  if (jalanAmbil && Date.now() - jalanAmbil > 30000) jalanAmbil = 0;   /* jawaban yang tak kunjung selesai */
   var ada = typeof Lalulintas !== "undefined" && Lalulintas.aktif() && typeof Kejadian !== "undefined";
   if (!ada || !L || L.lat == null || L.lon == null){
     box.hidden = true;
@@ -2414,6 +2421,8 @@ function renderJalan(o, L, paksa){
   var pos = { lat:L.lat, lon:L.lon }, kini = jamSekarangTepat();
   var mulai = o.stay ? null : o.pulang - jamMulaiPulang(o, null);
   var waktunya = (mulai != null && kini >= mulai - 1.5) || (L.z === "jkt" && kini >= 18);
+  /* kejadian: tiap 20 menit menjelang pulang, tiap 60 menit di luar itu */
+  var umurKej = (waktunya ? 20 : 60) * 60e3;
   var h = Lalulintas.pulangSekarangCache(pos);
   var p = [];
   if (h){
@@ -2425,12 +2434,12 @@ function renderJalan(o, L, paksa){
     else if (est > 0 && est - h.menit >= 10) p.push("Lebih cepat &plusmn;" + (est - h.menit) + " menit dari hitungan aplikasi (&plusmn;" + est + " menit): jalan sedang lengang.");
     if (mulai != null){
       var mulaiLive = o.pulang - h.menit / 60 - 0.25;
-      if (mulaiLive <= kini) p.push("<b>Untuk sampai rumah " + hhmm(o.pulang) + ", sebaiknya jalan pulang sekarang</b> (tiba &plusmn;" + hhmm(kini + h.menit / 60) + ").");
+      if (mulaiLive <= kini) p.push("<b>Untuk sampai rumah " + jamJam(o.pulang) + ", sebaiknya jalan pulang sekarang</b> (tiba &plusmn;" + jamJam(kini + h.menit / 60) + ").");
       else p.push("Untuk sampai rumah " + hhmm(o.pulang) + ": mulai jalan paling lambat &plusmn;<b>" + hhmm(mulaiLive) + "</b>" +
                   (Math.abs(mulaiLive - mulai) >= 0.17 ? " (hitungan aplikasi: " + hhmm(mulai) + ")" : "") + ". Macet bisa berubah sampai jam itu.");
     }
     h.macet.slice(0, 2).forEach(function(m){
-      var k = Kejadian.dekatGaris(pos, m.garis || (m.titik ? [m.titik] : null));
+      var k = Kejadian.dekatGaris(pos, m.garis || (m.titik ? [m.titik] : null), umurKej);
       var jauh = m.titik ? jarakLurus(pos.lat, pos.lon, m.titik[0], m.titik[1]) : null;
       p.push("Macet di rute: <b>+" + Math.round(m.tunda) + " menit</b>" + (m.kmj ? ", &plusmn;" + Math.round(m.kmj) + " km/jam" : "") +
              (k && (k.dari || k.jalan) ? " &middot; " + esc(k.jalan && k.dari ? k.jalan + ", " : k.jalan) + esc(k.dari) + (k.ke ? " &rarr; " + esc(k.ke) : "") : "") +
@@ -2439,14 +2448,14 @@ function renderJalan(o, L, paksa){
   } else if (o.stay){
     p.push("Ibu memilih tidak pulang dulu. Tekan <b>Cek jalan pulang sekarang</b> kalau ingin tahu macetnya.");
   } else {
-    p.push(waktunya ? (jalanCoba.pulang && !jalanAmbil && Date.now() - jalanCoba.pulang <= ULANG
+    p.push(waktunya ? (jalanCoba.pulang && !jalanAmbil && Date.now() - jalanCoba.pulang <= ulang("pulang")
                         ? "Jalan pulang belum bisa diambil dari TomTom (tanpa sinyal, jatah hari ini habis, atau Ibu sudah dekat rumah). Dicoba lagi otomatis."
                         : "Mengambil jalan pulang dari TomTom&hellip;") :
            "Jalan pulang (macet sekarang) muncul sendiri mulai &plusmn;" + hhmm(Math.max(0, (mulai || kini) - 1.5)) + ". Tekan <b>Cek jalan pulang sekarang</b> untuk melihatnya sekarang.");
   }
   el("jalan-pulang").innerHTML = p.map(function(t){ return "<p>" + t + "</p>"; }).join("");
 
-  var kc = Kejadian.cache(pos), daftar = Kejadian.relevan(pos, h && h.poin, 15).slice(0, 5);
+  var kc = Kejadian.cache(pos, umurKej), daftar = Kejadian.relevan(pos, h && h.poin, 15, umurKej).slice(0, 5);
   var kk = "";
   if (kc){
     kk = daftar.length ? daftar.map(function(k){
@@ -2461,23 +2470,30 @@ function renderJalan(o, L, paksa){
     kk += '<p class="jl-sumber">Sumber: TomTom &middot; kejadian ' + hhmm(new Date(kc.at).getHours() + new Date(kc.at).getMinutes() / 60) +
           (h ? " &middot; jalan pulang " + hhmm(new Date(h.at).getHours() + new Date(h.at).getMinutes() / 60) : "") + "</p>";
   }
+  else {
+    var tk = Lalulintas.tertahan("insiden");
+    if (tk === "penuh" || tk === "stop") kk = '<p class="muted">Kejadian di jalan: jatah TomTom hari ini ' + (tk === "stop" ? "ditolak (429)" : "habis") + ", dicoba lagi besok.</p>";
+  }
   el("jalan-kejadian").innerHTML = kk;
   if (typeof Peta !== "undefined" && Peta.gambarPulang){ Peta.gambarPulang(h); Peta.gambarKejadian(daftar); }
 
   if (jalanAmbil || (typeof document !== "undefined" && document.hidden)) return;
   /* Gagal (sinyal, jatah) tidak dicoba ulang di setiap hitung ulang: paling
      cepat 3 menit lagi, kecuali tombol ditekan. */
-  var t = Date.now(), ambilPulang = !h && (paksa || (waktunya && !o.stay && t - jalanCoba.pulang > ULANG)),
-      ambilKej = !kc && (paksa || t - jalanCoba.kejadian > ULANG);
+  var t = Date.now(), ambilPulang = !h && (paksa || (waktunya && !o.stay && t - jalanCoba.pulang > ulang("pulang"))),
+      ambilKej = !kc && (paksa || t - jalanCoba.kejadian > ulang("kejadian"));
   if (!ambilPulang && !ambilKej) return;
-  jalanAmbil = true;
+  jalanAmbil = t;
   if (ambilPulang) jalanCoba.pulang = t;
   if (ambilKej) jalanCoba.kejadian = t;
-  Promise.all([ambilPulang ? Lalulintas.pulangSekarang(pos) : null, ambilKej ? Kejadian.segarkan(pos) : null]).then(function(rs){
-    jalanAmbil = false;
+  Promise.all([ambilPulang ? Lalulintas.pulangSekarang(pos) : null, ambilKej ? Kejadian.segarkan(pos, umurKej, !!paksa) : null]).then(function(rs){
+    jalanAmbil = 0;
+    if (ambilPulang) jalanGagal.pulang = rs[0] ? 0 : jalanGagal.pulang + 1;
+    if (ambilKej) jalanGagal.kejadian = rs[1] ? 0 : jalanGagal.kejadian + 1;
     if (rs.some(Boolean) && SEKARANG) renderJalan(SEKARANG.o, SEKARANG.L, false);
     if (ambilPulang && !rs[0] && el("jalan-pulang"))
-      el("jalan-pulang").innerHTML = "<p>Jalan pulang belum bisa diambil dari TomTom (tanpa sinyal, jatah hari ini habis, atau Ibu sudah dekat rumah). Dicoba lagi otomatis.</p>";
+      el("jalan-pulang").innerHTML = "<p>Jalan pulang belum bisa diambil dari TomTom (tanpa sinyal, jatah hari ini habis, atau Ibu sudah dekat rumah)." +
+        (waktunya && !o.stay ? " Dicoba lagi otomatis." : "") + "</p>";
   });
 }
 el("jalan-cek").addEventListener("click", function(){ if (SEKARANG) renderJalan(SEKARANG.o, SEKARANG.L, true); });

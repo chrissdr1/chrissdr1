@@ -112,7 +112,8 @@ kredit: Routing 20.000, Traffic Incident Details 2.500, Traffic Flow Segment 20.
 peta/lalu lintas 200.000. Lewat batas dijawab **429** (FAQ resmi), bukan ditagih. Karena
 kunci bisa dipakai di dua HP (Ibu dan anak), tiap HP memakai paling banyak **separuh**:
 Routing 10.000 dan kejadian jalan 1.200 per bulan kalender. Jatah harian = sisa bulan ÷
-sisa hari (maks 2× rata-rata), dihitung bersama lintas tab. Balasan 429 = jeda 5 menit;
+sisa hari (maks 2× rata-rata), dihitung bersama lintas tab; 40 permintaan Routing terakhir tiap
+hari disisakan untuk "jalan pulang sekarang" (macet latar belakang dan pengukuran berhenti sebelumnya). Balasan 429 = jeda 5 menit;
 3 kali 429 tanpa sukses di antaranya = layanan itu berhenti sampai besok. Belum
 terverifikasi: apakah bulan TomTom = bulan kalender dan kapan persisnya hitungannya
 direset. Pemakaian bulan ini tampil di Pengaturan anak.
@@ -125,7 +126,9 @@ pulang; potongan macet terparah (garis merah di peta, diberi nama jalan bila ada
 di situ). Kejadian di jalan (kecelakaan, jalan ditutup, banjir, mogok, lajur ditutup,
 perbaikan jalan besar) dalam radius 15 km, bahasa Indonesia, yang di rute pulang paling
 atas; ubin kejadian TomTom juga tampil di peta. Semua hanya saat aplikasi sedang
-dilihat; gagal dicoba lagi paling cepat 3 menit. Ketersediaan SPKLU langsung dari TomTom
+dilihat; kejadian disegarkan tiap 20 menit menjelang pulang, tiap 60 menit di luar itu, dan
+tidak diambil ulang selama Ibu masih di kotak yang sama; gagal dicoba lagi setelah 3, 6, 12, 24,
+lalu 30 menit. Ketersediaan SPKLU langsung dari TomTom
 **tidak** ada untuk Indonesia (dokumen cakupan EV TomTom: Indonesia hanya data statis),
 jadi daftar SPKLU tetap dari data aplikasi.
 
@@ -244,6 +247,6 @@ tools/                sdk-entry.mjs, make-icons.py
 ```
 npm install
 npx playwright install chromium
-npm test                                      # 190 pemeriksaan
+npm test                                      # 198 pemeriksaan
 ORIG_HTML=/path/artifact-asli.html npm test   # + uji emas terhadap artifact satu-berkas
 ```

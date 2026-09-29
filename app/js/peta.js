@@ -121,8 +121,14 @@ var Peta = (function(){
 
   /* Jalan pulang sekarang: garis rute ke rumah (abu gelap) dan potongan
      yang macet (merah, tebal) dari Lalulintas.pulangSekarang. null = hapus. */
+  /* Digambar ulang HANYA bila isinya berubah: menghapus lapisan menutup
+     popup yang sedang dibuka Ibu, dan runNow berjalan tiap 30 detik. */
+  var tandaPulang = null, tandaKejadian = null;
   function gambarPulang(h){
     if (!map) return;
+    var t = h && h.poin ? String(h.at) : "";
+    if (t === tandaPulang && (!!lapisanPulang === !!t)) return;
+    tandaPulang = t;
     if (lapisanPulang){ map.removeLayer(lapisanPulang); lapisanPulang = null; }
     if (!h || !h.poin || h.poin.length < 2) return;
     lapisanPulang = L.layerGroup().addTo(map);
@@ -136,6 +142,9 @@ var Peta = (function(){
   /* Penanda kejadian di jalan (Kejadian.relevan). */
   function gambarKejadian(daftar){
     if (!map) return;
+    var t = (daftar || []).map(function(k){ return k.id + ":" + k.tunda; }).join("|");
+    if (t === tandaKejadian && (!!lapisanKejadian === !!t)) return;
+    tandaKejadian = t;
     if (lapisanKejadian){ map.removeLayer(lapisanKejadian); lapisanKejadian = null; }
     if (!daftar || !daftar.length) return;
     lapisanKejadian = L.layerGroup().addTo(map);

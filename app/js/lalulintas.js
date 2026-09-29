@@ -76,12 +76,21 @@ var Lalulintas = (function(){
      detik); 3 kali 429 tanpa jawaban sukses di antaranya = layanan itu
      berhenti sampai besok. */
   var LS_JATAH = "tomtom-jatah", JEDA_429 = 5 * 60e3, BATAS_429 = 3;
-  var PRODUK = { rute:{ bulan:10000, nama:"rute" }, insiden:{ bulan:1200, nama:"kejadian jalan" } };
+  /* cadangan: bagian jatah harian yang hanya boleh dipakai permintaan
+     PRIORITAS (jalan pulang sekarang, tombol yang ditekan Ibu) -- macet
+     latar belakang dan pengukuran berhenti sebelum menyentuhnya. */
+  var PRODUK = { rute:{ bulan:10000, cadangan:40, nama:"rute" }, insiden:{ bulan:1200, cadangan:6, nama:"kejadian jalan" } };
   function blnDari(t){ return t.slice(0, 7); }
   function hariDalamBulan(t){ var y = +t.slice(0, 4), m = +t.slice(5, 7); return new Date(y, m, 0).getDate(); }
   function jatah(){
     var j = null; try { j = JSON.parse(localStorage.getItem(LS_JATAH) || "null"); } catch (e) {}
     var hari = iso(new Date()), bln = blnDari(hari);
+    /* format lama (v1: {tgl, n, stop, n429, jedaSampai}, satu jatah harian
+       bersama): hitungan hari ini dan status 429 dibawa ke Routing */
+    if (j && !j.v && typeof j.tgl === "string"){
+      var lama = j; j = { v:2, bln:blnDari(lama.tgl), p:{ rute:{ bulan:lama.n || 0, tgl:lama.tgl, hari:lama.n || 0, stop:!!lama.stop,
+                                                                  n429:lama.n429 || 0, jedaSampai:lama.jedaSampai || 0 } } };
+    }
     if (!j || j.v !== 2 || j.bln !== bln) j = { v:2, bln:bln, p:{} };
     Object.keys(PRODUK).forEach(function(k){
       var x = j.p[k] || (j.p[k] = { bulan:0, tgl:hari, hari:0, stop:false, n429:0, jedaSampai:0 });
@@ -100,15 +109,15 @@ var Lalulintas = (function(){
   }
   /* null = boleh; selain itu: "stop" (3x 429, sampai besok), "penuh" (jatah
      hari ini habis), "jeda" (menunggu setelah 429). */
-  function tertahan(p, j){
+  function tertahan(p, j, prioritas){
     p = produkDari(p); j = j || jatah();
-    var x = j.p[p];
+    var x = j.p[p], jh = jatahHari(p, j), batas = prioritas ? jh : Math.max(0, jh - PRODUK[p].cadangan);
     if (x.stop) return "stop";
-    if (x.hari >= jatahHari(p, j) || x.bulan >= PRODUK[p].bulan) return "penuh";
+    if (x.hari >= batas || x.bulan >= PRODUK[p].bulan) return "penuh";
     if (x.jedaSampai && Date.now() < x.jedaSampai) return "jeda";
     return null;
   }
-  function bolehMinta(p){ return tertahan(p) === null; }
+  function bolehMinta(p, prioritas){ return tertahan(p, null, prioritas) === null; }
   function sisaJatah(p){ p = produkDari(p); var j = jatah(); return j.p[p].stop ? 0 : Math.max(0, jatahHari(p, j) - j.p[p].hari); }
   function statusJatah(p){
     p = produkDari(p); var j = jatah(), x = j.p[p];
@@ -121,12 +130,13 @@ var Lalulintas = (function(){
     return Promise.resolve().then(fn);
   }
   /* Promise<Response>; menolak (tanpa menghubungi TomTom) kalau jatah
-     layanan itu habis atau sedang jeda. p: "rute" (bawaan) | "insiden". */
-  function minta(url, p){
+     layanan itu habis atau sedang jeda. p: "rute" (bawaan) | "insiden".
+     prioritas: boleh memakai cadangan harian. */
+  function minta(url, p, prioritas){
     p = produkDari(p);
     return eksklusif("tomtom-jatah", function(){
       var j = jatah();
-      if (tertahan(p, j)) return false;
+      if (tertahan(p, j, prioritas)) return false;
       j.p[p].hari++; j.p[p].bulan++; simpanJatah(j); return true;
     }).then(function(boleh){
       if (!boleh) throw new Error("jatah");
@@ -238,7 +248,8 @@ var Lalulintas = (function(){
      (potongan jalan yang macet: tundaan, tingkat, kecepatan), dan garis rute.
      Disimpan 10 menit per titik (~0,5 km). Hanya tampilan + saran jam
      mulai pulang; mesin hitung tidak diubah olehnya. */
-  var cacheRumah = {};
+  var cacheRumah = {}, jalanRumah = {};
+  function batasWaktu(p, ms){ return Promise.race([p, new Promise(function(res){ setTimeout(function(){ res(null); }, ms); })]); }
   function olahPulang(j){
     var route = j && j.routes && j.routes[0], s = route && route.summary;
     if (!s || typeof s.travelTimeInSeconds !== "number" || !(s.travelTimeInSeconds > 0)) return null;
@@ -271,17 +282,21 @@ var Lalulintas = (function(){
     if (jarakLurusKm(A, RUMAH_TITIK) < 1) return Promise.resolve(null);   /* sudah di rumah */
     if (typeof navigator !== "undefined" && navigator.onLine === false) return Promise.resolve(null);
     var url = urlRute(A, RUMAH_TITIK, Peta.kunciTomTom(), { semuaWaktu:true, seksiMacet:true });
-    return minta(url, "rute").then(function(r){
+    if (jalanRumah[k]) return jalanRumah[k];
+    var p = minta(url, "rute", true).then(function(r){
       if (!r.ok) return null;
       return r.json().then(function(j){ var h = olahPulang(j); if (h) cacheRumah[k] = h; return h; }, function(){ return null; });
     })["catch"](function(){ return null; });
+    /* jawaban yang macet di tengah (sinyal HP) tidak boleh menahan selamanya */
+    jalanRumah[k] = batasWaktu(p, 25000).then(function(h){ delete jalanRumah[k]; return h; });
+    return jalanRumah[k];
   }
   function jarakLurusKm(A, B){
     var dLat = (B.lat - A.lat) * 111.2, dLon = (B.lon - A.lon) * 111.2 * Math.cos(A.lat * Math.PI / 180);
     return Math.sqrt(dLat * dLat + dLon * dLon);
   }
 
-  return { pulangSekarang:pulangSekarang, pulangSekarangCache:pulangSekarangCache,
+  return { batasWaktu:batasWaktu, pulangSekarang:pulangSekarang, pulangSekarangCache:pulangSekarangCache,
            pengaliCache:pengaliCache, poinCache:poinCache, segarkan:segarkan, aktif:aktif,
            pulangBiasa:pulangBiasa, pulangBiasaCache:pulangBiasaCache,
            urlRute:urlRute, minta:minta, bolehMinta:bolehMinta, tertahan:tertahan, sisaJatah:sisaJatah, jatahHari:jatahHari, statusJatah:statusJatah, PRODUK:PRODUK };
