@@ -765,6 +765,69 @@ async function main(){
     await pf.close();
   }
 
+  console.log("14. Order per blok jam + jejak zona GPS");
+  {
+    const pb = await ctx.newPage();
+    await pb.goto(url + "index.html", { waitUntil:"load" });
+    await pb.waitForFunction(() => document.querySelector("#n-steps .step"));
+    await pb.evaluate(() => { localStorage.removeItem("buku-setoran-v1"); localStorage.removeItem("jejak-zona"); document.getElementById("t-log").click(); });
+    const nBlok = await pb.evaluate(() => document.querySelectorAll("#blok-grid input").length);
+    const nBase = await pb.evaluate(() => BASE.length);
+    ok(nBlok === nBase && nBlok === 9, "satu isian per blok jam", `${nBlok} isian, BASE ${nBase}`);
+
+    /* Kosong vs 0: Peak pagi 5, Siang 0 (narik tapi sepi), Peak sore 7; sisanya kosong. */
+    for (const [k, v] of Object.entries({ tgl:"2026-09-24", jam:9, trip:"", dpt:380000, ins:90000, kmt:190, kmp:120, kwh:28, biaya:130000 })) await setField(pb, k, v);
+    const idx = await pb.evaluate(() => ({ pp:BASE.findIndex(b => b.n === "Peak pagi"), si:BASE.findIndex(b => b.n === "Siang"), ps:BASE.findIndex(b => b.n === "Peak sore") }));
+    await setField(pb, "ob-" + idx.pp, 5); await setField(pb, "ob-" + idx.si, 0); await setField(pb, "ob-" + idx.ps, 7);
+    const cekKosong = await pb.evaluate(() => document.getElementById("blok-cek").textContent);
+    ok(/12/.test(cekKosong), "jumlah per blok ditampilkan saat Order selesai kosong", cekKosong);
+
+    /* Jejak GPS: 40 menit di Karawaci jam 12:00-12:40 (blok Siang), lalu 5 menit
+       di Alsut jam 18:00 (blok Peak sore, di bawah 15 menit: tidak dilaporkan). */
+    const jejak = await pb.evaluate(() => {
+      const t = (h, m) => new Date("2026-09-24T" + String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0") + ":00").getTime();
+      const K = LOKMAP.karawaci, A = LOKMAP.alsut;
+      for (let m = 0; m <= 40; m += 5) JejakZona.catat(K.lat, K.lon, t(12, m));
+      JejakZona.catat(A.lat, A.lon, t(18, 0)); JejakZona.catat(A.lat, A.lon, t(18, 5));
+      return JejakZona.untuk("2026-09-24");
+    });
+    ok(jejak && jejak.Siang === "karawaci" && !jejak["Peak sore"], "jejak GPS: zona dominan per blok, blok < 15 menit tidak dilaporkan", JSON.stringify(jejak));
+
+    await pb.click("#save");
+    const simpan = await pb.evaluate(() => JSON.parse(localStorage.getItem("buku-setoran-v1")).find(r => r.id === "2026-09-24"));
+    ok(simpan.blok && simpan.blok["Peak pagi"] === 5 && simpan.blok.Siang === 0 && simpan.blok["Peak sore"] === 7 &&
+       !("Subuh" in simpan.blok) && Object.keys(simpan.blok).length === 3,
+       "tersimpan: blok kosong tidak ikut, blok 0 tetap tercatat 0", JSON.stringify(simpan.blok));
+    ok(simpan.trip === 12, "Order selesai kosong diisi dari jumlah per blok", String(simpan.trip));
+    ok(simpan.blokZona && simpan.blokZona.Siang === "karawaci", "zona per blok dari jejak GPS ikut tersimpan", JSON.stringify(simpan.blokZona));
+
+    /* Tidak cocok dengan Order selesai: diberi tahu, tidak diam-diam. */
+    await setField(pb, "trip", 15);
+    const cekBeda = await pb.evaluate(() => ({ t:document.getElementById("blok-cek").textContent, c:document.getElementById("blok-cek").className }));
+    ok(/12/.test(cekBeda.t) && /15/.test(cekBeda.t) && /err/.test(cekBeda.c), "jumlah per blok beda dari Order selesai: diberi tahu", JSON.stringify(cekBeda));
+
+    /* Tanpa isian per blok: catatan lama tetap bisa disimpan seperti biasa. */
+    await pb.evaluate(() => document.querySelectorAll("#blok-grid input").forEach(i => { i.value = ""; }));
+    await setField(pb, "tgl", "2026-09-23");
+    await pb.click("#save");
+    const polos = await pb.evaluate(() => JSON.parse(localStorage.getItem("buku-setoran-v1")).find(r => r.id === "2026-09-23"));
+    ok(polos && !("blok" in polos) && !("blokZona" in polos), "tanpa isian per blok: tidak ada field blok, tidak ada jejak tanggal lain", JSON.stringify(polos));
+    /* Kalender 2027 (SKB 3 Menteri) + konteks libur sekolah/Ramadan. */
+    const kal = await pb.evaluate(() => {
+      const n27 = Object.keys(HOLI).filter(k => k.startsWith("2027"));
+      return { libur:n27.filter(k => HOLI[k][1] === "L").length, cuti:n27.filter(k => HOLI[k][1] === "C").length,
+        lebaran:dayCtx("2027-03-10").holi && dayCtx("2027-03-10").holi[0],
+        ram:dayCtx("2027-02-20").ramadan, ramLuar:dayCtx("2027-03-20").ramadan,
+        sek:dayCtx("2026-12-28").sekolahLibur, sekMasuk:dayCtx("2026-10-05").sekolahLibur,
+        multSama:dayCtx("2027-02-24").mult === DAYMULT[dayCtx("2027-02-24").dow] };
+    });
+    ok(kal.libur === 18 && kal.cuti === 8 && /Idulfitri/.test(kal.lebaran), "kalender 2027: 18 libur nasional + 8 cuti bersama", JSON.stringify(kal));
+    ok(kal.ram && !kal.ramLuar && kal.sek && !kal.sekMasuk, "konteks Ramadan dan libur sekolah terbaca dari tanggal", JSON.stringify(kal));
+    ok(kal.multSama, "konteks Ramadan tidak diam-diam mengubah angka perkiraan", JSON.stringify(kal));
+    await pb.evaluate(() => { localStorage.removeItem("buku-setoran-v1"); localStorage.removeItem("jejak-zona"); });
+    await pb.close();
+  }
+
   await browser.close(); srv.close();
   console.log(`\n${passed} lolos, ${failed} gagal`);
   process.exit(failed ? 1 : 0);

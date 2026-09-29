@@ -136,7 +136,12 @@ var TARGET_DAY = 515000, TARGET_MONTH = 13400000;
 
 /* ---------------- Indonesian red-letter days ----------------
    SKB 3 Menteri 2026: 17 libur nasional + 8 cuti bersama.
-   2027 SKB not published — only the fixed-date certainties. */
+   SKB 3 Menteri 2027 (terbit September 2026): 18 libur nasional + 8 cuti
+   bersama. Daftar 2027 dicocokkan dari dua pencarian terpisah (detik,
+   Tempo, NU Online, Bisnis, Kompas TV); halaman setneg.go.id tidak bisa
+   dibuka dari lingkungan pembuat -- cocokkan ke PDF SKB kalau ragu.
+   Idulfitri 1448 H mengikuti SKB (10-11 Maret); tanggal pasti tetap
+   menunggu sidang isbat. */
 var HOLI = {
   "2026-01-01":["Tahun Baru Masehi","L"], "2026-01-16":["Isra Mikraj","L"],
   "2026-02-16":["Cuti bersama Imlek","C"], "2026-02-17":["Tahun Baru Imlek","L"],
@@ -151,8 +156,19 @@ var HOLI = {
   "2026-06-16":["Tahun Baru Islam 1448 H","L"],
   "2026-08-17":["Hari Kemerdekaan RI","L"], "2026-08-25":["Maulid Nabi Muhammad SAW","L"],
   "2026-12-24":["Cuti bersama Natal","C"], "2026-12-25":["Hari Raya Natal","L"],
-  "2027-01-01":["Tahun Baru Masehi","L"], "2027-08-17":["Hari Kemerdekaan RI","L"],
-  "2027-12-25":["Hari Raya Natal","L"]
+  "2027-01-01":["Tahun Baru Masehi","L"], "2027-01-05":["Isra Mikraj","L"],
+  "2027-02-05":["Cuti bersama Imlek","C"], "2027-02-06":["Tahun Baru Imlek","L"],
+  "2027-03-08":["Hari Suci Nyepi","L"], "2027-03-09":["Cuti bersama Idulfitri","C"],
+  "2027-03-10":["Idulfitri 1448 H","L"], "2027-03-11":["Idulfitri 1448 H","L"],
+  "2027-03-12":["Cuti bersama Idulfitri","C"], "2027-03-15":["Cuti bersama Idulfitri","C"],
+  "2027-03-25":["Cuti bersama Wafat Yesus Kristus","C"], "2027-03-26":["Wafat Yesus Kristus","L"],
+  "2027-03-28":["Hari Paskah","L"], "2027-05-01":["Hari Buruh","L"],
+  "2027-05-06":["Kenaikan Yesus Kristus","L"], "2027-05-17":["Iduladha 1448 H","L"],
+  "2027-05-18":["Cuti bersama Iduladha","C"], "2027-05-19":["Cuti bersama Waisak","C"],
+  "2027-05-20":["Waisak 2571","L"], "2027-06-01":["Hari Lahir Pancasila","L"],
+  "2027-06-06":["Tahun Baru Islam 1449 H","L"], "2027-08-15":["Maulid Nabi Muhammad SAW","L"],
+  "2027-08-17":["Hari Kemerdekaan RI","L"], "2027-12-24":["Cuti bersama Natal","C"],
+  "2027-12-25":["Hari Raya Natal","L"], "2027-12-26":["Isra Mikraj 1449 H","L"]
 };
 /* Acara besar di sekitar wilayah kerja. Ditanam di sini karena halaman
    tidak mengambil data sendiri. Terakhir diperbarui 9 September 2026 —
@@ -195,7 +211,27 @@ var CUACA = {tanggal:"2026-09-23", hujan:true, jam:"12:00-17:00", ringkas:"Hujan
    menerbitkan (samakan dengan VERSION di sw.js; tes memeriksanya). */
 var TERBIT = "2026-09-29";
 var EVENTS_SAMPAI = "2026-12-27";
-var HOLI_SAMPAI = "2026-12-25";
+var HOLI_SAMPAI = "2027-12-31";
+
+/* Libur sekolah Banten tahun ajaran 2026/2027 (Tangerang ikut Banten; DKI
+   hampir sama, akhir semester ganjil 19/21 Des - 2 Jan). Dikutip dari
+   pemberitaan kalender pendidikan Banten 2026/2027, bukan dari dokumen
+   Dinas Pendidikan langsung -- cocokkan kalau ragu. Tanggal Ramadan dan
+   Idulfitri masih perkiraan sampai sidang isbat.
+
+   PENTING: dua daftar di bawah HANYA konteks. Tidak ada angka perkiraan
+   yang diubah olehnya -- dampaknya ke order Ibu belum pernah diukur. Belajar
+   (belajar.js) menghitungnya dari catatan harian di hari-hari seperti ini. */
+var LIBUR_SEKOLAH = [
+  ["2026-12-19", "2027-01-03", "Libur semester ganjil"],
+  ["2027-02-08", "2027-02-10", "Libur awal Ramadan"],
+  ["2027-03-08", "2027-03-19", "Libur sekitar Idulfitri"],
+  ["2027-06-19", "2027-07-11", "Libur kenaikan kelas"]
+];
+var RAMADAN = [
+  ["2027-02-08", "2027-03-09", "Ramadan 1448 H (perkiraan, menunggu isbat)"]
+];
+var KONTEKS_SAMPAI = "2027-07-11";
 
 
 /* ---------------- steps ---------------- */

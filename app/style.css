@@ -171,6 +171,9 @@ button:disabled{opacity:.5; cursor:not-allowed}
 button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
 .status{font-size:13px; color:var(--muted)}
 .status.ok{color:var(--accent)} .status.err{color:var(--alert)}
+#blok-wrap .hint{font-size:12.5px; color:var(--muted)}
+#blok-wrap #blok-cek{margin-top:8px; font-size:13px}
+#blok-wrap #blok-cek.ok{color:var(--accent)} #blok-wrap #blok-cek.err{color:var(--alert)}
 
 .plancheck{margin-top:15px; border:1px solid var(--line); border-radius:4px; padding:14px 16px;
   background:var(--surface); display:grid; grid-template-columns:repeat(auto-fit,minmax(132px,1fr));

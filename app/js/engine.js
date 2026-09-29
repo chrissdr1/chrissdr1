@@ -150,8 +150,15 @@ function dayCtx(dateStr){
   if (ev) mult *= (ev[2] === "lokal" ? 1.12 : 1.06);
   /* Musim gajian tanggal 25-5 (Rute 700K): permintaan naik di hampir semua blok. */
   var dm = d.getDate(), gajian = dm >= 25 || dm <= 5;
+  /* Konteks saja (lihat LIBUR_SEKOLAH di data.js): tidak mengubah mult. */
   return { d:d, dow:dow, holi:h, eve:eve, evePlus:evePlus, runLen:runLen, ev:ev, gajian:gajian,
-           shapeDay:shapeDay, mult:mult, name:DAYNAME[dow] };
+           shapeDay:shapeDay, mult:mult, name:DAYNAME[dow],
+           sekolahLibur:dalamRentang(LIBUR_SEKOLAH, dateStr), ramadan:dalamRentang(RAMADAN, dateStr) };
+}
+function dalamRentang(daftar, tgl){
+  if (typeof daftar === "undefined" || !daftar) return null;
+  for (var i = 0; i < daftar.length; i++) if (tgl >= daftar[i][0] && tgl <= daftar[i][1]) return daftar[i][2];
+  return null;
 }
 
 /* ---------------- simulation ----------------

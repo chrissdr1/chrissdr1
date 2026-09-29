@@ -223,6 +223,12 @@
       <div class="f"><label for="comp">Tingkat penyelesaian (%)</label><input id="comp" type="number" inputmode="numeric" min="0" max="100" placeholder="98"><div class="hint">Boleh kosong</div></div>
       <div class="f"><label for="cat">Catatan hari ini</label><input id="cat" type="text" placeholder="mis. konser ICE BSD"><div class="hint">Acara, cuaca, kejadian</div></div>
     </div>
+    <details class="lipat kecil" id="blok-wrap">
+      <summary>Order per jam <span class="eyebrow">dari riwayat perjalanan Grab &middot; boleh kosong</span></summary>
+      <p class="hint" style="margin:10px 0">Hitung order menurut jam <b>mulainya</b>. Jam yang Ibu tidak narik: <b>kosongkan</b>. Narik tapi tidak dapat order: isi <b>0</b>. Dari sini aplikasi belajar jam mana yang paling ramai untuk Ibu.</p>
+      <div class="grid" id="blok-grid"></div>
+      <div class="hint" id="blok-cek"></div>
+    </details>
     <div class="preview">
       <div><span class="lbl">Bersih</span><span class="v" id="pv-net">&mdash;</span></div>
       <div><span class="lbl">Per jam</span><span class="v" id="pv-jam">&mdash;</span></div>
@@ -455,6 +461,7 @@
 <script src="js/rekomendasi.js"></script>
 <script src="js/baterai.js"></script>
 <script src="js/peluang.js"></script>
+<script src="js/jejak.js"></script>
 <script src="js/app.js"></script>
 <script>
 if ("serviceWorker" in navigator && location.protocol !== "file:") {

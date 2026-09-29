@@ -320,7 +320,7 @@ function deteksiLokasi(otomatis){
   navigator.geolocation.getCurrentPosition(function(pos){
     var la = pos.coords.latitude, lo = pos.coords.longitude;
     POSISI_GPS = { lat:la, lon:lo, akurasi:pos.coords.accuracy || 0, at:Date.now() };
-    if (!(pos.coords.accuracy > 150)) Baterai.catatFix(la, lo, Date.now(), pos.coords.accuracy || 0);
+    if (!(pos.coords.accuracy > 150)){ Baterai.catatFix(la, lo, Date.now(), pos.coords.accuracy || 0); JejakZona.catat(la, lo, Date.now()); }
     petaPosisi();
     var best = null, bestD = Infinity;
     LOK.forEach(function(l){
@@ -407,6 +407,7 @@ function pasangOdometer(){
       var la = pos.coords.latitude, lo = pos.coords.longitude;
       if (pos.coords.accuracy && pos.coords.accuracy > 150) return;   /* fix kasar: jangan dihitung */
       POSISI_GPS = { lat:la, lon:lo, akurasi:pos.coords.accuracy || 0, at:Date.now() };
+      JejakZona.catat(la, lo, Date.now());
       if (Baterai.catatFix(la, lo, Date.now(), pos.coords.accuracy || 0) > 0.3) renderSocEstSaja();
       if (Peta.ada()) Peta.posisi(la, lo, POSISI_GPS.akurasi);
     }, function(){}, { enableHighAccuracy:true, maximumAge:15000, timeout:30000 });
@@ -749,6 +750,12 @@ function runNow(){
     "Sebelum berhenti, lihat sisa target insentif di aplikasi Grab; kalau tinggal 1\u20132 order, selesaikan dulu.",
     "Insentif di sini dihitung rata menurut jam ("+rp(insentifHarian)+"). Kalau insentif Grab bertingkat, order terakhir menjelang target jauh lebih berharga.");
   if (gap>100000 && (ctx.dow===2||ctx.dow===3)) tambah("","Selasa/Rabu memang sepi","Kejar kekurangannya hari Jumat, jangan narik lewat 12 jam.");
+  if (ctx.ramadan) tambah("", "Bulan puasa: pola jam berubah",
+    "Jelang buka (&plusmn;15:30&ndash;18:00) biasanya paling ramai dan paling macet; saat buka (&plusmn;18:00&ndash;19:00) order turun; ramai lagi setelah tarawih/bukber. <b>Angka perkiraan di atas belum memperhitungkan ini.</b>",
+    esc(ctx.ramadan) + ". Pola ini pengetahuan umum, bukan hasil ukur. Aplikasi baru bisa menghitung dampaknya dari catatan Ibu di hari-hari puasa (isi order per jam tiap malam).");
+  if (ctx.sekolahLibur) tambah("", "Libur sekolah",
+    "Pagi biasanya lebih lengang; bandara dan mal cenderung lebih ramai. <b>Angka perkiraan di atas belum memperhitungkan ini.</b>",
+    esc(ctx.sekolahLibur) + " (kalender pendidikan Banten 2026/2027). Dampaknya ke order Ibu belum pernah diukur; catatan harian di hari libur sekolah yang akan menunjukkannya.");
   if (ctx.dow===5 && blk.n==="Siang") tambah("","Jumat siang: taksiran, bukan angka pasti",
     "Perkiraan diturunkan sedikit sekitar jam ini untuk sholat Jumat &mdash; ini dugaan kasar, belum dari catatan Ibu sendiri.",
     "Rute 700K tidak memisahkan jam sholat Jumat dari siang biasa, jadi angkanya ditaksir turun ~17% untuk blok 11:00&ndash;14:00 di hari Jumat. Kalau kenyataannya beda, catatan harian Jumat Ibu lama-lama akan menunjukkan itu.");
@@ -1403,6 +1410,41 @@ function renderUji(){
 
 /* ---------------- LOG ---------------- */
 var F=["tgl","jam","trip","dpt","ins","kmt","kmp","kwh","biaya","mnt","rating","acc","comp","cat"];
+
+/* Order per blok jam (dari riwayat perjalanan Grab, diisi malam). Kosong =
+   tidak narik di blok itu (TIDAK sama dengan 0 = narik tapi tidak dapat).
+   Pembedaan ini penting untuk Belajar.pengali(): blok kosong tidak boleh
+   dihitung sebagai jam sepi. */
+function isiBlokGrid(){
+  var g = el("blok-grid"); if (!g) return;
+  g.innerHTML = BASE.map(function(b, i){
+    return '<div class="f"><label for="ob-' + i + '">' + esc(labelBlok(b.n)) + ' <em>' + hhmm(b.s) + "&ndash;" + hhmm(b.e) +
+      '</em></label><input id="ob-' + i + '" type="number" inputmode="numeric" min="0" max="40" placeholder="&ndash;"></div>';
+  }).join("");
+  BASE.forEach(function(b, i){ el("ob-" + i).addEventListener("input", cekBlok); });
+}
+function bacaBlok(){
+  var hasil = {}, ada = false;
+  BASE.forEach(function(b, i){
+    var v = el("ob-" + i).value.trim();
+    if (v === "") return;
+    var n = parseInt(v, 10);
+    if (isFinite(n) && n >= 0 && n <= 40){ hasil[b.n] = n; ada = true; }
+  });
+  return ada ? hasil : null;
+}
+function jumlahBlok(bl){ var s = 0; for (var k in bl) s += bl[k]; return s; }
+function cekBlok(){
+  var e = el("blok-cek"); if (!e) return;
+  var bl = bacaBlok(), trip = num(el("trip").value);
+  if (!bl){ e.textContent = ""; e.className = "hint"; return; }
+  var s = jumlahBlok(bl);
+  if (!trip){ e.textContent = "Jumlah " + s + " order — dipakai sebagai \"Order selesai\" kalau kolom itu kosong."; e.className = "hint"; }
+  else if (s !== trip){ e.textContent = "Jumlah per jam " + s + ", tapi \"Order selesai\" " + trip + ". Cek lagi salah satunya."; e.className = "hint err"; }
+  else { e.textContent = "Cocok dengan \"Order selesai\" (" + s + ")."; e.className = "hint ok"; }
+}
+isiBlokGrid();
+el("trip").addEventListener("input", cekBlok);
 function preview(){
   var r={}; F.forEach(function(k){ r[k]=el(k).value; });
   var d=derive(r), any=num(r.dpt)>0||num(r.kmt)>0;
@@ -1489,6 +1531,13 @@ el("save").addEventListener("click", function(){
      Ibu cukup mengetik satu angka. */
   if (rec.mnt > 0 && AKTUAL && AKTUAL.tanggal === tgl && AKTUAL.home > 0) rec.pkm = AKTUAL.home;
   if (!rec.dpt && !rec.kmt){ el("status").textContent="Isi minimal pendapatan atau km."; el("status").className="status err"; return; }
+  var blok = bacaBlok();
+  if (blok){
+    rec.blok = blok;
+    if (!rec.trip) rec.trip = jumlahBlok(blok);
+  }
+  var zona = (typeof JejakZona !== "undefined") ? JejakZona.untuk(tgl) : null;
+  if (zona) rec.blokZona = zona;
   rec.diubah = new Date().toISOString();   /* untuk penggabungan saat sinkron */
   rows = rows.filter(function(r){ return r.id!==rec.id; }); rows.push(rec); sortRows();
   var tersimpan = lsWrite(rows); renderAll();
@@ -1813,6 +1862,9 @@ function renderSegar(){
   }
   if (hariIni > HOLI_SAMPAI){ kelas = "warn";
     pesan.push("Tanggal merah tahun depan baru yang pasti saja.");
+  }
+  if (hariIni > KONTEKS_SAMPAI){ kelas = "warn";
+    pesan.push("Kalender libur sekolah dan Ramadan sudah habis (sampai " + KONTEKS_SAMPAI + ").");
   }
 
   var nWeb = Object.keys(EVENTS).filter(function(k){ return EVENTS[k][3] === "web"; }).length;
