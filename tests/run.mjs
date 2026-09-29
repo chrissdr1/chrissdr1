@@ -38,6 +38,7 @@ function serve(dir){
 }
 
 let failed = 0, passed = 0;
+function hhmmTes(h){ const m = Math.round(h * 60); return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"); }
 function ok(cond, msg, extra){
   if (cond){ passed++; console.log("  ok   " + msg); }
   else { failed++; console.log("  FAIL " + msg + (extra ? "\n       " + String(extra).slice(0, 1500) : "")); }
@@ -965,6 +966,24 @@ async function main(){
     ok(a.minTiba >= 8 && a.terlewat.length > 0, "baterai 10%: tempat yang tidak terjangkau disaring dan disebutkan", JSON.stringify({ minTiba:a.minTiba, terlewat:a.terlewat }));
     ok(a.rekBasis === a.pelBasis, "\"tetap di sini\": angka sama di kartu ke-mana-sekarang dan urutan tempat", `${a.rekBasis} vs ${a.pelBasis}`);
     ok(Math.abs(a.ins[0] - a.ins[1]) < 1, "insentif Grab sama di Selasa dan Jumat (tidak ikut pengali hari)", JSON.stringify(a.ins));
+
+    /* Double check #1: pulang 20:30-21:30 dari CBD -- kerja berhenti persis di
+       jam mulai pulang dari tempat terakhir, dan pulang lebih malam tidak pernah
+       tampak lebih rugi (dulu 20:45 > 21:00 karena kerja CBD dibayar sampai 20:15
+       dan parkir dikenakan untuk potongan yang isinya cuma perjalanan). */
+    const mono = await pr.evaluate(() => {
+      const ctx = dayCtx("2026-10-06"), K = LOKMAP.cbd;
+      return [20.5, 20.75, 21, 21.25, 21.5].map(pulang => {
+        const o = { ctx, keluar:17, pulang, rehat:"none", zona:"jkt", filter:2, bat:30.08, rumah:false, hujan:false, acara:false, soc:80, deadKm:0 };
+        o.urutan = Peluang.urutanTinggal(K, o); o.tempatAwal = K;
+        const r = simulate(o), kerja = r.pieces.filter(p => !p.jeda);
+        const akhir = kerja[kerja.length - 1];
+        return { pulang, net:r.net, selesai:akhir.e, mulai:pulang - jamMulaiPulang(o, o.tempatAkhir), jktSetelah20:kerja.some(p => p.jamJalan > 0.05 && p.s >= 20 && p.tempat.z === "jkt") };
+      });
+    });
+    ok(mono.every((x, i) => i === 0 || x.net >= mono[i - 1].net - 1) && mono.every(x => Math.abs(x.selesai - x.mulai) < 0.02 && !x.jktSetelah20),
+       "pulang lebih malam tidak pernah lebih rugi; kerja berhenti di jam mulai pulang; tidak narik di Jakarta setelah 20:00",
+       JSON.stringify(mono.map(x => ({ p:x.pulang, net:Math.round(x.net), selesai:hhmmTes(x.selesai), mulai:hhmmTes(x.mulai) }))));
 
     /* Macet: uji "macet parah" dan tujuan pilihan Ibu. */
     const m = await pr.evaluate(() => {

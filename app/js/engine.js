@@ -515,16 +515,26 @@ function simulate(o){
      lebih untung daripada kenyataannya. Perjalanan pulang sekarang tidak
      dihitung sebagai pendapatan (order searah lewat Filter Tujuan itu bonus,
      tidak dijanjikan); listriknya tetap dihitung lewat kmHome. */
+  /* Diulang sampai tempat terakhir tidak berubah: pemangkasan bisa membuang
+     potongan terakhir (mis. "ke Kota jam 20:00") sehingga tempat terakhirnya
+     berganti (tetap CBD) dan jam pulangnya harus dihitung ulang dari sana --
+     kalau tidak, kerja di CBD dibayar sampai 20:15 padahal harus berangkat
+     19:54. Batas 22:00 (Minggu 20:30) sama dengan kartu "Waktunya pulang". */
   var pieces = potongBlok(o);
   var akhir = adaUrutan ? pasangTempat(pieces) : null;
-  var jp = jamMulaiPulang(o, akhir);
-  if (jp > 0){
-    var oKerja = {}; Object.keys(o).forEach(function(k){ oKerja[k] = o[k]; });
-    oKerja.pulang = Math.max(o.keluar + 0.25, o.pulang - jp);
-    if (oKerja.pulang < o.pulang){
-      pieces = potongBlok(oKerja);
-      if (adaUrutan) akhir = pasangTempat(pieces);
-    }
+  var batasPulang = (!o.stay) ? ((ctx.dow === 0 && !ctx.holi) ? 20.5 : 22) : 24;
+  var oKerja = {}; Object.keys(o).forEach(function(k){ oKerja[k] = o[k]; });
+  for (var ulang = 0; ulang < 4; ulang++){
+    var jp = jamMulaiPulang(o, akhir);
+    var pk = Math.max(o.keluar + 0.25, Math.min(o.pulang - jp, batasPulang));
+    if (pk >= o.pulang) break;
+    oKerja.pulang = pk;
+    pieces = potongBlok(oKerja);
+    if (!adaUrutan) break;
+    var akhirBaru = pasangTempat(pieces);
+    var stabil = akhirBaru === akhir;
+    akhir = akhirBaru;
+    if (stabil) break;
   }
   if (adaUrutan) o.tempatAkhir = akhir;
   var kerja = pieces.filter(function(p){ return !p.jeda; });
@@ -580,13 +590,16 @@ function simulate(o){
   var sesi = tl.sesi;
 
   var gross = 0, effHours = 0, chargeHours = 0, hilangRp = 0, trips = 0, paidKm = 0, kmKerja = 0, perBlok = [];
-  var murah = Infinity, adaMal = false;
+  var murah = Infinity, jamMal = 0;
   kerja.forEach(function(p){
     var jam = p.jamJalan, g = p.grossH * jam, pk = p.paidKmH * jam;
     gross += g; effHours += jam; kmKerja += p.kmH * jam; paidKm += pk; trips += pk / p.tripKm;
     chargeHours += p.casPakai || 0; hilangRp += p.grossH * (p.casPakai || 0);
     if (jam > 0 && p.rateH < murah) murah = p.rateH;
-    if (p.b.n === "Siang" || p.b.n === "Malam") adaMal = true;   /* parkir mal: sirkuit siang / malam mal tutup */
+    /* parkir mal: sirkuit siang / malam mal tutup -- hanya kalau total jam yang
+       benar dijalani di blok itu >= 30 menit (potongan yang isinya cuma
+       perjalanan pindah, atau 4 menit sisa, tidak mangkal di mal) */
+    if (p.b.n === "Siang" || p.b.n === "Malam") jamMal += jam;
     perBlok.push({ n:p.b.n, s:p.s, e:p.e, jam:jam, gross:g, paidKm:pk, trips:pk / p.tripKm, km:p.kmH * jam,
                    rateH:p.rateH, mult:p.mult, sesi:p.sesi || null });
   });
@@ -601,7 +614,7 @@ function simulate(o){
      yang sama tampak Rp22 ribu lebih besar di hari Jumat daripada Selasa. */
   var insentif = CALIB.ins * Math.min(1, (effHours + (o.jamSebelum || 0)) / 10.5);
   var feeCharge = sesi.length * SESSION_FEE;
-  var parkir = adaMal ? PARKIR : 0;
+  var parkir = jamMal >= 0.5 ? PARKIR : 0;
   var net = blockNet + insentif - feeCharge - parkir;
 
   var segs = BASE.map(function(b){

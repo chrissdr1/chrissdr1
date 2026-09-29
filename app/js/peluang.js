@@ -62,8 +62,12 @@ var Peluang = (function(){
      supaya dua kartu menghitung dengan cara yang sama. */
   function urutanTinggal(T, o){
     var kini = T, pindahMalam = false;
+    /* Kalau jam mulai pulang dari T sendiri sudah sebelum potongan itu, Ibu
+       berangkat pulang dari T sebelum 20:00 -- tidak perlu (dan rugi) pindah
+       dulu ke Kota. Tidak pulang malam ini (stay): aturan pulang tidak berlaku. */
+    var berangkatDariT = o.stay ? 24 : o.pulang - jamMulaiPulang(o, T);
     var u = potongBlok(o).filter(function(p){ return !p.jeda; }).map(function(p){
-      if (!bolehKe(kini, kini, p)){ kini = LOKMAP.kota; pindahMalam = true; }
+      if (!o.stay && !bolehKe(kini, kini, p) && !(kini === T && berangkatDariT <= p.s + 0.01)){ kini = LOKMAP.kota; pindahMalam = true; }
       return kini.id;
     });
     u.pindahMalam = pindahMalam;
