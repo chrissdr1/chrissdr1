@@ -1456,6 +1456,57 @@ function cekBlok(){
 }
 isiBlokGrid();
 el("trip").addEventListener("input", cekBlok);
+
+/* Carter: terpisah dari angka Grab (tidak masuk derive/kalibrasi). */
+function bacaCarter(){
+  var tarif = num(el("ct-tarif").value);
+  if (!(tarif > 0)) return null;
+  return { jenis:el("ct-jenis").value, tarif:tarif, jam:num(el("ct-jam").value), km:num(el("ct-km").value), biaya:num(el("ct-biaya").value) };
+}
+function bersihHari(r){ return derive(r).net + (r.carter ? carterBersih(r.carter).net : 0); }
+var JENIS_CARTER = { setengah:"Setengah hari", sehari:"Sehari penuh", lain:"Lainnya" };
+function renderCarter(){
+  var e = el("carter-info"); if (!e) return;
+  var ada = rows.filter(function(r){ return r.carter && r.carter.tarif > 0; });
+  e.hidden = !ada.length; if (!ada.length) return;
+  var grup = {};
+  ada.forEach(function(r){
+    var c = carterBersih(r.carter), g = grup[r.carter.jenis] || (grup[r.carter.jenis] = { n:0, net:0, jam:0 });
+    g.n++; g.net += c.net; g.jam += num(r.carter.jam);
+  });
+  var grab = avgOf(rows.slice(0, 14), function(d){ return d.perjam; });
+  var bagian = Object.keys(grup).map(function(k){
+    var g = grup[k], pj = g.jam > 0 ? g.net / g.jam : null;
+    var banding = (pj != null && grab) ? " &mdash; " + (pj >= grab.v ? "<span class=\"up\">" + rp(pj - grab.v) + "/jam di atas</span>" : "<span class=\"dn\">" + rp(grab.v - pj) + "/jam di bawah</span>") + " narik" : "";
+    return esc(JENIS_CARTER[k] || k) + ": " + g.n + "&times;, rata-rata bersih " + rp(g.net / g.n) + (pj != null ? " (" + rp(pj) + "/jam)" : "") + banding;
+  });
+  e.innerHTML = "<b>Carter</b> &middot; " + bagian.join(" &middot; ") +
+    (grab ? ". Narik Grab Ibu rata-rata " + rp(grab.v) + "/jam (" + grab.n + " hari terakhir)." : ". Belum ada catatan narik untuk dibandingkan.") +
+    " Bersih carter = dibayar &minus; biaya Ibu &minus; listrik km carter.";
+}
+
+/* Kalkulator tawaran carter (tab Rencana). */
+fillTimes(el("tf-mulai"), 3.5, 20, 8);
+el("tf-tgl").value = iso(new Date());
+el("tf-hitung").addEventListener("click", function(){
+  var out = el("tf-hasil");
+  var c = { tarif:num(el("tf-tarif").value), jam:num(el("tf-jam").value), km:num(el("tf-km").value), biaya:num(el("tf-biaya").value),
+            mulai:parseFloat(el("tf-mulai").value) };
+  if (!(c.tarif > 0) || !(c.jam > 0)){ out.innerHTML = "Isi tawaran (Rp) dan lama (jam) dulu."; return; }
+  var tgl = el("tf-tgl").value || iso(new Date()), ctx = dayCtx(tgl);
+  var o = { ctx:ctx, zona:el("p-zona").value || "tng", filter:parseInt(el("p-filter").value, 10) || 0, bat:parseFloat(el("p-bat").value),
+            rumah:false, hujan:false, acara:false };
+  var h = bandingCarter(c, o), beda = Math.abs(h.selisih);
+  var vonis = h.selisih >= 0
+    ? "<b class=\"up\">Carter lebih untung &plusmn;" + rp(beda) + "</b>"
+    : "<b class=\"dn\">Narik lebih untung &plusmn;" + rp(beda) + "</b> (perkiraan)";
+  out.innerHTML = vonis + ".<br>" +
+    "Carter: bersih &plusmn;" + rp(h.carter.net) + (h.carter.perJam != null ? " (" + rp(h.carter.perJam) + "/jam)" : "") +
+    " setelah listrik &plusmn;" + rp(h.carter.listrik) + (c.biaya ? " dan biaya " + rp(c.biaya) : "") + ".<br>" +
+    "Narik di jam yang sama (" + esc(ctx.name) + " " + hhmm(h.keluar) + "&ndash;" + hhmm(h.pulang) + "): &plusmn;" + rp(h.grab) + ", termasuk bagian insentif." +
+    (beda < 30000 ? "<br>Bedanya kecil: carter pasti dibayar, narik bisa lebih atau kurang dari perkiraan." : "") +
+    (CALIB.live ? "" : "<br>Perkiraan narik masih angka umum; setelah 3 hari catatan, angka Ibu sendiri yang dipakai.");
+});
 function preview(){
   var r={}; F.forEach(function(k){ r[k]=el(k).value; });
   var d=derive(r), any=num(r.dpt)>0||num(r.kmt)>0;
@@ -1482,7 +1533,7 @@ function renderCal(){
       c?(c.v>=75?"ok":(c.v>=62?"low":"bad")):"") +
     tile("Km bayar / jam", e?dec(e.v,1):"—","ambang <b>15</b> &middot; <b>22</b>",
       e?(e.v>=15?"ok":"low"):"");
-  renderBelajar();
+  renderBelajar(); renderCarter();
   if (a){
     var dl=Math.round(((a.v-BASE_RPKM)/BASE_RPKM)*100);
     el("calnote").innerHTML = "Rp per km Ibu <b>"+(dl>=0?dl+"% di atas":Math.abs(dl)+"% di bawah")+
@@ -1511,7 +1562,7 @@ function renderBelajar(){
 function weekMonth(){
   var now=new Date(), y=now.getFullYear(), m=now.getMonth();
   var pre=y+"-"+String(m+1).padStart(2,"0")+"-", sum=0, worked=0;
-  rows.forEach(function(r){ if (String(r.id).indexOf(pre)===0){ sum+=derive(r).net; worked++; } });
+  rows.forEach(function(r){ if (String(r.id).indexOf(pre)===0){ sum+=bersihHari(r); worked++; } });   /* termasuk carter */
   el("monthname").textContent = now.toLocaleDateString("id-ID",{month:"long",year:"numeric"});
   el("mnet").textContent = rp(sum);
   el("mbar").style.width = Math.max(0,Math.min(100,(sum/TARGET_MONTH)*100)).toFixed(1)+"%";
@@ -1532,13 +1583,14 @@ function renderHist(){
   el("hist").innerHTML = rows.slice(0,30).map(function(r){
     var d=derive(r), dt=new Date(r.id+"T00:00:00"), hd=HOLI[r.id];
     return "<tr><td class=\"n\">"+r.id+(r.cat?' <span style="color:var(--muted)">· '+esc(r.cat)+"</span>":"")+
+      (r.carter&&r.carter.tarif>0?' <span style="color:var(--muted)">· carter '+rp(carterBersih(r.carter).net)+"</span>":"")+
       "</td><td>"+DAYNAME[dt.getDay()].slice(0,3)+(hd?" ●":"")+"</td><td>"+(num(r.jam)||"—")+
       "</td><td>"+(num(r.trip)||"—")+"</td><td>"+(num(r.kmt)||"—")+"</td><td>"+
       (d.util==null?"—":dec(d.util,0)+"%")+"</td><td>"+(d.kmjam==null?"—":dec(d.kmjam,1))+
       "</td><td>"+(num(r.rating)>0?dec(num(r.rating),1):"—")+
       "</td><td>"+(num(r.acc)>0?Math.round(num(r.acc))+"%":"—")+
       "</td><td>"+(num(r.comp)>0?Math.round(num(r.comp))+"%":"—")+
-      "</td><td class=\"n\">"+rp(d.net)+"</td></tr>";
+      "</td><td class=\"n\">"+rp(bersihHari(r))+"</td></tr>";
   }).join("");
   el("ask").disabled = !(sampler && rows.length>=3);
 }
@@ -1561,7 +1613,9 @@ el("save").addEventListener("click", function(){
      diambil dari posisi terakhir yang tercatat di tab Sekarang hari itu, jadi
      Ibu cukup mengetik satu angka. */
   if (rec.mnt > 0 && AKTUAL && AKTUAL.tanggal === tgl && AKTUAL.home > 0) rec.pkm = AKTUAL.home;
-  if (!rec.dpt && !rec.kmt){ el("status").textContent="Isi minimal pendapatan atau km."; el("status").className="status err"; return; }
+  var carter = bacaCarter();
+  if (carter) rec.carter = carter;
+  if (!rec.dpt && !rec.kmt && !carter){ el("status").textContent="Isi minimal pendapatan, km, atau carter."; el("status").className="status err"; return; }
   var blok = bacaBlok();
   if (blok){
     rec.blok = blok;

@@ -602,6 +602,27 @@ function simulate(o){
     murah:(isFinite(murah) ? murah : 0) };
 }
 
+/* ---------------- carter (sewa mobil + sopir) ----------------
+   Bersih carter = dibayar penyewa - biaya yang Ibu tanggung - listrik km carter.
+   Dibandingkan dengan perkiraan narik Grab di JENDELA JAM YANG SAMA (simulate,
+   stay = tanpa perjalanan pulang karena jendelanya bisa di tengah hari),
+   termasuk bagian insentif yang hilang kalau jam itu tidak narik (insentif
+   di mesin dihitung sebanding jam, jadi ini taksiran). Carter itu pasti;
+   narik itu perkiraan. */
+function carterBersih(c){
+  var listrik = num(c.km) / CALIB.kmkwh * TARIF_KWH;
+  var net = num(c.tarif) - num(c.biaya) - listrik;
+  return { net:net, listrik:listrik, perJam:(num(c.jam) > 0 ? net / num(c.jam) : null) };
+}
+function bandingCarter(c, o){
+  var ct = carterBersih(c), jam = num(c.jam);
+  var q = {}; Object.keys(o).forEach(function(k){ q[k] = o[k]; });
+  q.keluar = c.mulai; q.pulang = Math.min(24, c.mulai + jam); q.rehat = "none"; q.stay = true; q.deadKm = 0;
+  var r = simulate(q);
+  return { carter:ct, grab:r.net, grabPerJam:(jam > 0 ? r.net / jam : null), selisih:ct.net - r.net,
+           keluar:q.keluar, pulang:q.pulang, r:r };
+}
+
 /* Jeda termurah dengan durasi tertentu di dalam sif: coba tiap 15 menit. */
 function jedaTermurah(o, durasi){
   var best = null;

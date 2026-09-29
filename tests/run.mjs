@@ -892,6 +892,80 @@ async function main(){
     await pb.close();
   }
 
+  console.log("16. Carter: dicatat terpisah, masuk saldo bulan, dibandingkan dengan narik");
+  {
+    const pc = await ctx.newPage();
+    await pc.goto(url + "index.html", { waitUntil:"load" });
+    await pc.waitForFunction(() => document.querySelector("#n-steps .step"));
+    await pc.evaluate(() => { localStorage.removeItem("buku-setoran-v1"); document.getElementById("t-log").click(); });
+    const hariIni = await pc.evaluate(() => iso(new Date()));
+    /* hari carter saja: kolom Grab kosong */
+    for (const [k, v] of Object.entries({ tgl:hariIni, jam:"", trip:"", dpt:"", ins:"", kmt:"", kmp:"", kwh:"", biaya:"",
+                                          "ct-jenis":"setengah", "ct-tarif":400000, "ct-jam":6, "ct-km":100, "ct-biaya":20000 })) await setField(pc, k, v);
+    await pc.click("#save");
+    const c1 = await pc.evaluate((t) => {
+      const r = JSON.parse(localStorage.getItem("buku-setoran-v1")).find(x => x.id === t);
+      return { r, net:r && carterBersih(r.carter).net, listrikHarus:100 / CALIB.kmkwh * TARIF_KWH, mnet:document.getElementById("mnet").textContent,
+               info:document.getElementById("carter-info").innerText, hidden:document.getElementById("carter-info").hidden, rpkm:CALIB.rpkm, BASE_RPKM };
+    }, hariIni);
+    ok(c1.r && c1.r.carter && c1.r.carter.tarif === 400000 && c1.r.carter.jenis === "setengah", "hari carter saja bisa disimpan (kolom Grab kosong)", JSON.stringify(c1.r));
+    ok(Math.abs(c1.net - (400000 - 20000 - c1.listrikHarus)) < 1, "bersih carter = dibayar - biaya - listrik km carter", `${c1.net}`);
+    ok(/Rp/.test(c1.mnet) && !/Rp 0$/.test(c1.mnet) && !c1.hidden && /Setengah hari/.test(c1.info), "saldo bulan memuat carter; ringkasan carter tampil", JSON.stringify({ mnet:c1.mnet, info:c1.info }));
+    ok(c1.rpkm === c1.BASE_RPKM, "carter tidak mencemari kalibrasi Grab (Rp/km tetap angka awal)", `${c1.rpkm}`);
+    /* kalkulator tawaran */
+    await pc.evaluate(() => document.getElementById("t-plan").click());
+    const tawaran = async (tarif) => {
+      for (const [k, v] of Object.entries({ "tf-tgl":"2026-10-06", "tf-mulai":8, "tf-jam":6, "tf-tarif":tarif, "tf-km":120, "tf-biaya":0 })) await setField(pc, k, v);
+      await pc.click("#tf-hitung");
+      return pc.evaluate(() => document.getElementById("tf-hasil").innerText);
+    };
+    const mahal = await tawaran(1500000), murah = await tawaran(50000);
+    ok(/Carter lebih untung/.test(mahal) && /Narik lebih untung/.test(murah) && /08:00.14:00/.test(mahal),
+       "tawaran carter dibandingkan dengan narik di jam yang sama (08:00–14:00)", `${mahal} | ${murah}`);
+    await pc.evaluate(() => localStorage.removeItem("buku-setoran-v1"));
+    await pc.close();
+  }
+
+  console.log("15. Logika saran tempat (regresi temuan audit)");
+  {
+    const pr = await ctx.newPage();
+    await pr.goto(url + "index.html", { waitUntil:"load" });
+    await pr.waitForFunction(() => document.querySelector("#n-steps .step"));
+    const a = await pr.evaluate(() => {
+      const ctx = dayCtx("2026-10-06");   /* Selasa biasa */
+      const dasar = { ctx, rehat:"none", filter:2, bat:30.08, rumah:false, hujan:false, acara:false, soc:80 };
+      const o = (x) => Object.assign({}, dasar, x);
+      /* #1 narik berhenti saat "Waktunya pulang", bukan saat tiba di rumah */
+      const oc = o({ keluar:18, pulang:21.5, zona:"jkt", kmHome:29.5 });
+      const r1 = simulate(oc), akhirKerja = Math.max(...r1.pieces.filter(p => !p.jeda).map(p => p.e));
+      const mulaiPulang = oc.pulang - jamMulaiPulang(oc, null);
+      /* #2 tidak ada rencana (termasuk "tetap di sini") yang di Jakarta >= 20:00 */
+      const L = LOKMAP.cbd;
+      const h2 = Peluang.hitung(o({ keluar:18, pulang:21.5, zona:"jkt", kmHome:L.home }), L);
+      const jktMalam = h2.daftar.some(h => h.r.pieces.some(p => !p.jeda && p.s >= 20 && p.tempat && p.tempat.z === "jkt"));
+      const diam = h2.daftar.find(h => h.diam);
+      /* #3 posisi GPS di Cikupa: tempat awal dari koordinat, bukan jarak-ke-rumah */
+      const awalGps = Peluang.tempatAwal({ id:"custom:gps:-6.218,106.517", n:"Cikupa", home:20.5, lat:-6.218, lon:106.517, z:"tng" }).id;
+      /* #4 baterai 10% di Kota jam 16: tempat yang tidak terjangkau tidak ditawarkan */
+      const h4 = Rekomendasi.hitung(o({ keluar:16, pulang:21.5, zona:"tng", soc:10 }), LOKMAP.kota, 10, false);
+      const minTiba = Math.min(...h4.daftar.filter(x => !x.diSini).map(x => x.socTiba));
+      /* #6 angka "tetap di sini" sama di dua kartu */
+      const ok6 = o({ keluar:15.25, pulang:21.5, zona:"tng" });
+      const rek = Rekomendasi.hitung(ok6, LOKMAP.kota, 80, false), pel = Peluang.hitung(ok6, LOKMAP.kota);
+      /* #7 insentif tidak ikut pengali hari */
+      const ins = [2, 5].map(dow => { const t = { 2:"2026-10-06", 5:"2026-10-09" }[dow]; return simulate(o({ ctx:dayCtx(t), keluar:5.25, pulang:21.5, zona:"tng" })).insentif; });
+      return { akhirKerja, mulaiPulang, jktMalam, diamLabel:!!(diam && diam.diamPulangMalam), awalGps,
+               minTiba, terlewat:h4.terlewat, rekBasis:rek.basis && Math.round(rek.basis.sisa), pelBasis:pel.basis && Math.round(pel.basis.net), ins };
+    });
+    ok(a.akhirKerja <= a.mulaiPulang + 0.01 && a.mulaiPulang < 21.5 - 0.5, "narik berhenti di jam mulai pulang, perjalanan pulang tidak dihitung sebagai jam narik", JSON.stringify(a));
+    ok(!a.jktMalam && a.diamLabel, "tidak ada rencana di Jakarta setelah 20:00; \"tetap di CBD\" jadi \"sampai 20:00 lalu ke arah rumah\"", JSON.stringify(a));
+    ok(a.awalGps === "karawaci", "posisi GPS Cikupa -> tempat awal terdekat menurut koordinat (Karawaci), bukan Jakarta Barat", a.awalGps);
+    ok(a.minTiba >= 8 && a.terlewat.length > 0, "baterai 10%: tempat yang tidak terjangkau disaring dan disebutkan", JSON.stringify({ minTiba:a.minTiba, terlewat:a.terlewat }));
+    ok(a.rekBasis === a.pelBasis, "\"tetap di sini\": angka sama di kartu ke-mana-sekarang dan urutan tempat", `${a.rekBasis} vs ${a.pelBasis}`);
+    ok(Math.abs(a.ins[0] - a.ins[1]) < 1, "insentif Grab sama di Selasa dan Jumat (tidak ikut pengali hari)", JSON.stringify(a.ins));
+    await pr.close();
+  }
+
   await browser.close(); srv.close();
   console.log(`\n${passed} lolos, ${failed} gagal`);
   process.exit(failed ? 1 : 0);

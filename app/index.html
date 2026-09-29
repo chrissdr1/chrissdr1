@@ -191,6 +191,7 @@
   <div class="cal" id="caltiles"></div>
   <p style="font-size:12.5px;color:var(--muted);margin-top:10px" id="calnote">Setelah 3 hari, angka ini dipakai otomatis di tab Sekarang dan Rencana.</p>
   <p style="font-size:12.5px;color:var(--ink-2);margin-top:8px" id="belajar-info"></p>
+  <p style="font-size:12.5px;color:var(--ink-2);margin-top:8px" id="carter-info" hidden></p>
 </section>
 
 <section>
@@ -229,6 +230,17 @@
       <p class="hint" style="margin:10px 0">Hitung order menurut jam <b>mulainya</b>. Jam yang Ibu tidak narik: <b>kosongkan</b>. Narik tapi tidak dapat order: isi <b>0</b>. Dari sini aplikasi belajar jam mana yang paling ramai untuk Ibu.</p>
       <div class="grid" id="blok-grid"></div>
       <div class="hint" id="blok-cek"></div>
+    </details>
+    <details class="lipat kecil" id="carter-wrap">
+      <summary>Carter hari ini <span class="eyebrow">sewa mobil + sopir &middot; boleh kosong</span></summary>
+      <p class="hint" style="margin:10px 0">Catat terpisah dari angka Grab di atas &mdash; jangan masukkan km atau pendapatan carter ke kolom Grab, supaya hitungan Grab Ibu tetap tepat.</p>
+      <div class="grid">
+        <div class="f"><label for="ct-jenis">Jenis</label><select id="ct-jenis"><option value="setengah">Setengah hari</option><option value="sehari">Sehari penuh</option><option value="lain">Lainnya</option></select></div>
+        <div class="f"><label for="ct-tarif">Dibayar penyewa (Rp)</label><input id="ct-tarif" type="number" inputmode="numeric" placeholder="400000"></div>
+        <div class="f"><label for="ct-jam">Lama (jam)</label><input id="ct-jam" type="number" inputmode="decimal" step="0.5" placeholder="6"></div>
+        <div class="f"><label for="ct-km">Km tempuh carter</label><input id="ct-km" type="number" inputmode="numeric" placeholder="120"></div>
+        <div class="f"><label for="ct-biaya">Biaya ditanggung Ibu (Rp)</label><input id="ct-biaya" type="number" inputmode="numeric" placeholder="0"><div class="hint">tol, parkir, makan, ngecas di jalan</div></div>
+      </div>
     </details>
     <div class="preview">
       <div><span class="lbl">Bersih</span><span class="v" id="pv-net">&mdash;</span></div>
@@ -361,6 +373,24 @@
       <thead><tr><th>Pola</th><th>Jam</th><th>Lama</th><th>Bersih</th><th>Per jam</th></tr></thead>
       <tbody id="cmp"></tbody>
     </table>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><h2>Ada tawaran carter?</h2><span class="eyebrow">bandingkan dengan narik</span></div>
+  <div class="panel">
+    <div class="grid">
+      <div class="f"><label for="tf-tgl">Tanggal</label><input id="tf-tgl" type="date"></div>
+      <div class="f"><label for="tf-mulai">Mulai jam</label><select id="tf-mulai"></select></div>
+      <div class="f"><label for="tf-jam">Lama (jam)</label><input id="tf-jam" type="number" inputmode="decimal" step="0.5" value="6"></div>
+      <div class="f"><label for="tf-tarif">Tawaran (Rp)</label><input id="tf-tarif" type="number" inputmode="numeric" placeholder="400000"></div>
+      <div class="f"><label for="tf-km">Perkiraan km</label><input id="tf-km" type="number" inputmode="numeric" placeholder="120"></div>
+      <div class="f"><label for="tf-biaya">Biaya ditanggung Ibu (Rp)</label><input id="tf-biaya" type="number" inputmode="numeric" value="0"></div>
+    </div>
+    <div class="actions">
+      <button class="go" id="tf-hitung" type="button">Bandingkan</button>
+    </div>
+    <div class="ai-out" id="tf-hasil" style="margin-top:12px"></div>
   </div>
 </section>
 
