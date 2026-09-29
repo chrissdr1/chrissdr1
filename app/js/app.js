@@ -184,9 +184,19 @@ function currentLok(){
          Angka tampilan dan hitungan uang tetap memakai r.km apa adanya. */
       var kmAman = r.km * 1.08;
       if (r.rmax > 0) kmAman = Math.max(kmAman, r.km + 1.35 * r.rmax);
-      return { id:v, n:r.nama, home:r.km, res:Math.round(kmAman/2+15),
+      /* Posisi GPS: koordinatnya ada di kunci registri ("gps:lat,lon"). Tanpa
+         ini "Urutan tempat" menebak posisi dari jarak-ke-rumah saja dan bisa
+         salah sisi kota (Cikupa 20 km dikira Jakarta Barat 18 km). */
+      var kk = v.slice(7), la = null, lo = null;
+      if (kk.indexOf("gps:") === 0){
+        var pr = kk.slice(4).split(","); la = parseFloat(pr[0]); lo = parseFloat(pr[1]);
+        if (!isFinite(la) || !isFinite(lo)){ la = null; lo = null; }
+      }
+      var hasil = { id:v, n:r.nama, home:r.km, res:Math.round(kmAman/2+15),
                z: r.zPaksa || a.z,
                luar:r.km>10?1:0, jauh:r.km>34?1:0, anchor:a.n, perkiraan:!r.terukur };
+      if (la != null){ hasil.lat = la; hasil.lon = lo; }
+      return hasil;
     }
     return LOKMAP.kota;
   }
@@ -601,6 +611,7 @@ function runNow(){
      khas wilayah inti, jangan nol. */
   if (!stay) kmProtokol = Math.max(kmProtokol, 6);
   o.kmHome = kmHome; o.stay = stay;
+  o.kmProtokol = kmProtokol; o.tempatPulang = L;   /* jam berhenti narik = kartu "Waktunya pulang" */
   /* Insentif dihitung untuk SEHARI: jam yang sudah dikerjakan sejak mulai
      (dari rencana hari ini, atau jam mulai yang diisi) ditambah jam sisa. */
   var mulaiHari = planAktif ? PLAN.keluar : ((MULAI_HARI && typeof MULAI_HARI.keluar === "number") ? Math.min(MULAI_HARI.keluar, MULAI_HARI.jam) : (dpt > 0 ? 5.25 : o.keluar));
@@ -749,7 +760,7 @@ function runNow(){
   if ((o.pulang - o.keluar) <= 2.5) tambah("warn","Cek target insentif Grab",
     "Sebelum berhenti, lihat sisa target insentif di aplikasi Grab; kalau tinggal 1\u20132 order, selesaikan dulu.",
     "Insentif di sini dihitung rata menurut jam ("+rp(insentifHarian)+"). Kalau insentif Grab bertingkat, order terakhir menjelang target jauh lebih berharga.");
-  if (gap>100000 && (ctx.dow===2||ctx.dow===3)) tambah("","Selasa/Rabu memang sepi","Kejar kekurangannya hari Jumat, jangan narik lewat 12 jam.");
+  if (gap>100000 && (ctx.dow===2||ctx.dow===3)) tambah("","Selasa/Rabu biasanya lebih sepi","Kejar kekurangannya hari Jumat, jangan narik lewat 12 jam.","Pengali hari (Selasa/Rabu terlemah, Jumat terkuat) masih asumsi dari Rute 700K, belum dari catatan Ibu.");
   if (ctx.ramadan) tambah("", "Bulan puasa: pola jam berubah",
     "Jelang buka (&plusmn;15:30&ndash;18:00) biasanya paling ramai dan paling macet; saat buka (&plusmn;18:00&ndash;19:00) order turun; ramai lagi setelah tarawih/bukber. <b>Angka perkiraan di atas belum memperhitungkan ini.</b>",
     esc(ctx.ramadan) + ". Pola ini pengetahuan umum, bukan hasil ukur. Aplikasi baru bisa menghitung dampaknya dari catatan Ibu di hari-hari puasa (isi order per jam tiap malam).");
@@ -758,7 +769,7 @@ function runNow(){
     esc(ctx.sekolahLibur) + " (kalender pendidikan Banten 2026/2027). Dampaknya ke order Ibu belum pernah diukur; catatan harian di hari libur sekolah yang akan menunjukkannya.");
   if (ctx.dow===5 && blk.n==="Siang") tambah("","Jumat siang: taksiran, bukan angka pasti",
     "Perkiraan diturunkan sedikit sekitar jam ini untuk sholat Jumat &mdash; ini dugaan kasar, belum dari catatan Ibu sendiri.",
-    "Rute 700K tidak memisahkan jam sholat Jumat dari siang biasa, jadi angkanya ditaksir turun ~17% untuk blok 11:00&ndash;14:00 di hari Jumat. Kalau kenyataannya beda, catatan harian Jumat Ibu lama-lama akan menunjukkan itu.");
+    "Rute 700K tidak memisahkan jam sholat Jumat dari siang biasa, jadi angkanya ditaksir turun ~17% untuk blok 11:00&ndash;14:00 di hari Jumat. Kalau kenyataannya beda, isian &ldquo;Order per jam&rdquo; di hari Jumat akan mengoreksinya sendiri (lihat &ldquo;Pola jam dari catatan Ibu&rdquo; di tab Catatan).");
   if (o.filter===0 && L.z==="jkt") tambah("bad","Filter habis di Jakarta","Ambil order apa pun ke arah barat, jangan pulang kosong "+Math.round(kmHome)+" km.");
   if (o.hujan){
     var dh = dampak(o, {hujan:false});
@@ -1471,11 +1482,31 @@ function renderCal(){
       c?(c.v>=75?"ok":(c.v>=62?"low":"bad")):"") +
     tile("Km bayar / jam", e?dec(e.v,1):"—","ambang <b>15</b> &middot; <b>22</b>",
       e?(e.v>=15?"ok":"low"):"");
+  renderBelajar();
   if (a){
     var dl=Math.round(((a.v-BASE_RPKM)/BASE_RPKM)*100);
     el("calnote").innerHTML = "Rp per km Ibu <b>"+(dl>=0?dl+"% di atas":Math.abs(dl)+"% di bawah")+
       "</b> asumsi rencana"+(CALIB.live?" &mdash; dan sudah dipakai aplikasi di tab Sekarang dan Rencana.":".");
   }
+}
+function renderBelajar(){
+  var e = el("belajar-info"); if (!e || typeof Belajar === "undefined") return;
+  var s = Belajar.ringkas();
+  function pct(m){ var p = Math.round((m - 1) * 100); return (p > 0 ? "+" : "−") + Math.abs(p) + "%"; }
+  if (!s.nHari){
+    e.innerHTML = "<b>Pola jam ramai:</b> belum ada data. Isi &ldquo;Order per jam&rdquo; di Catat hari ini &mdash; dari situ aplikasi belajar jam dan tempat yang paling ramai untuk Ibu.";
+    return;
+  }
+  var naik = s.blok.filter(function(x){ return x.m > 1; }).map(function(x){ return esc(labelBlok(x.n)) + " (" + pct(x.m) + ")"; });
+  var turun = s.blok.filter(function(x){ return x.m < 1; }).map(function(x){ return esc(labelBlok(x.n)) + " (" + pct(x.m) + ")"; });
+  var tmp = s.tempat.map(function(x){ return esc(x.n) + " " + pct(x.m); });
+  var isi = [];
+  if (naik.length) isi.push("lebih ramai dari perkiraan: " + naik.join(", "));
+  if (turun.length) isi.push("lebih sepi: " + turun.join(", "));
+  if (tmp.length) isi.push("tempat: " + tmp.join(", "));
+  e.innerHTML = "<b>Pola jam dari catatan Ibu</b> (" + s.nHari + " hari" + (s.nHariBlok ? ", " + s.nHariBlok + " dengan rincian per jam" : "") + ", &plusmn;" + s.nOrder + " order): " +
+    (isi.length ? isi.join("; ") + ". Sudah dipakai di perkiraan dan saran tempat." : "belum ada beda berarti dari perkiraan.") +
+    " Dengan sedikit hari angkanya sengaja masih condong ke perkiraan awal; makin banyak catatan makin mengikuti Ibu.";
 }
 function weekMonth(){
   var now=new Date(), y=now.getFullYear(), m=now.getMonth();
@@ -1538,6 +1569,9 @@ el("save").addEventListener("click", function(){
   }
   var zona = (typeof JejakZona !== "undefined") ? JejakZona.untuk(tgl) : null;
   if (zona) rec.blokZona = zona;
+  /* Jendela kerja hari itu (dari rencana/Mulai hari) -- penyebut untuk Belajar:
+     blok pertama/terakhir yang hanya separuh dikerjakan tidak dihitung penuh. */
+  if (PLAN && PLAN.date === tgl && PLAN.pulang > PLAN.keluar) rec.jendela = { keluar:PLAN.keluar, pulang:PLAN.pulang, zona:PLAN.zona };
   rec.diubah = new Date().toISOString();   /* untuk penggabungan saat sinkron */
   rows = rows.filter(function(r){ return r.id!==rec.id; }); rows.push(rec); sortRows();
   var tersimpan = lsWrite(rows); renderAll();
@@ -2191,7 +2225,8 @@ function renderRekomendasi(o, L, soc, stay){
     ? '<button type="button" class="linkbtn" id="rek-toggle">' + (rekSemua ? "Tampilkan 3 teratas saja" : "Lihat semua " + h.daftar.length + " tempat") + "</button>" : "");
   var t = el("rek-toggle");
   if (t) t.addEventListener("click", function(){ rekSemua = !rekSemua; runNow(); });
-  el("rek-catatan").innerHTML = "Dihitung dengan cara yang sama dengan perkiraan di atas: hari, jam, daerah tarif, jarak dan waktu pindah (koridor terukur), baterai, cuaca, acara, jarak pulang, dan ramainya tiap tempat per jam (dari Rute 700K, bukan pengukuran). Yang ikut: " + Rekomendasi.faktor(o, soc).join(", ") + ".";
+  el("rek-catatan").innerHTML = "Dihitung dengan cara yang sama dengan perkiraan di atas dan kartu urutan tempat: hari, jam, daerah tarif, jarak dan waktu pindah (koridor terukur), baterai, cuaca, acara, jarak dan waktu pulang, insentif, dan ramainya tiap tempat per jam (dari Rute 700K, bukan pengukuran). Di Jakarta, mulai 20:00 dihitung sudah ke arah rumah. Yang ikut: " + Rekomendasi.faktor(o, soc).join(", ") + "." +
+    (h.terlewat && h.terlewat.length ? " <b>Tidak ditawarkan karena baterai tidak cukup untuk sampai:</b> " + h.terlewat.map(esc).join(", ") + "." : "");
   return h;
 }
 
@@ -2542,7 +2577,7 @@ function renderPeluang(id, o, L, opsi){
     var pertama = x.segmen.filter(function(sg){ return !sg.jeda && sg.pindahKm > 0.5; })[0];
     return '<div class="rek-item' + (i === 0 ? " top" : "") + (x.diam ? " here" : "") + '">' +
       '<div class="rek-rank">' + (i + 1) + "</div>" +
-      '<div class="rek-body"><b>' + (x.diam ? "Tetap di " + esc(h.awal.n) : "Pindah " + x.pindahN + " kali (" + Math.round(x.kmPindah) + " km)") + "</b>" +
+      '<div class="rek-body"><b>' + (x.diam ? "Tetap di " + esc(h.awal.n) + (x.diamPulangMalam ? " sampai 20:00, lalu ke arah rumah" : "") : "Pindah " + x.pindahN + " kali (" + Math.round(x.kmPindah) + " km)") + "</b>" +
       '<span class="rek-num">\u00b1' + rp(x.net) + " <em>sampai pulang" + (opsi.dpt > 0 ? " + yang sudah dapat" : "") + "</em></span>" +
       '<div class="rute">' + chips + "</div>" +
       "<i>\u2248" + Math.round(x.r.trips) + " order \u00b7 " + Math.round(x.r.paidKm) + " km berpenumpang \u00b7 " + (x.r.sessions ? x.r.sessions + "\u00d7 ngecas \u00b7 " : "") +

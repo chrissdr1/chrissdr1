@@ -543,11 +543,17 @@ async function main(){
     ok(/rekap/.test(rekap.t) && cumRekap === bebas.net, "kumulatif baris rekap bertemu angka bersih", `${cumRekap} vs ${bebas.net}`);
 
     /* Sesi ngecas: jeda pendek 13:00–15:00 -> paling banyak jembatan kecil + isi di jeda, tak ada sesi 90% di blok kerja disusul sesi jeda */
+    /* Pulang 22:00 = narik sampai 21:30 (30 menit terakhir perjalanan pulang,
+       lihat jamMulaiPulang) -- jendela kerja yang sama dengan skenario lama
+       sebelum perjalanan pulang berhenti dihitung sebagai jam narik. Dengan
+       jendela lebih pendek hari ini cukup SATU sesi, dan mesin benar memilih
+       satu sesi di siang (hemat Rp25 ribu biaya sesi) -- bukan yang diuji. */
+    await setField(fresh, "p-pulang", 22);
     await setField(fresh, "p-rehat", "short");
     const pendek = await fresh.evaluate(() => {
       const rows = [...document.querySelectorAll("#p-steps .step")].map(s => ({ t:s.querySelector(".t").innerText.replace(/\s+/g, " "), cls:s.className, s:s.querySelector(".a span").innerText }));
       const ctx = dayCtx("2026-09-24");
-      const r = simulate({ ctx, keluar:5.25, pulang:21.5, rehat:"short", zona:"tng", filter:2, bat:30.08, rumah:false, hujan:false, acara:false });
+      const r = simulate({ ctx, keluar:5.25, pulang:22, rehat:"short", zona:"tng", filter:2, bat:30.08, rumah:false, hujan:false, acara:false });
       return { rows, sesi:r.sesi.map(x => ({ blok:x.blok, dari:Math.round(x.dari*100), ke:Math.round(x.ke*100), diJeda:x.diJeda })), floor:r.floor, socMinKerja:r.socMinKerja, socTiba:r.socTiba,
                komponen: Math.abs(r.net - (r.blockNet + r.insentif - r.feeCharge - r.parkir)) < 1 };
     });
@@ -559,8 +565,9 @@ async function main(){
     /* Jeda panjang boleh sampai 100% (colok di rumah), jeda pendek tetap 90% */
     const seratus = await fresh.evaluate(() => {
       const ctx = dayCtx("2026-09-24");
-      const a = simulate({ ctx, keluar:9.5, pulang:21.5, rehat:"full", zona:"mix", filter:2, bat:30.08, rumah:true, hujan:false, acara:false });
-      const b = simulate({ ctx, keluar:5.25, pulang:21.5, rehat:[12, 13], zona:"mix", filter:2, bat:38.88, rumah:false, hujan:false, acara:false });
+      /* pulang 22 = narik sampai 21:30, jendela kerja skenario lama (lihat di atas) */
+      const a = simulate({ ctx, keluar:9.5, pulang:22, rehat:"full", zona:"mix", filter:2, bat:30.08, rumah:true, hujan:false, acara:false });
+      const b = simulate({ ctx, keluar:5.25, pulang:22, rehat:[12, 13], zona:"mix", filter:2, bat:38.88, rumah:false, hujan:false, acara:false });
       return { a:a.sesi.map(x => [x.blok, Math.round(x.ke*100)]), b:b.sesi.map(x => [x.blok, Math.round(x.ke*100)]) };
     });
     ok(seratus.a.some(x => x[0] === "Istirahat" && x[1] > 90) && seratus.b.every(x => x[1] <= 90), "jeda 4,5 jam dengan charger rumah boleh isi > 90% (AC), jeda 1 jam maksimum 90%", JSON.stringify(seratus));
@@ -672,6 +679,15 @@ async function main(){
        fixture sukses khusus endpoint routing (rute lebih spesifik menang). */
     /* jakbar<->cbd punya menit terukur (RUAS_TERUKUR di data.js) -- pasangan
        inilah yang benar-benar lewat cabang ru.mnt di jamTempuhAntar. */
+    /* Angka live hanya berlaku untuk perjalanan dalam 30 menit dari sekarang
+       (liveBerlaku). Uji semantiknya dulu, lalu untuk tes berikut anggap jam
+       14:00 hari itu = "sekarang" supaya hasilnya tidak bergantung jam mesin uji. */
+    const lb = await ci.evaluate(() => {
+      const d = new Date(), kini = d.getHours() + d.getMinutes() / 60, besok = new Date(d.getTime() + 864e5);
+      return { kini:liveBerlaku(kini, iso(d)), duaJam:liveBerlaku(kini + 2, iso(d)), besok:liveBerlaku(kini, iso(besok)) };
+    });
+    ok(lb.kini && !lb.duaJam && !lb.besok, "macet TomTom langsung hanya untuk perjalanan sekarang (bukan 2 jam lagi, bukan besok)", JSON.stringify(lb));
+    await ci.evaluate(() => { window.liveBerlaku = () => true; });
     const base = await ci.evaluate(() => jamTempuhAntar(LOKMAP.jakbar, LOKMAP.cbd, 14) * 60);
     await ci.route("**/api.tomtom.com/routing/**", r => r.fulfill({ status:200, contentType:"application/json",
       body:JSON.stringify({ routes:[{ summary:{ travelTimeInSeconds:1560, noTrafficTravelTimeInSeconds:1200 } }] }) }));
@@ -825,6 +841,54 @@ async function main(){
     ok(kal.ram && !kal.ramLuar && kal.sek && !kal.sekMasuk, "konteks Ramadan dan libur sekolah terbaca dari tanggal", JSON.stringify(kal));
     ok(kal.multSama, "konteks Ramadan tidak diam-diam mengubah angka perkiraan", JSON.stringify(kal));
     await pb.evaluate(() => { localStorage.removeItem("buku-setoran-v1"); localStorage.removeItem("jejak-zona"); });
+
+    /* Belajar: data buatan dengan pola yang diketahui harus ditemukan kembali. */
+    const bel = await pb.evaluate(() => {
+      const kosong = Belajar.hitung([]);
+      const nol = BASE.every(b => Belajar.pengali(1, b.n) === 1) && Belajar.tempat("karawaci") === 1;
+      /* n hari kerja (Selasa-Kamis), 09:30-20:00: Peak sore 2x perkiraan, Siang 0,5x, lainnya pas. */
+      function hari(n, faktor, tempat, mulaiTgl){
+        const rows = [], d0 = new Date(mulaiTgl + "T00:00:00");
+        for (let i = 0, k = 0; rows.length < n; i++){
+          const d = new Date(d0.getTime() + i * 864e5); if ([2, 3, 4].indexOf(d.getDay()) < 0) continue;
+          const tgl = iso(d); if (HOLI[tgl]) continue;
+          const ctx = dayCtx(tgl), jd = { keluar:9.5, pulang:20, zona:"tng" }, blok = {}, blokZona = {};
+          BASE.forEach(b => {
+            const jam = Math.max(0, Math.min(b.e, jd.pulang) - Math.max(b.s, jd.keluar)); if (jam < 0.25) return;
+            const t = tempat ? LOKMAP[tempat] : null;
+            blok[b.n] = Math.round(Belajar.perJam(b, ctx, t, "tng") * jam * (faktor[b.n] || 1) * 10) / 10;
+            if (t) blokZona[b.n] = tempat;
+          });
+          rows.push({ id:tgl, blok, blokZona, jendela:jd, trip:0, dpt:1, kmt:1 });
+        }
+        return rows;
+      }
+      const pola = { "Peak sore":2, "Siang":0.5 };
+      const sedikit = Belajar.hitung(hari(1, pola, null, "2026-06-01")) && { ps:Belajar.pengali(2, "Peak sore"), si:Belajar.pengali(2, "Siang") };
+      Belajar.hitung(hari(20, pola, null, "2026-06-01"));
+      const banyak = { ps:Belajar.pengali(2, "Peak sore"), si:Belajar.pengali(2, "Siang"), pa:Belajar.pengali(2, "Pagi akhir"), pr:Belajar.pengali(2, "Pra-peak") };
+      /* dipakai mesin: bersih sore naik dibanding tanpa belajar */
+      const o = { ctx:dayCtx("2026-10-06"), keluar:15.25, pulang:21.5, rehat:"none", zona:"tng", filter:2, bat:30.08, rumah:false, hujan:false, acara:false, soc:90 };
+      const netBelajar = simulate(o).net;
+      Belajar.hitung([]);
+      const netAwal = simulate(o).net;
+      /* tempat: 12 hari di Karawaci 1,6x perkiraan, 12 hari di BSD pas perkiraan.
+         Karawaci harus lebih tinggi dari BSD; tempat tanpa data (Alsut) tetap 1. */
+      const semua = ["Pagi akhir", "Siang", "Jam mati", "Pra-peak", "Peak sore", "Malam"];
+      const f16 = {}; semua.forEach(n => { f16[n] = 1.6; });
+      Belajar.hitung(hari(12, f16, "karawaci", "2026-06-01").concat(hari(12, {}, "bsd", "2026-08-03")));
+      const tmp = { f:Belajar.tempat("karawaci"), bsd:Belajar.tempat("bsd"), bobot:bobotTempat("karawaci", "Siang"), lain:Belajar.tempat("alsut") };
+      Belajar.hitung([]);
+      return { nol, sedikit, banyak, netBelajar, netAwal, tmp };
+    });
+    ok(bel.nol, "tanpa data: semua pengali belajar = 1 (angka awal)", JSON.stringify(bel));
+    ok(bel.banyak.ps > 1.6 && bel.banyak.si < 0.65 && Math.abs(bel.banyak.pa - 1) < 0.1 && Math.abs(bel.banyak.pr - 1) < 0.1,
+       "20 hari: pola 2x sore / 0,5x siang ditemukan kembali, blok lain tetap ±1", JSON.stringify(bel.banyak));
+    ok(bel.sedikit.ps < bel.banyak.ps && bel.sedikit.si > bel.banyak.si && bel.sedikit.ps < 1.6,
+       "1 hari saja: masih ditarik ke angka awal (tidak langsung percaya)", JSON.stringify({ sedikit:bel.sedikit, banyak:bel.banyak }));
+    ok(bel.netBelajar > bel.netAwal, "hasil belajar dipakai perkiraan bersih (sore ramai -> bersih sore naik)", `${Math.round(bel.netAwal)} -> ${Math.round(bel.netBelajar)}`);
+    ok(bel.tmp.f > 1.1 && bel.tmp.bsd < 0.95 && bel.tmp.f / bel.tmp.bsd > 1.35 && bel.tmp.lain === 1,
+       "tempat yang lebih ramai (zona GPS) terpisah dari yang biasa; tempat tanpa data tetap 1", JSON.stringify(bel.tmp));
     await pb.close();
   }
 

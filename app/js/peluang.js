@@ -14,11 +14,10 @@
    dibandingkan dengan "tetap di tempat sekarang".
 
    Batas yang harus dikatakan: bobot permintaan per tempat (BOBOT_TEMPAT)
-   diturunkan dari narasi Rute 700K, bukan dari pengukuran, dan BELUM ada
-   mekanisme yang mengkalibrasinya dari catatan harian Ibu (CALIB.bobotTempat
-   dibaca oleh bobotTempat() di engine.js, tapi tidak pernah ditulis oleh
-   recalibrate() -- angka ini tetap sampai diubah tangan). Angka antar
-   tempat di wilayah tarif yang sama karena itu hanya seteliti bobot itu. */
+   diturunkan dari narasi Rute 700K, bukan dari pengukuran. Belajar
+   (belajar.js) mengoreksinya dari catatan Ibu -- tapi hanya dari blok jam
+   yang isian order per jam DAN zona GPS-nya ada; sampai data itu cukup,
+   angka antar tempat di wilayah tarif yang sama hanya seteliti bobot itu. */
 "use strict";
 
 var Peluang = (function(){
@@ -56,6 +55,21 @@ var Peluang = (function(){
     return true;
   }
 
+  /* "Tinggal di T" untuk sisa hari, TAPI tunduk aturan yang sama dengan
+     urutan lain: di Jakarta, potongan yang mulai >= 20:00 pindah ke arah
+     rumah (Kota). Dulu rencana "tetap di sini" melewati bolehKe dan bisa
+     menyuruh Ibu tetap di CBD sampai 21:30. Dipakai juga oleh Rekomendasi,
+     supaya dua kartu menghitung dengan cara yang sama. */
+  function urutanTinggal(T, o){
+    var kini = T, pindahMalam = false;
+    var u = potongBlok(o).filter(function(p){ return !p.jeda; }).map(function(p){
+      if (!bolehKe(kini, kini, p)){ kini = LOKMAP.kota; pindahMalam = true; }
+      return kini.id;
+    });
+    u.pindahMalam = pindahMalam;
+    return u;
+  }
+
   /* o: masukan runNow/runPlan; L: posisi sekarang; opsi: {lebar, banyak, maksPindah} */
   function hitung(o, L, opsi){
     opsi = opsi || {};
@@ -71,8 +85,8 @@ var Peluang = (function(){
     function taksir(S, T, p, jatah){
       var zp = ZONA[T.z], peak = !!PEAKS[p.b.n];
       var pakaiJatah = peak && zp.need && jatah > 0;
-      var m = (peak ? ((pakaiJatah || !zp.need) ? zp.peak : (1 + (zp.peak - 1) * 0.35)) : zp.off) * ctx.mult * extra * bobotTempat(T.id, p.b.n);
-      var pindahJam = S.id === T.id ? 0 : jamTempuhAntar(S, T, p.s), pindahKm = S.id === T.id ? 0 : jarakAntar(S, T);
+      var m = (peak ? ((pakaiJatah || !zp.need) ? zp.peak : (1 + (zp.peak - 1) * 0.35)) : zp.off) * ctx.mult * extra * bobotTempat(T.id, p.b.n) * Belajar.pengali(hari, p.b.n);
+      var pindahJam = S.id === T.id ? 0 : jamTempuhAntar(S, T, p.s, iso(ctx.d)), pindahKm = S.id === T.id ? 0 : jarakAntar(S, T);
       var jam = Math.max(0, p.w - pindahJam);
       var gross = blockGross(p.b, hari) * m * jam;
       var listrik = (p.b.km * zp.kmx * jam + pindahKm) / kmkwh * TARIF_KWH;
@@ -116,7 +130,7 @@ var Peluang = (function(){
 
     /* kandidat penuh: hasil beam + tetap di tempat awal + tetap di tiap tempat inti (pembanding) */
     var kandidat = beam.map(function(st){ return st.urutan; });
-    var diam = kerja.map(function(){ return awal.id; });
+    var diam = urutanTinggal(awal, o), kunciDiam = diam.join(">");
     kandidat.push(diam);
     var seen = {};
     kandidat = kandidat.filter(function(u){ var k = u.join(">"); if (seen[k]) return false; seen[k] = true; return true; });
@@ -135,7 +149,9 @@ var Peluang = (function(){
         else seg.push({ tempat:p.tempat, s:p.s, e:p.e, gross:p.grossH * p.jamJalan, order:p.paidKmH * p.jamJalan / p.tripKm, km:p.kmH * p.jamJalan, pindahKm:p.pindahKm || 0, pindahJam:p.pindahJam || 0, blok:p.b.n, sesi:p.sesi || null });
       });
       var pindahN = 0; r.pieces.forEach(function(p){ if (p.pindahKm > 0.5) pindahN++; });
-      return { urutan:u, segmen:seg, r:r, net:r.net, kmPindah:r.kmPindah, pindahN:pindahN, akhir:LOKMAP[u[u.length - 1]], diam:u.every(function(x){ return x === awal.id; }) };
+      var diamIni = u.join(">") === kunciDiam;
+      return { urutan:u, segmen:seg, r:r, net:r.net, kmPindah:r.kmPindah, pindahN:pindahN, akhir:LOKMAP[u[u.length - 1]],
+               diam:diamIni, diamPulangMalam:diamIni && !!diam.pindahMalam };
     }
     var hasil = kandidat.map(nilai);
     var basis = hasil.filter(function(h){ return h.diam; })[0] || null;
@@ -153,5 +169,5 @@ var Peluang = (function(){
     }).join(" → ");
   }
 
-  return { hitung:hitung, teksUrutan:teksUrutan, KANDIDAT:KANDIDAT, tempatAwal:tempatAwal };
+  return { hitung:hitung, teksUrutan:teksUrutan, KANDIDAT:KANDIDAT, tempatAwal:tempatAwal, urutanTinggal:urutanTinggal };
 })();

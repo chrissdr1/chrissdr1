@@ -118,6 +118,8 @@ function recalibrate(){
     live: enough && !!(a||b||c),
     n: recent.length
   };
+  /* Setelah CALIB (tripLen memakai CALIB.tripKm): pola jam/hari/tempat dari catatan. */
+  if (typeof Belajar !== "undefined") Belajar.hitung(rows);
   var cm = el("calmode");
   if (cm) cm.textContent = CALIB.live
     ? "angka Ibu · " + CALIB.n + " hari" : "angka perkiraan";
@@ -242,13 +244,22 @@ function jarakAntar(A, B){
 /* Waktu tempuh antar tempat (jam): jarak jalan / kecepatan koridor. Kecepatan
    koridor tiap tempat = km terukur / menit terukur (lancar atau sibuk); pasangan
    memakai rata-ratanya, diskalakan kalibrasi. */
-function jamTempuhAntar(A, B, jam){
+/* Angka macet TomTom itu keadaan SEKARANG. Hanya berlaku untuk perjalanan
+   yang mulai dalam 30 menit dari sekarang, dan (kalau tanggalnya diketahui)
+   hari ini -- bukan untuk pindah jam 20:00 yang dihitung jam 17:30, dan bukan
+   untuk rencana besok di jam yang kebetulan sama. */
+function liveBerlaku(jam, tgl){
+  var d = new Date(), kini = d.getHours() + d.getMinutes() / 60;
+  if (tgl && tgl !== iso(d)) return false;
+  return Math.abs(jam - kini) <= 0.5;
+}
+function jamTempuhAntar(A, B, jam, tgl){
   var km = jarakAntar(A, B); if (!km) return 0;
   var ru = ruasTerukur(A, B);
-  /* Kalau ada angka macet TomTom yang segar untuk pasangan A-B ini, pakai itu
-     di kedua cabang di bawah -- kalau tidak (tanpa kunci, belum sempat
-     diambil, atau gagal), heuristik statis tetap jalan seperti sebelumnya. */
-  var pengaliLive = (typeof Lalulintas !== "undefined") ? Lalulintas.pengaliCache(A, B) : null;
+  /* Kalau ada angka macet TomTom yang segar untuk pasangan A-B ini DAN
+     berlaku untuk jam itu, pakai di kedua cabang di bawah -- kalau tidak,
+     heuristik statis tetap jalan seperti sebelumnya. */
+  var pengaliLive = (typeof Lalulintas !== "undefined" && liveBerlaku(jam, tgl)) ? Lalulintas.pengaliCache(A, B) : null;
   if (ru && ru.mnt){   /* menit lancar terukur; jam sibuk x1,6 (Tangerang) / x1,9 (arah Jakarta) */
     var arahJkt = (A.z === "jkt" || B.z === "jkt");
     var pengaliMacet = (pengaliLive != null) ? pengaliLive : (jamSibuk(jam) ? (arahJkt ? 1.9 : 1.6) : 1);
@@ -259,11 +270,29 @@ function jamTempuhAntar(A, B, jam){
       var m = (pengaliLive != null) ? (L.mnt.lancar * pengaliLive) : (jamSibuk(jam) ? L.mnt.sibuk : L.mnt.lancar);
       return (L.pergi || L.home) / (m / 60);
     }
-    return CALIB.kecepatan / faktorMacet(jam, L ? L.z : "tng");
+    /* KEC_BAWAAN, bukan CALIB.kecepatan: kalibrasi dikalikan SEKALI di bawah.
+       Dulu dua kali untuk tempat tanpa menit terukur (Ciledug dst.). */
+    return KEC_BAWAAN / faktorMacet(jam, L ? L.z : "tng");
   }
   /* dari/ke rumah: koridor tempat itu sendiri yang terukur, bukan rata-rata */
   var kec = (A.id === "kota" ? v(B) : B.id === "kota" ? v(A) : (v(A) + v(B)) / 2) * (CALIB.kecepatan / KEC_BAWAAN);
   return km / Math.max(8, kec);
+}
+/* Berapa jam sebelum o.pulang Ibu berhenti narik dan mulai pulang -- rumus
+   yang SAMA dengan langkah "Waktunya pulang" di buildSteps (jam tempuh +
+   15 menit, minimal 30 menit), supaya angka dan kartu langkah tidak saling
+   membantah. 0 kalau tidak pulang atau sudah di rumah. */
+function jamMulaiPulang(o, tempat){
+  if (o.stay) return 0;
+  /* Tempat akhir urutan: minimal 6 km, sama dengan kmProtokol di runNow --
+     di jam pulang Ibu tidak persis di titik itu (Kota = 0 km dari rumah). */
+  var km = tempat ? Math.max(tempat.home, 6)
+         : (typeof o.kmProtokol === "number") ? o.kmProtokol
+         : (typeof o.kmHome === "number") ? o.kmHome : ZONA[o.zona].pulang;
+  if (!(km > 0)) return 0;
+  var L = tempat || o.tempatPulang || null, j = o.pulang - 0.5;
+  var t = L ? jamTempuhRumah(L, j, km) : km / CALIB.kecepatan * faktorMacet(j, o.zona);
+  return Math.max(0.5, t + 0.25);
 }
 function faktorMacet(jam, zona){
   if (jamSibuk(jam)) return 1;
@@ -422,12 +451,12 @@ function pilihSesi(pieces, socAwal, floor, ambang, fullSesi, kmPerFrac, deadJam,
 }
 
 /* Bobot permintaan per tempat per blok (BOBOT_TEMPAT di data.js): pengali
-   terhadap rata-rata wilayah tarifnya; 1 bila tidak ada. Terkalibrasi oleh
-   catatan harian lewat CALIB.bobotTempat (dikalikan). */
+   terhadap rata-rata wilayah tarifnya; 1 bila tidak ada. Dikoreksi oleh
+   catatan Ibu lewat Belajar.tempat() (belajar.js), 1 sampai ada datanya. */
 function bobotTempat(id, namaBlok){
   var t = (typeof BOBOT_TEMPAT !== "undefined" && BOBOT_TEMPAT[id]) ? BOBOT_TEMPAT[id] : null;
   var dasar = (t && typeof t[namaBlok] === "number") ? t[namaBlok] : 1;
-  var kal = (CALIB.bobotTempat && typeof CALIB.bobotTempat[id] === "number") ? CALIB.bobotTempat[id] : 1;
+  var kal = (typeof Belajar !== "undefined") ? Belajar.tempat(id) : 1;   /* dipelajari dari catatan (belajar.js) */
   return dasar * kal;
 }
 
@@ -441,12 +470,9 @@ function simulate(o){
   /* Acara dari kalender sudah masuk di ctx.mult; centang "acara besar" hanya
      untuk acara yang Ibu tandai sendiri. Musim gajian: asumsi +5%. */
   var extra = (o.hujan ? 1.20 : 1) * ((o.acara && !ctx.ev) ? 1.15 : 1) * (ctx.gajian ? 1.05 : 1);
-  var pieces = potongBlok(o);
-  var kerja = pieces.filter(function(p){ return !p.jeda; });
-  var jedaJam = 0; pieces.forEach(function(p){ if (p.jeda) jedaJam += p.w; });
-  if (adaUrutan){
+  function pasangTempat(pcs){
     var sebelum = o.tempatAwal || null, kk = 0;
-    pieces.forEach(function(p){
+    pcs.forEach(function(p){
       if (p.jeda){
         /* istirahat >= 1,5 jam dianggap pulang ke rumah (km & baterai pindah
            dihitung, waktunya diserap istirahat); istirahat pendek di tempat */
@@ -458,11 +484,31 @@ function simulate(o){
       var T = LOKMAP[o.urutan[kk++]] || sebelum || LOKMAP.kota;
       p.tempat = T; p.zonaT = ZONA[T.z] || z;
       p.pindahKm = sebelum ? jarakAntar(sebelum, T) : 0;
-      p.pindahJam = sebelum ? jamTempuhAntar(sebelum, T, p.s) : 0;
+      p.pindahJam = sebelum ? jamTempuhAntar(sebelum, T, p.s, iso(ctx.d)) : 0;
       sebelum = T;
     });
-    o.tempatAkhir = sebelum;
+    return sebelum;
   }
+  /* Narik berhenti saat "Waktunya pulang" (buildSteps), bukan saat tiba di
+     rumah. Dulu blok jam dihitung sampai o.pulang, jadi perjalanan pulang
+     ikut dibayar dengan tarif tempat terakhir -- tempat jauh (CBD) tampak
+     lebih untung daripada kenyataannya. Perjalanan pulang sekarang tidak
+     dihitung sebagai pendapatan (order searah lewat Filter Tujuan itu bonus,
+     tidak dijanjikan); listriknya tetap dihitung lewat kmHome. */
+  var pieces = potongBlok(o);
+  var akhir = adaUrutan ? pasangTempat(pieces) : null;
+  var jp = jamMulaiPulang(o, akhir);
+  if (jp > 0){
+    var oKerja = {}; Object.keys(o).forEach(function(k){ oKerja[k] = o[k]; });
+    oKerja.pulang = Math.max(o.keluar + 0.25, o.pulang - jp);
+    if (oKerja.pulang < o.pulang){
+      pieces = potongBlok(oKerja);
+      if (adaUrutan) akhir = pasangTempat(pieces);
+    }
+  }
+  if (adaUrutan) o.tempatAkhir = akhir;
+  var kerja = pieces.filter(function(p){ return !p.jeda; });
+  var jedaJam = 0; pieces.forEach(function(p){ if (p.jeda) jedaJam += p.w; });
 
   /* Jatah Filter Tujuan: tiap peak yang dikerjakan di Jakarta butuh satu jatah
      untuk pulang berbayar (09:00 dan 21:15). Peak tanpa jatah cuma dapat 35%
@@ -482,7 +528,7 @@ function simulate(o){
     zp = zp || z;
     var g = b.n === "Peak sore" ? "sore" : "pagi";
     var m = PEAKS[b.n] ? ((peakOK[g] || !zp.need) ? zp.peak : (1 + (zp.peak - 1) * 0.35)) : zp.off;
-    return m * ctx.mult * extra;
+    return m * ctx.mult * extra * (typeof Belajar !== "undefined" ? Belajar.pengali(hari, b.n) : 1);
   }
 
   var cap = o.bat, kmkwh = CALIB.kmkwh, kmPerFrac = cap * kmkwh;   /* km untuk 100% */
@@ -530,7 +576,10 @@ function simulate(o){
   var listrik = kmTotal / kmkwh * TARIF_KWH;
   var blockNet = gross - listrik;   /* jam yang hilang sudah tidak ada di gross */
   var jamDinding = Math.max(0.1, (o.pulang - o.keluar) - jedaJam);
-  var insentif = CALIB.ins * Math.min(1, (effHours + (o.jamSebelum || 0)) / 10.5) * ctx.mult;
+  /* Insentif Grab itu target tetap (terkalibrasi dari catatan Ibu), bukan
+     tarif: TIDAK ikut pengali hari. Dulu dikali ctx.mult sehingga insentif
+     yang sama tampak Rp22 ribu lebih besar di hari Jumat daripada Selasa. */
+  var insentif = CALIB.ins * Math.min(1, (effHours + (o.jamSebelum || 0)) / 10.5);
   var feeCharge = sesi.length * SESSION_FEE;
   var parkir = adaMal ? PARKIR : 0;
   var net = blockNet + insentif - feeCharge - parkir;

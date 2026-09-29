@@ -96,7 +96,8 @@ var TRIP_KM = { "Subuh":18, "Peak pagi":12, "Pagi akhir":7, "Siang":6, "Jam mati
    0,75 x 45.000; sirkuit stasiun 30.500 = 0,7 x 45.000 (order padat tapi
    3-7 km); sirkuit mal siang 23.900 = 1,0 x 24.000. Yang tidak ada angkanya
    di dokumen adalah asumsi bertanda; 12 tempat luar seluruhnya asumsi.
-   Terkalibrasi perlahan oleh catatan harian (CALIB.bobotTempat, dikalikan).
+   Dikoreksi oleh catatan Ibu lewat Belajar.tempat() (belajar.js, dikalikan) --
+   hanya dari blok jam yang zonanya tercatat GPS; tanpa itu tetap angka ini.
    Dipakai simulate() lewat bobotTempat(). Diperiksa dua pembaca dokumen. */
 /* Ruas antar tempat yang TERUKUR di Rute 700K (km jalan; menit lancar bila ada).
    Kunci "a>b"; ruas tanpa arah balik dipakai dua arah. Yang bertibu ~ di
