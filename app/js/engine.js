@@ -653,6 +653,9 @@ function simulate(o){
    termasuk bagian insentif yang hilang kalau jam itu tidak narik (insentif
    di mesin dihitung sebanding jam, jadi ini taksiran). Carter itu pasti;
    narik itu perkiraan. */
+/* Bagian insentif hari ini yang sudah "didapat" oleh jam sebelum o.keluar --
+   simulate() menghitung insentif sehari penuh (jamSebelum + jam sisa). */
+function insentifSebelum(o){ return CALIB.ins * Math.min(1, (o.jamSebelum || 0) / 10.5); }
 function carterBersih(c){
   var listrik = num(c.km) / CALIB.kmkwh * TARIF_KWH;
   var net = num(c.tarif) - num(c.biaya) - listrik;
@@ -782,7 +785,13 @@ function buildSteps(o, r, opts){
 
   if (!opts.noHome){
     var kmHome = (typeof opts.kmHome === "number") ? opts.kmHome : r.kmHome;
-    var jamTempuh = pos ? jamTempuhRumah(pos, o.pulang - 0.5, kmHome) : kmHome / CALIB.kecepatan * faktorMacet(o.pulang - 0.5, o.zona);
+    var posPulang = pos;
+    /* Simulasi dengan urutan tempat tahu di mana Ibu berada saat pulang (mis.
+       sudah ke Kota karena aturan 20:00): langkah pulang memakai tempat itu,
+       rumus yang sama dengan jamMulaiPulang -- supaya jam di kartu = jam
+       berhenti narik di angka. */
+    if (o.tempatAkhir && !opts.stay){ posPulang = o.tempatAkhir; kmHome = Math.max(o.tempatAkhir.home, 6); }
+    var jamTempuh = posPulang ? jamTempuhRumah(posPulang, o.pulang - 0.5, kmHome) : kmHome / CALIB.kecepatan * faktorMacet(o.pulang - 0.5, o.zona);
     var mulai = o.pulang - Math.max(0.5, jamTempuh + 0.25);
     /* Batas keras 22:00 (Minggu 20:30): waktunya pulang tidak pernah dijadwalkan lewat batas itu. */
     var batas = (ctx.dow === 0 && !ctx.holi) ? 20.5 : 22;

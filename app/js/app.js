@@ -538,9 +538,10 @@ function renderPlanCheck(nowT, dpt, lokZ){
 
   var ctx = dayCtx(today);
   var upto = Math.max(PLAN.keluar, Math.min(nowT, PLAN.pulang));
+  /* stay: "sampai jam sekarang" bukan jam pulang -- tanpa pemangkasan perjalanan pulang */
   var sofar = simulate({ ctx:ctx, keluar:PLAN.keluar, pulang:upto, rehat:PLAN.rehat,
     zona:PLAN.zona, filter:PLAN.filter, bat:PLAN.bat, rumah:PLAN.rumah,
-    hujan:PLAN.hujan, acara:PLAN.acara });
+    hujan:PLAN.hujan, acara:PLAN.acara, stay:true });
   var full = simulate({ ctx:ctx, keluar:PLAN.keluar, pulang:PLAN.pulang, rehat:PLAN.rehat,
     zona:PLAN.zona, filter:PLAN.filter, bat:PLAN.bat, rumah:PLAN.rumah,
     hujan:PLAN.hujan, acara:PLAN.acara });
@@ -620,6 +621,11 @@ function runNow(){
   if (planAktif){ var jd = rehatRange(PLAN.rehat); if (jd) o.jamSebelum -= Math.max(0, Math.min(o.keluar, jd[1]) - jd[0]); }
   o.jamSebelum = Math.max(0, o.jamSebelum);
 
+  /* Dihitung dengan cara yang SAMA dengan kartu "tetap di sini": bobot ramai
+     tempat per jam, aturan keluar Jakarta 20:00, pulang dari tempat terakhir.
+     Posisi tanpa koordinat (km diketik) tetap cara lama per wilayah tarif. */
+  var tpNow = tempatPosisi(L);
+  if (tpNow){ o.urutan = Peluang.urutanTinggal(tpNow, o); o.tempatAwal = tpNow; }
   var r = simulate(o);
   var insentifHarian = r.insentif;
   var sisa = r.blockNet - r.feeCharge - r.parkir;
@@ -906,7 +912,7 @@ function runPlan(){
   if (AKTUAL && AKTUAL.tanggal === dateStr && AKTUAL.dpt > 0){
     var sampai = simulate({ ctx:ctx, keluar:o.keluar, pulang:Math.max(o.keluar,AKTUAL.jam),
       rehat:o.rehat, zona:o.zona, filter:o.filter, bat:o.bat, rumah:o.rumah,
-      hujan:o.hujan, acara:o.acara });
+      hujan:o.hujan, acara:o.acara, stay:true });
     var beda = AKTUAL.dpt - sampai.gross;
     nn.push(catatan(beda>=0?"good":"warn","Dari lapangan",
       "Jam "+hhmm(AKTUAL.jam)+" sudah dapat <b>"+rp(AKTUAL.dpt)+"</b>, rencana "+rp(sampai.gross)+" \u2014 "+(beda>=0 ? "unggul "+rp(beda) : "tertinggal "+rp(-beda))+"."));
@@ -2705,7 +2711,7 @@ function renderPeluang(id, o, L, opsi){
     return '<div class="rek-item' + (i === 0 ? " top" : "") + (x.diam ? " here" : "") + '">' +
       '<div class="rek-rank">' + (i + 1) + "</div>" +
       '<div class="rek-body"><b>' + (x.diam ? "Tetap di " + esc(h.awal.n) + (x.diamPulangMalam ? " sampai 20:00, lalu ke arah rumah" : "") : "Pindah " + x.pindahN + " kali (" + Math.round(x.kmPindah) + " km)") + "</b>" +
-      '<span class="rek-num">\u00b1' + rp(x.net) + " <em>sampai pulang" + (opsi.dpt > 0 ? " + yang sudah dapat" : "") + "</em></span>" +
+      '<span class="rek-num">\u00b1' + rp(x.net) + " <em>sampai pulang</em></span>" +
       '<div class="rute">' + chips + "</div>" +
       "<i>\u2248" + Math.round(x.r.trips) + " order \u00b7 " + Math.round(x.r.paidKm) + " km berpenumpang \u00b7 " + (x.r.sessions ? x.r.sessions + "\u00d7 ngecas \u00b7 " : "") +
       "sampai rumah \u00b1" + Math.round(Math.max(0, x.r.socTiba)*100) + "%</i>" +

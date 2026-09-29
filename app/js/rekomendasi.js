@@ -73,7 +73,9 @@ var Rekomendasi = (function(){
     var biayaPindah = kmPindah * (TARIF_KWH / CALIB.kmkwh);
     /* Metrik yang sama dengan kartu "Urutan tempat": bersih termasuk
        insentif (jam yang habis di jalan ikut mengurangi insentif). */
-    var sisa = r.net - biayaPindah;
+    /* "sampai pulang": insentif untuk jam yang SUDAH lewat bukan pendapatan
+       sisa hari, jadi dikurangkan (selisih antar tempat tidak berubah). */
+    var sisa = r.net - biayaPindah - insentifSebelum(o);
     var blkTiba = blockAt(Math.min(keluar, 22.9), o.ctx.shapeDay);
     var jamPulang = stay ? 0 : jamMulaiPulang(o2, o2.tempatAkhir || K);
     /* Aturan 20:00 (Jakarta): jam keluar Jakarta dan lama perjalanannya ke arah rumah */

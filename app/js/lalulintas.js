@@ -126,6 +126,9 @@ var Lalulintas = (function(){
   function pulangBiasa(A, jam, tgl){
     var k = kunciPulang(A, jam, tgl), key = aktif() ? Peta.kunciTomTom() : "";
     if (!k || !key || !RUMAH_TITIK || cachePulang[k]) return Promise.resolve();
+    /* departAt harus di masa depan; yang sudah lewat tidak diminta */
+    var kini = new Date();
+    if (tgl < iso(kini) || (tgl === iso(kini) && jam < kini.getHours() + kini.getMinutes() / 60)) return Promise.resolve();
     if (typeof navigator !== "undefined" && navigator.onLine === false) return Promise.resolve();
     var jamB = Math.round(jam * 4) / 4;
     var url = urlRute(A, RUMAH_TITIK, key) + "&departAt=" + encodeURIComponent(jamIso(tgl, jamB));

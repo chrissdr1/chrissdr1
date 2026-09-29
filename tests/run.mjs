@@ -1017,6 +1017,26 @@ async function main(){
        "pulang lebih malam tidak pernah lebih rugi; kerja berhenti di jam mulai pulang; tidak narik di Jakarta setelah 20:00",
        JSON.stringify(mono.map(x => ({ p:x.pulang, net:Math.round(x.net), selesai:hhmmTes(x.selesai), mulai:hhmmTes(x.mulai) }))));
 
+    /* Double check #6: kartu utama, "ke mana sekarang", "urutan tempat", dan
+       langkah "Waktunya pulang" memakai hitungan yang sama. */
+    const sama = [];
+    for (const lok of ["bsd", "jakbar", "bandara", "cbd"]){
+      await setField(pr, "n-lok", lok); await setField(pr, "n-jam", 17);
+      sama.push(await pr.evaluate(() => {
+        const S = SEKARANG, ins = insentifSebelum(S.o);
+        const pel = S.peluang && S.peluang.basis;
+        const kerja = S.r.pieces.filter(p => !p.jeda), akhirKerja = kerja.length ? kerja[kerja.length - 1].e : null;
+        const pulangStep = S.langkah.find(x => x.dur === "pulang");
+        return { lok:S.L.id, utama:Math.round(S.r.net - ins), rek:S.rek.basis && Math.round(S.rek.basis.sisa), pel:pel && Math.round(pel.net),
+                 akhirKerja:akhirKerja && hhmm(akhirKerja), langkahPulang:pulangStep && pulangStep.t.replace(/<br>/, " ") };
+      }));
+    }
+    ok(sama.every(x => x.rek != null && Math.abs(x.utama - x.rek) <= 1 && x.pel != null && Math.abs(x.utama - x.pel) <= 1),
+       "angka 'tetap di sini' sama di kartu utama, 'ke mana sekarang', dan 'urutan tempat' (BSD, Jakbar, Bandara, CBD jam 17)", JSON.stringify(sama));
+    ok(sama.every(x => x.langkahPulang && x.langkahPulang.indexOf(x.akhirKerja) >= 0),
+       "langkah 'Waktunya pulang' mulai persis saat angka berhenti menghitung narik", JSON.stringify(sama.map(x => [x.lok, x.akhirKerja, x.langkahPulang])));
+    await setField(pr, "n-lok", "kota"); await setField(pr, "n-soc", 80);
+
     /* Double check #4: kalibrasi kecepatan pulang memakai jam berangkat */
     const kal = await pr.evaluate(() => {
       const simpan = rows;

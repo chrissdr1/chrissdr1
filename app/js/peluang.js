@@ -153,7 +153,7 @@ var Peluang = (function(){
       });
       var pindahN = 0; r.pieces.forEach(function(p){ if (p.pindahKm > 0.5) pindahN++; });
       var diamIni = u.join(">") === kunciDiam;
-      return { urutan:u, segmen:seg, r:r, net:r.net, kmPindah:r.kmPindah, pindahN:pindahN, akhir:cari(u[u.length - 1]),
+      return { urutan:u, segmen:seg, r:r, net:r.net - insentifSebelum(o), kmPindah:r.kmPindah, pindahN:pindahN, akhir:cari(u[u.length - 1]),
                diam:diamIni, diamPulangMalam:diamIni && !!diam.pindahMalam };
     }
     /* Sama dengan kartu "ke mana sekarang": rencana yang tiba di suatu tempat
