@@ -352,6 +352,8 @@ function faktorMacet(jam, zona, tipe){
    Potongan kerja < 0,4 jam digabung ke tetangga kerja (berikutnya; kalau
    tidak ada, sebelumnya) supaya tidak ada langkah 15 menit -- waktunya
    tidak dibuang, hanya dilekatkan. Jeda di tengah blok membelah blok itu. */
+/* Potongan yang benar-benar berisi narik (sesudah dikurangi waktu pindah). */
+function adaJamNarik(p){ return !p.jeda && (p.jamJalan != null ? p.jamJalan : p.w) > 0.01; }
 function potongBlok(o){
   var rehat = rehatRange(o.rehat);
   if (rehat){
@@ -376,6 +378,12 @@ function potongBlok(o){
     var p = out[i];
     if (p.jeda || p.w >= 0.4) continue;
     var next = out[i+1], prev = out[i-1];
+    /* Jangan menggabung melewati 20:00: potongan 19:50-20:00 yang ditempel ke
+       blok Malam membuat blok itu "mulai 19:50", dan aturan Jakarta 20:00
+       (yang memeriksa jam mulai potongan) jadi tidak berlaku. */
+    var lewat20 = function(a, b){ return a.s < 20 - 1e-6 && b.e > 20 + 1e-6; };
+    if (next && !next.jeda && lewat20(p, next)) next = null;
+    if (prev && !prev.jeda && lewat20(prev, p)) prev = null;
     if (next && !next.jeda){ next.s = p.s; next.w = next.e - next.s; next.gabung = true; out.splice(i, 1); i--; }
     else if (prev && !prev.jeda){ prev.e = p.e; prev.w = prev.e - prev.s; out.splice(i, 1); i--; }
   }
@@ -569,10 +577,7 @@ function simulate(o){
     if (stabil) break;
   }
   if (adaUrutan) o.tempatAkhir = akhir;
-  /* Tidak ada lagi narik (jam mulai pulang / batas 22:00 sudah lewat): kartu
-     besar (advise) membaca tanda ini supaya tidak menyuruh narik lagi --
-     keputusan yang SAMA dengan hitungan dan langkah. */
-  o.habisKerja = !o.stay && !pieces.some(function(p){ return !p.jeda && p.w > 0.01; });
+
   var kerja = pieces.filter(function(p){ return !p.jeda; });
   var jedaJam = 0; pieces.forEach(function(p){ if (p.jeda) jedaJam += p.w; });
 
@@ -659,6 +664,15 @@ function simulate(o){
     return { n:b.n, s:b.s, e:b.e, on:on, rate:(pc ? pc.rateH : blockRate(b, hari)) };
   });
 
+  /* Tidak sampai rumah kalau langsung pulang: aturan yang SAMA dengan langkah
+     (socTiba < 8%); dipasang per objek, jadi salinan Rekomendasi punya
+     nilainya sendiri. */
+  o.perluCasPulang = !o.stay && (tl.socAkhir - kmHome / kmPerFrac) < 0.08;
+  /* Tidak ada lagi JAM NARIK (jam mulai pulang / batas 22:00 sudah lewat, atau
+     sisa potongan habis untuk pindah): kartu besar (advise) membaca tanda ini
+     supaya tidak menyuruh narik lagi -- keputusan yang SAMA dengan hitungan
+     dan langkah. */
+  o.habisKerja = !o.stay && !pieces.some(adaJamNarik);
   return { net:net, blockNet:blockNet, insentif:insentif, feeCharge:feeCharge, parkir:parkir,
     deadKm:deadKm, deadJam:deadJamPakai, kmHome:kmHome, kmPindah:kmPindah, sessions:sesi.length, sesi:sesi, chargeHours:chargeHours, hilangRp:hilangRp,
     effHours:effHours, jamDinding:jamDinding, jedaJam:jedaJam,
@@ -823,7 +837,8 @@ function buildSteps(o, r, opts){
     if (mulai > batas) mulai = batas;
     var listrikPulang = (r.kmHome + r.deadKm) / CALIB.kmkwh * TARIF_KWH;
     var socTibaPct = Math.round(Math.max(0, r.socTiba)*100);
-    var perluCas = r.socTiba < 0.40 && !o.rumah;
+    /* tidak sampai rumah = ngecas dulu, ADA atau tidak colokan di rumah */
+    var perluCas = r.socTiba < 0.08 || (r.socTiba < 0.40 && !o.rumah);
     cum -= opts.stay ? 0 : listrikPulang;
     out.push({ t:"mulai<br>" + hhmm(Math.max(o.keluar, mulai)), dur:"pulang",
       b:opts.stay ? "Tidak pulang" : "Waktunya pulang",
@@ -886,14 +901,15 @@ function advise(blk, L, o){
      pulang -- atau ngecas dulu kalau baterai tidak cukup sampai rumah. Dulu
      Kota 21:10 / Minggu 20:45 / CBD 20:40 masih "Order terakhir malam ini". */
   if (o.habisKerja && !o.stay && L){
+    /* sudah di sekitar rumah: tidak disuruh ke SPKLU (ngecas di rumah / dekat rumah) */
+    if (L.home <= 1) return { k:"good", h:"Selesai untuk hari ini",
+      r:"Sudah dekat rumah" + (o.perluCasPulang ? " &middot; ngecas malam ini" : ""),
+      p:"Jam pulang Ibu sudah tiba. Kalau masih ada order searah rumah, boleh diambil; selebihnya istirahat" + (o.perluCasPulang ? " dan ngecas." : "."),
+      kenapa:"Tidak ada lagi jam narik sebelum jam pulang yang Ibu isi." };
     if (o.perluCasPulang) return { k:"bad", h:"Ngecas dulu, lalu pulang",
       r:(typeof spkluTeks === "function" && spkluTeks(spkluUntuk(L))) ? "SPKLU terdekat: " + spkluTeks(spkluUntuk(L)) : "SPKLU terdekat yang searah pulang",
       p:"Baterai tidak cukup untuk sampai rumah dengan aman. Ngecas secukupnya dulu, baru pulang; tolak order baru.",
-      kenapa:"Jam mulai pulang sudah lewat, tapi sisa baterai di bawah batas minimal untuk pulang dari sini." };
-    if (L.home <= 1) return { k:"good", h:"Selesai untuk hari ini",
-      r:"Sudah dekat rumah",
-      p:"Jam pulang Ibu sudah tiba. Kalau masih ada order searah rumah, boleh diambil; selebihnya istirahat.",
-      kenapa:"Tidak ada lagi jam narik sebelum jam pulang yang Ibu isi." };
+      kenapa:"Jam mulai pulang sudah lewat, dan kalau langsung pulang baterai habis sebelum sampai rumah (perhitungan yang sama dengan langkah)." };
     var jp0 = jpAdvise(o, L);
     return { k:"bad", h:"Waktunya pulang",
       r:"Filter tujuan &rarr; Modernland" + (L.z === "jkt" ? " &middot; keluar Jakarta sekarang" : ""),
@@ -917,8 +933,11 @@ function advise(blk, L, o){
   }
   if (L.jauh){
     var jamPulang = Math.max(0.75, jamTempuhRumah(L, o.pulang - 0.5, undefined, tipeDari(ctx)));
-    var slack = (o.pulang - o.keluar) - jamPulang;
-    var mulai = hhmm(o.pulang - jamPulang);
+    /* jam mulai pulang = yang sama dengan langkah (cadangan 15 menit, batas
+       22:00/20:30, dari tempat terakhir); dulu kartu 19:54, langkah 19:39 */
+    var mulaiJam = (typeof o.pulang === "number" && o.ctx) ? mulaiPulangKartu(o, L) : o.pulang - jamPulang;
+    var slack = mulaiJam - o.keluar;   /* jam narik yang tersisa sebelum mulai pulang */
+    var mulai = hhmm(mulaiJam);
     var dasar = "Jarak pulang dari "+L.n+" <b>"+Math.round(L.home)+" km</b>, sekitar <b>"+
                 Math.round(jamPulang*60)+" menit</b>; baterai minimal untuk pulang <b>"+L.res+"%</b>.";
 

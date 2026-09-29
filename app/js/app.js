@@ -4,6 +4,18 @@
 var POSISI_GPS = null;   /* {lat, lon, akurasi, at} dari deteksi terakhir; dipakai peta */
 var MULAI_HARI = null;   /* jam mulai kerja hari ini (dari check-in); dipakai untuk insentif */
 
+/* "Sudah dapat (Rp)" hari ini dipulihkan SEBELUM hitungan pertama. Dulu
+   kolomnya kembali ke 0 setiap aplikasi dibuka ulang, proyeksi hari itu
+   kehilangan pendapatan yang sudah masuk, dan runNow menimpa angka yang
+   tersimpan dengan 0. */
+(function(){
+  try {
+    var ak = JSON.parse(localStorage.getItem("sekarang-terakhir") || "null");
+    var e = document.getElementById("n-dpt");
+    if (e && ak && ak.tanggal === iso(new Date()) && ak.dpt > 0 && !(parseFloat(e.value) > 0)) e.value = ak.dpt;
+  } catch (err) {}
+})();
+
 /* Catatan pendek: judul = keputusan, isi <= 1 kalimat, penjelasan panjang di
    balik "Kenapa?" (details) supaya layar bisa dilirik 3 detik. */
 function catatan(k, judul, isi, kenapa){
@@ -667,7 +679,6 @@ function runNow(){
      "minimal saat mulai pulang" -- bukan 10% di satu tempat dan L.res di
      tempat lain. */
   var resMin = Math.max(10, Math.round(r.ambangPulang*100));
-  o.perluCasPulang = !stay && soc < resMin;   /* kartu besar: "Ngecas dulu, lalu pulang" bila jam narik sudah habis */
   var usableKm = Math.max(0, soc/100 - r.floor)*o.bat*CALIB.kmkwh;   /* km sampai lantai */
   var butuh = r.km + kmHome;
   var blk = blockAt(o.keluar, ctx.shapeDay);
@@ -686,7 +697,7 @@ function runNow(){
   /* Baterai jadi banner terpisah, supaya judul kartu selalu mencerminkan
      lokasi dan blok jam — bukan tertimpa peringatan daya. */
   var bw = el("batwarn");
-  if (soc < resMin && !stay){
+  if (soc < resMin && !stay && !(o.rumah && L.home <= 1)){
     bw.hidden = false; bw.className = "batwarn";
     bw.innerHTML = '<span class="tag">Baterai kritis</span><span><b>Ngecas sekarang.</b> Baterai '+soc+
       "%, untuk pulang dari "+L.n+" butuh minimal <b>"+resMin+"%</b>." +
@@ -1881,11 +1892,35 @@ pasangGpsOtomatis();
 /* Ganti tanggal rencana: acara dan cuaca ikut menyesuaikan sendiri. */
 el("p-tgl").addEventListener("change", function(){
   var d = el("p-tgl").value;
-  el("p-acara").checked = !!EVENTS[d];
-  if (WEATHER && WEATHER.tanggal === d && !el("p-hujan").dataset.touched)
-    el("p-hujan").checked = !!WEATHER.hujan;
+  /* rencana yang sudah disimpan untuk tanggal itu dimuat apa adanya; kalau
+     belum ada, hujan/acara mulai dari cuaca & kalender tanggal itu (bukan
+     centang hari lain yang terbawa) */
+  if (PLAN && PLAN.date === d){ isiRencana(PLAN); el("p-status").textContent = "Rencana tersimpan untuk " + d + "."; el("p-status").className = "status ok"; }
+  else {
+    el("p-acara").checked = !!EVENTS[d];
+    el("p-hujan").dataset.touched = "";
+    el("p-hujan").checked = !!(WEATHER && WEATHER.tanggal === d && WEATHER.hujan);
+    el("p-status").textContent = "";
+  }
   runPlan();
 });
+/* Isi kolom Rencanakan dari rencana tersimpan. */
+function isiRencana(P){
+  ["p-keluar","p-pulang","p-zona","p-filter","p-bat"].forEach(function(id){
+    var v = { "p-keluar":P.keluar, "p-pulang":P.pulang, "p-zona":P.zona, "p-filter":P.filter, "p-bat":P.bat }[id];
+    if (v != null) el(id).value = v;
+  });
+  setJedaUI(P.rehat);
+  el("p-rumah").checked = !!P.rumah; el("p-hujan").checked = !!P.hujan; el("p-acara").checked = !!P.acara;
+}
+/* Apakah isian Rencanakan berbeda dari rencana tersimpan tanggal itu? */
+function rencanaBeda(){
+  if (!PLAN || PLAN.date !== (el("p-tgl").value || iso(new Date()))) return false;
+  var r1 = JSON.stringify(rehatRange(rehatDariUI())), r0 = JSON.stringify(rehatRange(PLAN.rehat));
+  return parseFloat(el("p-keluar").value) !== PLAN.keluar || parseFloat(el("p-pulang").value) !== PLAN.pulang || r1 !== r0 ||
+    el("p-zona").value !== PLAN.zona || parseInt(el("p-filter").value, 10) !== PLAN.filter ||
+    el("p-hujan").checked !== !!PLAN.hujan || el("p-acara").checked !== !!PLAN.acara;
+}
 
 /* Tab: "now" = Hari ini (dua keadaan: Sedang narik / Rencanakan), "log",
    "tanya". tab("plan") tetap diterima = Hari ini + Rencanakan. */
@@ -1917,6 +1952,7 @@ function modeBawaan(){
   var t = jamSekarangTepat();
   /* rencana hari ini sedang berjalan, atau sudah ada pendapatan hari ini */
   if (PLAN && PLAN.date === iso(new Date()) && t >= PLAN.keluar - 0.5 && t < PLAN.pulang) return "narik";
+  try { var ak = JSON.parse(localStorage.getItem("sekarang-terakhir") || "null"); if (ak && ak.tanggal === iso(new Date()) && ak.dpt > 0) return "narik"; } catch (e) {}
   if ((parseFloat(el("n-dpt").value) || 0) > 0) return "narik";
   return (t >= 20.5 || t < 3.5) ? "rencana" : "narik";
 }
@@ -1974,10 +2010,9 @@ KEMBAR.forEach(function(k){
    Sedang narik sudah ikut. */
 ["p-keluar", "p-pulang", "p-rehat", "p-rehat-dari", "p-rehat-sampai", "p-zona", "p-filter", "p-hujan", "p-acara"].forEach(function(id){
   el(id).addEventListener("change", function(){
-    if (PLAN && PLAN.date === (el("p-tgl").value || iso(new Date()))){
-      el("p-status").textContent = "Perubahan belum dipakai \u2014 tekan \u201cPakai rencana ini\u201d.";
-      el("p-status").className = "status";
-    }
+    if (!PLAN || PLAN.date !== (el("p-tgl").value || iso(new Date()))) return;
+    if (rencanaBeda()){ el("p-status").textContent = "Perubahan belum dipakai \u2014 tekan \u201cPakai rencana ini\u201d."; el("p-status").className = "status"; }
+    else { el("p-status").textContent = "Sama dengan rencana tersimpan."; el("p-status").className = "status ok"; }
   });
 });
 /* Rencana dipindah ke hari ini: ambil keadaan hari ini dari Sedang narik. */
@@ -2058,26 +2093,36 @@ loadPlan(); muatRegistri();
    simpan hilang dari daftar tiap kali halaman dibuka lagi. Datanya tidak
    hilang, cuma tidak ikut tampil. Bug ini sudah ada sejak lama. */
 renderLok(el("n-lok").value || "kota");
-/* Rencana hari ini mengisi tab Sekarang, supaya tidak perlu diketik dua kali. */
-if (PLAN && PLAN.date === iso(now)){
+/* Rencana hari ini mengisi Sedang narik dan Rencanakan, supaya tidak perlu
+   diketik dua kali. Dipanggil saat dibuka DAN saat tanggal berganti dengan
+   halaman masih terbuka (rencana "besok" jadi rencana hari ini). */
+function terapkanRencanaHariIni(){
+  var hari = iso(new Date());
+  if (!(PLAN && PLAN.date === hari)) return false;
   el("n-pulang").value = PLAN.pulang;
   el("n-bat").value    = PLAN.bat;
   el("n-filter").value = PLAN.filter;
   el("n-rumah").checked = !!PLAN.rumah;
-  ["p-keluar","p-pulang","p-zona","p-filter","p-bat"].forEach(function(id){
-    var v = { "p-keluar":PLAN.keluar, "p-pulang":PLAN.pulang,
-              "p-zona":PLAN.zona, "p-filter":PLAN.filter, "p-bat":PLAN.bat }[id];
-    if (v != null) el(id).value = v;
-  });
-  setJedaUI(PLAN.rehat);
-  el("p-rumah").checked = !!PLAN.rumah;
-  el("p-hujan").checked = !!PLAN.hujan;
-  el("p-acara").checked = !!PLAN.acara;
+  el("p-tgl").value = hari;
+  isiRencana(PLAN);
   /* hujan/acara yang sudah Ibu pilih di rencana hari ini dipakai juga di
      Sedang narik (cuaca/kalender nanti hanya bisa MENAMBAH centang) */
   if (PLAN.hujan) el("n-hujan").checked = true;
   if (PLAN.acara) el("n-acara").checked = true;
+  return true;
 }
+terapkanRencanaHariIni();
+var hariTampil = iso(new Date());
+function cekGantiHari(){
+  var h = iso(new Date()); if (h === hariTampil) return;
+  hariTampil = h;
+  muatMulaiHari();
+  if ((el("p-tgl").value || h) < h) el("p-tgl").value = h;
+  terapkanRencanaHariIni();
+  runNow(); runPlan();
+}
+setInterval(cekGantiHari, 60000);
+document.addEventListener("visibilitychange", function(){ if (!document.hidden) cekGantiHari(); });
 if (EVENTS[iso(now)]) el("n-acara").checked = true;
 /* Fase capture: penibu "manual" harus tercatat sebelum runNow menggambar. */
 el("n-acara").addEventListener("change", function(){ this.dataset.touched = "1"; }, true);
@@ -3013,10 +3058,10 @@ if (MULAI_HARI) renderSocEstSaja();
   var ubah = false;
   KEMBAR.forEach(function(k){ if (k[2] && salinKembar(k[0], k[1], true, false)) ubah = true; });
   if (ubah) runPlan();
-  var m = modeBawaan(), t = jamSekarangTepat(), dipilih = false;
-  try { var sv = JSON.parse(localStorage.getItem("mode-hari") || "null"); dipilih = !!(sv && sv.tgl === iso(new Date())); } catch (e) {}
-  /* Dibuka malam untuk merencanakan: yang direncanakan besok, bukan sisa hari ini */
-  if (m === "rencana" && !dipilih && t >= 20.5 && rencanaHariIni()){
+  var m = modeBawaan(), t = jamSekarangTepat();
+  /* Dibuka malam untuk merencanakan: yang direncanakan besok, bukan sisa
+     hari ini (sisa hari ini ada di Sedang narik) */
+  if (m === "rencana" && t >= 20.5 && rencanaHariIni()){
     var b = new Date(); b.setDate(b.getDate() + 1);
     el("p-tgl").value = iso(b); el("p-tgl").dispatchEvent(new Event("change", { bubbles:true }));
   }

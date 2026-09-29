@@ -170,7 +170,16 @@ var Peluang = (function(){
     hasil.forEach(function(h){ h.selisih = basis ? h.net - basis.net : 0; });
     /* Jam mulai pulang sudah lewat: tidak ada urutan tempat untuk ditawarkan
        (dulu 3-4 kartu "Pindah 0 kali" yang sama persis). */
-    if (!o.stay && basis && !basis.r.pieces.some(function(p){ return !p.jeda && p.w > 0.01; })) return { daftar:[], basis:null, awal:awal, habis:true };
+    var adaKerja = function(h){ return h.r.pieces.some(adaJamNarik); };
+    if (!o.stay && !hasil.some(adaKerja)) return { daftar:[], basis:null, awal:awal, habis:true };
+    /* urutan yang sama persis (mis. dua kandidat yang ujungnya sama setelah
+       aturan 20:00) cukup tampil sekali */
+    var lihat = {};
+    hasil = hasil.filter(function(h){
+      var k = h.segmen.map(function(sg){ return (sg.tempat ? sg.tempat.id : "-") + "@" + sg.s.toFixed(2) + "-" + sg.e.toFixed(2); }).join("|") + "#" + Math.round(h.net);
+      if (lihat[k] && !h.diam) return false;
+      lihat[k] = true; return true;
+    });
     var daftar = hasil.slice(0, banyak);
     if (basis && daftar.indexOf(basis) < 0) daftar.push(basis);
     return { daftar:daftar, basis:basis, awal:awal, pieces:pieces };
