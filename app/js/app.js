@@ -727,7 +727,9 @@ function runNow(){
 
   var v;
   var jedaPlan = planAktif ? rehatRange(PLAN.rehat) : null;
-  if (jedaPlan && o.keluar >= jedaPlan[0] && o.keluar < jedaPlan[1]){
+  /* sisa istirahat < 15 menit, atau jam narik sudah habis: kartu biasa
+     (dulu "istirahat sampai 16:00" jam 15:50, padahal langkahnya pulang) */
+  if (jedaPlan && o.keluar >= jedaPlan[0] && jedaPlan[1] - o.keluar >= 0.25 && !o.habisKerja){
     /* Rencana Ibu sendiri bilang jam ini istirahat — kartu tidak boleh
        menyuruh kerja dan menabrak rencananya. */
     v = { k:"warn", h:"Menurut rencana, jam ini istirahat",
@@ -986,7 +988,7 @@ function runPlan(){
       var p = PRESETS[+b.getAttribute("data-pola")];
       el("p-keluar").value = p.k; el("p-pulang").value = p.p; setJedaUI(p.r); runPlan();
       el("p-net").scrollIntoView({ behavior:"smooth", block:"center" });
-      el("p-status").textContent = "Pola \u201c" + p.n + "\u201d dipakai. Tekan Simpan rencana kalau mau dipakai hari itu.";
+      el("p-status").textContent = "Pola \u201c" + p.n + "\u201d dipakai. Tekan \u201cPakai rencana ini\u201d kalau mau dipakai hari itu.";
     });
   });
   el("cmp-asal").innerHTML = "Tiap pola dihitung dengan mesin yang sama dengan rencana di atas: hari yang Ibu pilih (" + esc(ctx.name) +
@@ -1960,7 +1962,14 @@ function modeBawaan(){
   el("t-"+k).addEventListener("click", function(){ tab(k); });
 });
 el("mode-narik").addEventListener("click", function(){ setMode("narik", true); });
-el("mode-rencana").addEventListener("click", function(){ setMode("rencana", true); });
+/* Malam (>= 20:30): yang direncanakan besok -- sisa hari ini ada di Sedang narik. */
+function keBesokBilaMalam(){
+  if (jamSekarangTepat() >= 20.5 && rencanaHariIni()){
+    var b = new Date(); b.setDate(b.getDate() + 1);
+    el("p-tgl").value = iso(b); el("p-tgl").dispatchEvent(new Event("change", { bubbles:true }));
+  }
+}
+el("mode-rencana").addEventListener("click", function(){ setMode("rencana", true); keBesokBilaMalam(); });
 
 /* Isian yang sama di "Sedang narik" dan "Rencanakan" cukup diubah sekali:
    - tipe mobil dan colokan rumah = fakta, selalu sama ke dua arah;
@@ -2116,6 +2125,14 @@ var hariTampil = iso(new Date());
 function cekGantiHari(){
   var h = iso(new Date()); if (h === hariTampil) return;
   hariTampil = h;
+  /* Hari baru: isian "hari ini" kemarin tidak boleh terbawa. Dulu "Sudah
+     dapat" kemarin tetap di kolom, runNow menyimpannya dengan tanggal baru,
+     dan proyeksi pagi ini langsung "sudah dekat target". */
+  el("n-dpt").value = 0;
+  el("n-soc").dataset.touched = "";
+  el("n-hujan").dataset.touched = ""; el("n-hujan").checked = !!(WEATHER && WEATHER.tanggal === h && WEATHER.hujan);
+  el("n-acara").dataset.touched = ""; el("n-acara").checked = !!EVENTS[h];
+  jamManual = false;
   muatMulaiHari();
   if ((el("p-tgl").value || h) < h) el("p-tgl").value = h;
   terapkanRencanaHariIni();
@@ -3061,10 +3078,7 @@ if (MULAI_HARI) renderSocEstSaja();
   var m = modeBawaan(), t = jamSekarangTepat();
   /* Dibuka malam untuk merencanakan: yang direncanakan besok, bukan sisa
      hari ini (sisa hari ini ada di Sedang narik) */
-  if (m === "rencana" && t >= 20.5 && rencanaHariIni()){
-    var b = new Date(); b.setDate(b.getDate() + 1);
-    el("p-tgl").value = iso(b); el("p-tgl").dispatchEvent(new Event("change", { bubbles:true }));
-  }
+  if (m === "rencana") keBesokBilaMalam();
   setMode(m, false);
 })();
 
@@ -3075,6 +3089,8 @@ if (MULAI_HARI) renderSocEstSaja();
 function renderPeluang(id, o, L, opsi){
   var box = el(id); if (!box) return null;
   opsi = opsi || {};
+  /* jam narik sudah habis (langkah = pulang): tidak ada rute untuk dibandingkan */
+  if (!o.stay && o.habisKerja){ box.hidden = true; return { daftar:[], basis:null, habis:true }; }
   var h;
   try { h = Peluang.hitung(o, L, { banyak:3 }); } catch (e) { box.hidden = true; return null; }
   if (!h || !h.daftar.length){ box.hidden = true; return h; }

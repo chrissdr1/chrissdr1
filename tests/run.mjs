@@ -1771,6 +1771,121 @@ async function main(){
        langgar.slice(0, 12).join("\n       "));
   }
 
+  console.log("23. Regresi tinjauan ketiga (posisi jauh, istirahat, ganti hari, colokan rumah)");
+  {
+    const bukaJam = async (waktu, siapkan) => {
+      const c = await browser.newContext({ locale:"id-ID", timezoneId:"Asia/Jakarta", serviceWorkers:"block" });
+      const p = await c.newPage(); const err = []; p.on("pageerror", e => err.push(e.message));
+      await p.clock.setFixedTime(new Date(waktu));
+      await p.route(/^https?:\/\/(?!127\.0\.0\.1)/, r => r.abort());
+      if (siapkan){ await p.goto(url + "index.html?tanpa-mulai", { waitUntil:"load" }); await p.evaluate(siapkan); }
+      await p.goto(url + "index.html?tanpa-mulai", { waitUntil:"load" });
+      await p.waitForFunction(() => document.querySelector("#n-steps .step"));
+      return { c, p, err };
+    };
+    /* isi keadaan Sedang narik lalu baca kartu besar + langkah */
+    const baca = (p, a) => p.evaluate(a => {
+      const s = el("n-lok"); s.value = a.lok; s.dispatchEvent(new Event("change", { bubbles:true }));
+      el("n-soc").value = a.soc; el("n-soc").dataset.touched = "1";
+      el("n-rumah").checked = !!a.rumah; el("n-tujuan").value = a.stay ? "stay" : "rumah";
+      if (a.pulang != null) el("n-pulang").value = String(a.pulang);
+      runNow();
+      const S = SEKARANG, v = el("verdict"), lp = S.langkah.find(x => x.dur === "pulang");
+      const jamLangkah = lp ? (String(lp.t).match(/\d\d:\d\d/) || [""])[0] : "";
+      return { h:(v.querySelector("h3") || {}).textContent, teks:v.textContent, jamLangkah, pulangB:lp ? lp.b : "", pulangI:lp ? lp.i : "",
+               kerja:S.langkah.filter(x => / jam$/.test(x.dur)).map(x => x.t.replace("&ndash;", "-") + " " + x.b),
+               habis:S.o.habisKerja, keluar:hhmm(S.o.keluar), stay:S.o.stay, home:S.L.home,
+               semua:S.langkah.filter(x => x.dur !== "pulang").map(x => (x.b || "") + " " + (x.s || "") + " " + (x.i || "")).join(" "),
+               peluang:S.peluang ? S.peluang.daftar.map(x => x.segmen.map(g => g.jeda ? "jeda" : g.tempat.id + "@" + hhmm(g.s) + "-" + hhmm(g.e)).join(">")) : [] };
+    }, a);
+    const PULANG = /^(Waktunya pulang|Selesai untuk hari ini|Ngecas dulu, lalu pulang)$/;
+
+    /* posisi jauh: jam "Mulai pulang" di kartu = jam langkah pulang; tidak ada lagi "Pulang sekarang" */
+    const jauh = [];
+    /* kasus nyata dari sapuan versi lama: Depok 18:00 "Pulang sekarang" padahal langkah pulang 18:59;
+       Depok 03:25 langkah "Mulai pulang jam 20:44" vs langkah pulang 21:30 */
+    for (const [w, lok, soc, pulang] of [["2026-10-06T15:30:00+07:00", "cbd", 90, 22], ["2026-10-06T17:45:00+07:00", "cbd", 90, 22], ["2026-10-06T19:10:00+07:00", "cbd", 90, 22],
+        ["2026-10-06T21:40:00+07:00", "cbd", 90, 22], ["2026-10-16T18:00:00+07:00", "depok", 25, 20.5], ["2026-10-16T03:25:00+07:00", "depok", 25, 22], ["2026-10-16T03:50:00+07:00", "jakut", 50, 23.75]]){
+      const b = await bukaJam(w);
+      const x = await baca(b.p, { lok, soc, pulang });
+      const kp = x.teks.match(/[Mm]ulai pulang jam (\d\d:\d\d)/), gs = x.teks.match(/geser ke arah rumah jam (\d\d:\d\d)/);
+      const di = [...new Set((x.semua.match(/Mulai pulang jam (?:<b>)?\d\d:\d\d/g) || []).map(t => t.slice(-5)))];
+      jauh.push({ w:w.slice(0, 16), lok, h:x.h, kartu:kp && kp[1], geser:gs && gs[1], diLangkah:di, langkah:x.jamLangkah, habis:x.habis, keluar:x.keluar, err:b.err });
+      await b.c.close();
+    }
+    ok(jauh.every(j => !j.err.length && j.h !== "Pulang sekarang" && (!j.kartu || j.kartu === j.langkah) && j.diLangkah.every(t => t === j.langkah) &&
+                       (!j.geser || j.geser < j.langkah) && (!j.habis || (PULANG.test(j.h) && j.langkah === j.keluar))),
+       "posisi jauh (CBD, Depok, Jakut): jam 'Mulai pulang' di kartu dan di semua langkah = langkah pulang, jam geser sebelum jam pulang, jam narik habis = kartu pulang & mulai sekarang", JSON.stringify(jauh));
+
+    /* tidak pulang (menginap) di tempat jauh: tidak ada kartu atau langkah pulang */
+    {
+      const tp = [];
+      for (const w of ["2026-10-06T15:00:00+07:00", "2026-10-06T21:10:00+07:00"]){
+        const b = await bukaJam(w);
+        const x = await baca(b.p, { lok:"cbd", soc:60, stay:true, pulang:22 });
+        tp.push({ w:w.slice(11, 16), stay:x.stay, h:x.h, b:x.pulangB, pulangDiLangkah:/Mulai pulang|geser ke arah rumah/.test(x.semua) });
+        await b.c.close();
+      }
+      ok(tp.every(x => x.stay && !PULANG.test(x.h) && x.h !== "Pulang sekarang" && !/Mulai jalan pulang/.test(x.h) && x.b === "Tidak pulang" && !x.pulangDiLangkah),
+         "Tidak pulang di Jakarta CBD 15:00/21:10: kartu dan langkah tidak menyuruh pulang", JSON.stringify(tp));
+    }
+
+    /* di rumah (Kota) baterai 6% dengan colokan rumah: tidak disuruh ke SPKLU */
+    {
+      const b = await bukaJam("2026-10-06T21:50:00+07:00");
+      const x = await baca(b.p, { lok:"kota", soc:6, rumah:true, pulang:22 });
+      ok(x.home <= 1 && x.h === "Selesai untuk hari ini" && /colok di rumah/.test(x.teks) && !/SPKLU/.test(x.teks + x.pulangI) && !x.kerja.length,
+         "Kota 21:50, baterai 6%, ada colokan rumah: 'Selesai untuk hari ini', colok di rumah, tanpa SPKLU", JSON.stringify({ h:x.h, i:x.pulangI, kerja:x.kerja }));
+      await b.c.close();
+    }
+
+    /* istirahat rencana terpotong jam mulai pulang: bukan "narik 4 menit" */
+    const rh = [];
+    for (const [w, lok, soc, pulang] of [["2027-08-17T19:21:00+07:00", "cisauk", 50, 20.5], ["2026-12-23T20:17:00+07:00", "depok", 6, 22]]){
+      const b = await bukaJam(w, new Function(`localStorage.setItem("buku-setoran-plan", JSON.stringify({ date:"${w.slice(0, 10)}", keluar:5.25, pulang:21.5,
+        rehat:[${w.slice(11, 13) === "19" ? "18.75, 20.25" : "19.75, 21.25"}], zona:"tng", filter:2, bat:30.08, rumah:false, hujan:false, acara:false }));`));
+      const x = await baca(b.p, { lok, soc, pulang });
+      rh.push({ lok, h:x.h, kerja:x.kerja, langkah:x.jamLangkah, keluar:x.keluar, err:b.err });
+      await b.c.close();
+    }
+    ok(rh.every(x => !x.err.length && PULANG.test(x.h) && !x.kerja.length && x.langkah === x.keluar),
+       "istirahat rencana yang melewati jam mulai pulang: kartu pulang, tanpa langkah narik pendek, mulai pulang sekarang (Cisauk 19:21, Depok 20:17)", JSON.stringify(rh));
+
+    /* rute peluang tidak kembar */
+    const kembar = [];
+    /* kasus nyata dari sapuan versi lama: "cbd || cbd", "stasiun || stasiun", "jakbar || jakbar" */
+    for (const [w, lok, soc] of [["2026-10-16T16:20:00+07:00", "cbd", 6], ["2027-08-17T16:51:00+07:00", "stasiun", 10], ["2026-10-16T17:35:00+07:00", "jakbar", 6], ["2026-10-06T14:00:00+07:00", "kota", 90]]){
+      const b = await bukaJam(w);
+      const x = await baca(b.p, { lok, soc, pulang:20.5 });
+      if (new Set(x.peluang).size !== x.peluang.length) kembar.push({ w, lok, peluang:x.peluang });
+      await b.c.close();
+    }
+    ok(kembar.length === 0, "kartu 'Mau ke tempat lain?' tidak menampilkan rute yang sama dua kali", JSON.stringify(kembar));
+
+    /* ganti hari dengan halaman terbuka: 'Sudah dapat' kemarin tidak terbawa */
+    {
+      const b = await bukaJam("2026-10-06T23:40:00+07:00", () => localStorage.setItem("sekarang-terakhir", JSON.stringify({ jam:23, dpt:300000, lok:"Kota", home:0, z:"tng", tanggal:"2026-10-06" })));
+      const a = await b.p.evaluate(() => el("n-dpt").value);
+      await b.p.clock.setFixedTime(new Date("2026-10-07T05:30:00+07:00"));
+      const s = await b.p.evaluate(() => { cekGantiHari(); return { dpt:el("n-dpt").value, simpan:(JSON.parse(localStorage.getItem("sekarang-terakhir") || "{}")) }; });
+      ok(a === "300000" && s.dpt === "0" && !(s.simpan.tanggal === "2026-10-07" && s.simpan.dpt > 0),
+         "lewat tengah malam: 'Sudah dapat' kemarin (Rp300.000) dikosongkan, tidak disimpan sebagai hari baru", JSON.stringify({ a, s }));
+      await b.c.close();
+    }
+
+    /* Rencanakan diketuk malam: tanggal besok; siang: hari ini */
+    {
+      const hasil = [];
+      for (const [w, harap] of [["2026-10-06T21:00:00+07:00", "2026-10-07"], ["2026-10-06T10:00:00+07:00", "2026-10-06"]]){
+        const b = await bukaJam(w, () => localStorage.setItem("mulai-hari", JSON.stringify({ date:"2026-10-06", jam:5, soc:90, bat:30.08, keluar:5.25, pulang:22, zona:"tng", filter:2, dpt:0, rehat:"none", rumah:false })));
+        await b.p.click("#mode-rencana");
+        hasil.push({ w:w.slice(11, 16), tgl:await b.p.evaluate(() => el("p-tgl").value), harap });
+        await b.c.close();
+      }
+      ok(hasil.every(x => x.tgl === x.harap), "ketuk Rencanakan jam 21:00 = rencana besok; jam 10:00 = hari ini", JSON.stringify(hasil));
+    }
+  }
+
   console.log("15. Logika saran tempat (regresi temuan audit)");
   {
     const pr = await ctx.newPage();

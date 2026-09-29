@@ -174,10 +174,15 @@ var Peluang = (function(){
     if (!o.stay && !hasil.some(adaKerja)) return { daftar:[], basis:null, awal:awal, habis:true };
     /* urutan yang sama persis (mis. dua kandidat yang ujungnya sama setelah
        aturan 20:00) cukup tampil sekali */
+    /* kunci tanpa angka Rp: dua urutan dengan potongan & tempat yang sama
+       adalah rencana yang sama (selisih pembulatan tidak membuatnya beda);
+       "tetap di sini" yang selalu dipertahankan, kembarannya dibuang */
+    var kunciH = function(h){ return h.segmen.map(function(sg){ return (sg.tempat ? sg.tempat.id : "-") + "@" + sg.s.toFixed(2) + "-" + sg.e.toFixed(2); }).join("|"); };
     var lihat = {};
+    if (basis) lihat[kunciH(basis)] = true;
     hasil = hasil.filter(function(h){
-      var k = h.segmen.map(function(sg){ return (sg.tempat ? sg.tempat.id : "-") + "@" + sg.s.toFixed(2) + "-" + sg.e.toFixed(2); }).join("|") + "#" + Math.round(h.net);
-      if (lihat[k] && !h.diam) return false;
+      if (h.diam) return true;
+      var k = kunciH(h); if (lihat[k]) return false;
       lihat[k] = true; return true;
     });
     var daftar = hasil.slice(0, banyak);

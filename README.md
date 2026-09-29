@@ -265,6 +265,7 @@ tools/                sdk-entry.mjs, make-icons.py
 ```
 npm install
 npx playwright install chromium
-npm test                                      # 232 pemeriksaan
+npm test                                      # 239 pemeriksaan
+npm run sapuan                                # sapuan dalam: 9.204 keadaan (tanggal x jam x posisi x baterai), harus 0 pelanggaran
 ORIG_HTML=/path/artifact-asli.html npm test   # + uji emas terhadap artifact satu-berkas
 ```
