@@ -725,6 +725,7 @@ function runNow(){
   SEKARANG.peluang = renderPeluang("peluang", o, L, { dpt:dpt });
   briefingOtomatis();
   lalulintasOtomatis(o, L);
+  renderJalan(o, L, false);
   perbaruiRute();
   renderTujuan();
 
@@ -2374,7 +2375,10 @@ var lalulintasTimer = null, lalulintasKunci = null;
 function lalulintasOtomatis(o, L){
   if (typeof Lalulintas === "undefined" || !Lalulintas.aktif()) return;
   if (!(L && L.id && LOKMAP[L.id] && L.lat != null)) return;
-  var kunciSekarang = L.id + "@" + Math.floor(Date.now() / (10 * 60 * 1000));
+  /* Hemat jatah Routing (10.000/bulan per HP): hanya saat aplikasi sedang
+     dilihat, paling sering tiap 15 menit per posisi. */
+  if (typeof document !== "undefined" && document.hidden) return;
+  var kunciSekarang = L.id + "@" + Math.floor(Date.now() / (15 * 60 * 1000));
   if (lalulintasKunci === kunciSekarang) return;
   lalulintasKunci = kunciSekarang;
   clearTimeout(lalulintasTimer);
@@ -2386,6 +2390,100 @@ function lalulintasOtomatis(o, L){
     Lalulintas.segarkan(pasangan).then(function(){ runNow(); });
   }, 1200);
 }
+
+/* ---------------- jalan pulang & kejadian di jalan (TomTom langsung) ----------------
+   Kartu di tab Sekarang, hanya kalau ada kunci TomTom dan posisi Ibu punya
+   koordinat. Jalan pulang diambil otomatis mulai 1,5 jam sebelum jam mulai
+   pulang (atau di Jakarta mulai 18:00, aturan 20:00), atau saat tombol
+   ditekan; kejadian di jalan tiap 20 menit. Hanya saat aplikasi dilihat.
+   Mesin hitung tidak diubah: ini angka SEKARANG untuk keputusan sekarang. */
+/* runNow pertama berjalan SEBELUM baris ini dieksekusi (urutan skrip), jadi
+   nilainya diisi di dalam fungsi, bukan di deklarasi. */
+var jalanAmbil = false, jalanCoba;
+function renderJalan(o, L, paksa){
+  var box = el("jalan"); if (!box) return;
+  if (!jalanCoba) jalanCoba = { pulang:0, kejadian:0 };
+  var ULANG = 3 * 60e3;
+  var ada = typeof Lalulintas !== "undefined" && Lalulintas.aktif() && typeof Kejadian !== "undefined";
+  if (!ada || !L || L.lat == null || L.lon == null){
+    box.hidden = true;
+    if (typeof Peta !== "undefined" && Peta.gambarPulang){ Peta.gambarPulang(null); Peta.gambarKejadian(null); }
+    return;
+  }
+  box.hidden = false;
+  var pos = { lat:L.lat, lon:L.lon }, kini = jamSekarangTepat();
+  var mulai = o.stay ? null : o.pulang - jamMulaiPulang(o, null);
+  var waktunya = (mulai != null && kini >= mulai - 1.5) || (L.z === "jkt" && kini >= 18);
+  var h = Lalulintas.pulangSekarangCache(pos);
+  var p = [];
+  if (h){
+    var est = Math.round(jamTempuhRumah(L, kini, L.home, tipeDari(o.ctx)) * 60);
+    p.push('<span class="jl-besar">&plusmn;' + h.menit + " menit ke rumah</span> kalau berangkat sekarang" +
+           (h.km != null ? " &middot; " + String(h.km).replace(".", ",") + " km" : "") +
+           (h.biasa != null || h.lancar != null ? " <span class=\"muted\">(" + [h.biasa != null ? "biasanya jam ini &plusmn;" + h.biasa : "", h.lancar != null ? "lancar &plusmn;" + h.lancar : ""].filter(Boolean).join(", ") + ")</span>" : "") + ".");
+    if (est > 0 && h.menit - est >= 10) p.push('<b class="dn">Lebih lama &plusmn;' + (h.menit - est) + " menit dari hitungan aplikasi (&plusmn;" + est + " menit).</b> Jalan sedang lebih macet dari biasanya.");
+    else if (est > 0 && est - h.menit >= 10) p.push("Lebih cepat &plusmn;" + (est - h.menit) + " menit dari hitungan aplikasi (&plusmn;" + est + " menit): jalan sedang lengang.");
+    if (mulai != null){
+      var mulaiLive = o.pulang - h.menit / 60 - 0.25;
+      if (mulaiLive <= kini) p.push("<b>Untuk sampai rumah " + hhmm(o.pulang) + ", sebaiknya jalan pulang sekarang</b> (tiba &plusmn;" + hhmm(kini + h.menit / 60) + ").");
+      else p.push("Untuk sampai rumah " + hhmm(o.pulang) + ": mulai jalan paling lambat &plusmn;<b>" + hhmm(mulaiLive) + "</b>" +
+                  (Math.abs(mulaiLive - mulai) >= 0.17 ? " (hitungan aplikasi: " + hhmm(mulai) + ")" : "") + ". Macet bisa berubah sampai jam itu.");
+    }
+    h.macet.slice(0, 2).forEach(function(m){
+      var k = Kejadian.dekatGaris(pos, m.garis || (m.titik ? [m.titik] : null));
+      var jauh = m.titik ? jarakLurus(pos.lat, pos.lon, m.titik[0], m.titik[1]) : null;
+      p.push("Macet di rute: <b>+" + Math.round(m.tunda) + " menit</b>" + (m.kmj ? ", &plusmn;" + Math.round(m.kmj) + " km/jam" : "") +
+             (k && (k.dari || k.jalan) ? " &middot; " + esc(k.jalan && k.dari ? k.jalan + ", " : k.jalan) + esc(k.dari) + (k.ke ? " &rarr; " + esc(k.ke) : "") : "") +
+             (jauh != null ? " &middot; &plusmn;" + Math.round(jauh) + " km dari Ibu (garis merah di peta)" : "") + ".");
+    });
+  } else if (o.stay){
+    p.push("Ibu memilih tidak pulang dulu. Tekan <b>Cek jalan pulang sekarang</b> kalau ingin tahu macetnya.");
+  } else {
+    p.push(waktunya ? (jalanCoba.pulang && !jalanAmbil && Date.now() - jalanCoba.pulang <= ULANG
+                        ? "Jalan pulang belum bisa diambil dari TomTom (tanpa sinyal, jatah hari ini habis, atau Ibu sudah dekat rumah). Dicoba lagi otomatis."
+                        : "Mengambil jalan pulang dari TomTom&hellip;") :
+           "Jalan pulang (macet sekarang) muncul sendiri mulai &plusmn;" + hhmm(Math.max(0, (mulai || kini) - 1.5)) + ". Tekan <b>Cek jalan pulang sekarang</b> untuk melihatnya sekarang.");
+  }
+  el("jalan-pulang").innerHTML = p.map(function(t){ return "<p>" + t + "</p>"; }).join("");
+
+  var kc = Kejadian.cache(pos), daftar = Kejadian.relevan(pos, h && h.poin, 15).slice(0, 5);
+  var kk = "";
+  if (kc){
+    kk = daftar.length ? daftar.map(function(k){
+      var parah = k.kat === 8 || k.kat === 11 || k.kat === 1;
+      return '<div class="jl-kej"><span class="jl-tag' + (parah ? " parah" : "") + '">' + esc(k.jenis) + "</span>" +
+        (k.jalan ? "<b>" + esc(k.jalan) + "</b>" + (k.dari ? ", " : " ") : "") + esc(k.dari) + (k.ke ? " &rarr; " + esc(k.ke) : "") +
+        " &middot; " + String(k.jarak).replace(".", ",") + " km dari Ibu" +
+        (k.diRute ? ' &middot; <span class="jl-rute">di rute pulang</span>' : "") +
+        (k.tunda ? " &middot; tertahan &plusmn;" + k.tunda + " menit" : "") +
+        (k.ket && k.ket.toLowerCase() !== k.jenis.toLowerCase() ? '<br><span class="muted">' + esc(k.ket) + "</span>" : "") + "</div>";
+    }).join("") : '<p class="muted">Tidak ada kecelakaan, jalan ditutup, banjir, atau mogok yang tercatat TomTom dalam 15 km.</p>';
+    kk += '<p class="jl-sumber">Sumber: TomTom &middot; kejadian ' + hhmm(new Date(kc.at).getHours() + new Date(kc.at).getMinutes() / 60) +
+          (h ? " &middot; jalan pulang " + hhmm(new Date(h.at).getHours() + new Date(h.at).getMinutes() / 60) : "") + "</p>";
+  }
+  el("jalan-kejadian").innerHTML = kk;
+  if (typeof Peta !== "undefined" && Peta.gambarPulang){ Peta.gambarPulang(h); Peta.gambarKejadian(daftar); }
+
+  if (jalanAmbil || (typeof document !== "undefined" && document.hidden)) return;
+  /* Gagal (sinyal, jatah) tidak dicoba ulang di setiap hitung ulang: paling
+     cepat 3 menit lagi, kecuali tombol ditekan. */
+  var t = Date.now(), ambilPulang = !h && (paksa || (waktunya && !o.stay && t - jalanCoba.pulang > ULANG)),
+      ambilKej = !kc && (paksa || t - jalanCoba.kejadian > ULANG);
+  if (!ambilPulang && !ambilKej) return;
+  jalanAmbil = true;
+  if (ambilPulang) jalanCoba.pulang = t;
+  if (ambilKej) jalanCoba.kejadian = t;
+  Promise.all([ambilPulang ? Lalulintas.pulangSekarang(pos) : null, ambilKej ? Kejadian.segarkan(pos) : null]).then(function(rs){
+    jalanAmbil = false;
+    if (rs.some(Boolean) && SEKARANG) renderJalan(SEKARANG.o, SEKARANG.L, false);
+    if (ambilPulang && !rs[0] && el("jalan-pulang"))
+      el("jalan-pulang").innerHTML = "<p>Jalan pulang belum bisa diambil dari TomTom (tanpa sinyal, jatah hari ini habis, atau Ibu sudah dekat rumah). Dicoba lagi otomatis.</p>";
+  });
+}
+el("jalan-cek").addEventListener("click", function(){ if (SEKARANG) renderJalan(SEKARANG.o, SEKARANG.L, true); });
+document.addEventListener("visibilitychange", function(){
+  if (!document.hidden && SEKARANG){ lalulintasOtomatis(SEKARANG.o, SEKARANG.L); renderJalan(SEKARANG.o, SEKARANG.L, false); }
+});
 
 /* ---------------- briefing otomatis dari Claude ----------------
    Satu paragraf pendek tiap kali blok jam (atau wilayah) berganti, disusun dari
@@ -2680,13 +2778,18 @@ el("tt-save").addEventListener("click", function(){
 el("tt-clear").addEventListener("click", function(){ Peta.setKunciTomTom(""); tandaiTomTom(); tandaiUkur(); });
 
 /* ---- Ukur macet otomatis (ukurmacet.js) ---- */
+function jatahTeks(p){
+  var j = Lalulintas.statusJatah(p);
+  return j.bulan.toLocaleString("id-ID") + "/" + j.bulanMaks.toLocaleString("id-ID") + " (hari ini " + j.hari + "/" + j.hariMaks +
+    (j.tahan === "stop" ? ", berhenti sampai besok: TomTom menolak (429)" : j.tahan === "jeda" ? ", jeda sebentar" : "") + ")";
+}
 function tandaiUkur(teksLain){
   var e = el("ukur-status"); if (!e) return;
   if (!Lalulintas.aktif()){ e.textContent = "Pengukuran macet rute Ibu butuh kunci TomTom (produk Routing)."; return; }
   var s = UkurMacet.status(), pct = Math.round(s.segar / s.total * 100);
   e.innerHTML = (teksLain ? esc(teksLain) + " " : "") +
     "Pola macet rute Ibu (TomTom): <b>" + s.segar + "/" + s.total + "</b> ukuran (" + pct + "%) &middot; hari ini " + s.hariIni + "/" + s.maksHarian +
-    " &middot; sisa jatah TomTom HP ini " + Lalulintas.sisaJatah() + "/" + Lalulintas.MAKS_HARIAN + "." +
+    ".<br>Jatah TomTom HP ini bulan ini: rute " + jatahTeks("rute") + " &middot; kejadian jalan " + jatahTeks("insiden") + "." +
     (s.galat ? " <b>" + esc(s.galat) + ".</b>" : "") +
     (s.berhenti ? " Pengukuran berhenti sendiri setelah 3 kali gagal &mdash; periksa produk Routing di kunci TomTom, lalu tekan tombol di bawah." : "");
 }

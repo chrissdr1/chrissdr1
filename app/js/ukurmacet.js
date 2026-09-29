@@ -6,9 +6,10 @@
 
    Rute: rumah (Kota) <-> 8 tempat inti dua arah (16) + antar tempat inti
    (56) = 72 rute x 10 jam x 2 jenis hari = 1.440 ukuran per putaran,
-   dicicil (maks 300 per hari, 60 per sesi, jeda 1,2 detik) dan diulang
-   tiap 28 hari. Semua lewat Lalulintas.minta (jatah bersama 1.100/hari per
-   HP, berhenti total bila TomTom membalas 429).
+   dicicil (maks 300 per hari DAN maks 45% jatah Routing harian -- sisanya
+   untuk macet langsung dan jalan pulang; 60 per sesi, jeda 1,2 detik) dan
+   diulang tiap 28 hari. Semua lewat Lalulintas.minta (jatah Routing bulanan
+   per HP, lihat lalulintas.js).
 
    PERLU VERIFIKASI saat kunci sungguhan dipakai: format departAt
    (yyyy-MM-ddTHH:mm:ss+07:00) dan nama field ringkasan. Kalau TomTom MENOLAK
@@ -25,7 +26,7 @@
 
 var UkurMacet = (function(){
   var LS = "ukur-macet";
-  var MAKS_HARIAN = 300, PER_SESI = 60, JEDA_MS = 1200, UMUR_SEGAR = 28 * 864e5, UMUR_PAKAI = 90 * 864e5;
+  var MAKS_HARIAN = 300, BAGIAN_JATAH = 0.45, PER_SESI = 60, JEDA_MS = 1200, UMUR_SEGAR = 28 * 864e5, UMUR_PAKAI = 90 * 864e5;
   var JAM = [5.5, 7, 8.5, 10.5, 12.5, 15, 16.5, 18, 19.5, 21.5];
   var INTI = ["stasiun", "karawaci", "alsut", "serpong", "bsd", "bandara", "jakbar", "cbd"];
   var JKT = { jakbar:1, cbd:1 };
@@ -89,7 +90,7 @@ var UkurMacet = (function(){
     if (!A || !B) return Promise.resolve("tolak");
     var tgl = tanggalUntuk(it.tipe);
     var url = Lalulintas.urlRute(A, B, key, { departAt:tgl + "T" + hhmm(it.jam) + ":00+07:00", tanpaGaris:true });
-    return Lalulintas.minta(url).then(function(r){
+    return Lalulintas.minta(url, "rute").then(function(r){
       if (r.status === 429) return "henti";
       if (r.status >= 500){ d.galat = "TomTom sedang gangguan (HTTP " + r.status + "), dicoba lagi nanti"; return "jaringan"; }
       if (!r.ok){ d.galat = "TomTom menolak (HTTP " + r.status + ")"; return "tolak"; }
@@ -126,8 +127,14 @@ var UkurMacet = (function(){
       });
     return sesi(opsi);
   }
+  /* Batas pengukuran hari ini: 300, dan tidak lebih dari 45% jatah Routing
+     hari ini (Lalulintas.jatahHari berubah menurut sisa bulan). */
+  function batasHarian(){
+    var jh = Lalulintas.jatahHari ? Lalulintas.jatahHari("rute") : MAKS_HARIAN;
+    return Math.max(0, Math.min(MAKS_HARIAN, Math.floor(jh * BAGIAN_JATAH)));
+  }
   function alasanTahan(){
-    var t = Lalulintas.tertahan ? Lalulintas.tertahan() : (Lalulintas.bolehMinta() ? null : "stop");
+    var t = Lalulintas.tertahan ? Lalulintas.tertahan("rute") : (Lalulintas.bolehMinta() ? null : "stop");
     return t === "jeda" ? "TomTom minta jeda sebentar" : "jatah TomTom hari ini";
   }
   function sesi(opsi){
@@ -135,12 +142,12 @@ var UkurMacet = (function(){
     if (d.berhenti && !opsi.paksa) return Promise.resolve({ diukur:0, alasan:"berhenti" });
     if (opsi.paksa){ d.berhenti = false; d.berturut = 0; }
     var q = antrean(d), key = Peta.kunciTomTom(), jeda = opsi.jeda == null ? JEDA_MS : opsi.jeda;
-    var batas = Math.min(q.length, opsi.perSesi || PER_SESI), i = 0, diukur = 0;
+    var batas = Math.min(q.length, opsi.perSesi || PER_SESI), batas0 = batasHarian(), i = 0, diukur = 0;
     sedangJalan = true;
     function langkah(){
       if (i >= batas) return Promise.resolve("selesai");
-      if (d.hari.n >= MAKS_HARIAN) return Promise.resolve("jatah harian pengukuran");
-      if (!Lalulintas.bolehMinta()) return Promise.resolve(alasanTahan());
+      if (d.hari.n >= batas0) return Promise.resolve("jatah harian pengukuran");
+      if (!Lalulintas.bolehMinta("rute")) return Promise.resolve(alasanTahan());
       var it = q[i++];
       d.hari.n++;
       return ukurSatu(d, it, key).then(function(hasil){
@@ -216,7 +223,7 @@ var UkurMacet = (function(){
   function status(){
     var d = muat(), total = daftarRute().length * JAM.length * 2, kini = Date.now(), terukur = 0, segar = 0;
     Object.keys(d.hasil).forEach(function(k){ var h = d.hasil[k]; if (kini - h.at <= UMUR_PAKAI) terukur++; if (kini - h.at <= UMUR_SEGAR) segar++; });
-    return { total:total, terukur:terukur, segar:segar, hariIni:d.hari.n, maksHarian:MAKS_HARIAN, galat:d.galat, berhenti:d.berhenti,
+    return { total:total, terukur:terukur, segar:segar, hariIni:d.hari.n, maksHarian:batasHarian(), galat:d.galat, berhenti:d.berhenti,
              terakhir:d.terakhir, sedangJalan:sedangJalan };
   }
   function hapus(){ try { localStorage.removeItem(LS); } catch (e) {} indeks = null; memoWil = {}; }
@@ -227,6 +234,6 @@ var UkurMacet = (function(){
     window.addEventListener("storage", function(e){ if (e.key === LS || e.key === null) muatUlang(); });
 
   return { jalankan:jalankan, menitRute:menitRute, faktorWilayah:faktorWilayah, status:status, hapus:hapus, muatUlang:muatUlang,
-           tipeCtx:tipeCtx, tipeTgl:tipeTgl, tanggalUntuk:tanggalUntuk, JAM:JAM, INTI:INTI, MAKS_HARIAN:MAKS_HARIAN,
+           tipeCtx:tipeCtx, tipeTgl:tipeTgl, tanggalUntuk:tanggalUntuk, JAM:JAM, INTI:INTI, MAKS_HARIAN:MAKS_HARIAN, batasHarian:batasHarian,
            _antrean:function(){ return antrean(muat()); } };
 })();

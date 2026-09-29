@@ -18,7 +18,7 @@
 
 var Peta = (function(){
   var map = null, posMarker = null, posCircle = null, sudahFokusPosisi = false;
-  var LS_TT = "tomtom-key", lapisanTT = null, garisRute = null;
+  var LS_TT = "tomtom-key", lapisanTT = null, lapisanInsiden = null, garisRute = null, lapisanPulang = null, lapisanKejadian = null;
   var statusTT = "belum", statusTTCb = null;   /* belum | cek | ok | error */
   function laporStatusTT(s){ statusTT = s; if (statusTTCb) statusTTCb(s); }
 
@@ -33,13 +33,19 @@ var Peta = (function(){
   function kunciTomTom(){ try { return localStorage.getItem(LS_TT) || ""; } catch (e) { return ""; } }
   function setKunciTomTom(k){ try { if (k) localStorage.setItem(LS_TT, k); else localStorage.removeItem(LS_TT); } catch (e) {} pasangTomTom(); }
   function urlTomTom(k){ return "https://api.tomtom.com/traffic/map/4/tile/flow/relative/{z}/{x}/{y}.png?key=" + encodeURIComponent(k); }
+  /* Ubin kejadian (Raster Incident Tiles v4, gaya s0 yang disarankan
+     dokumentasi): garis dan ikon kecelakaan/penutupan di atas lapisan macet.
+     Termasuk jatah ubin (200.000/bulan), bukan jatah permintaan biasa. */
+  function urlInsiden(k){ return "https://api.tomtom.com/traffic/map/4/tile/incidents/s0/{z}/{x}/{y}.png?key=" + encodeURIComponent(k); }
   function pasangTomTom(){
     if (!map) return;
     var k = kunciTomTom();
     if (lapisanTT){ map.removeLayer(lapisanTT); lapisanTT = null; }
+    if (lapisanInsiden){ map.removeLayer(lapisanInsiden); lapisanInsiden = null; }
     if (!k){ laporStatusTT("belum"); return; }
     laporStatusTT("cek");
     lapisanTT = L.tileLayer(urlTomTom(k), { maxZoom:19, opacity:.85, attribution:"Lalu lintas &copy; TomTom" }).addTo(map);
+    lapisanInsiden = L.tileLayer(urlInsiden(k), { maxZoom:19, opacity:.95 }).addTo(map);
     var pernahOk = false;
     lapisanTT.on("tileload", function(){ pernahOk = true; laporStatusTT("ok"); });
     /* Ubin kosong di tepi cakupan wajar; hanya lapor gagal kalau belum pernah
@@ -113,7 +119,37 @@ var Peta = (function(){
     }
   }
 
-  return { init:init, posisi:posisi, fokus:fokus, refresh:refresh, tautanMacet:tautanMacet,
+  /* Jalan pulang sekarang: garis rute ke rumah (abu gelap) dan potongan
+     yang macet (merah, tebal) dari Lalulintas.pulangSekarang. null = hapus. */
+  function gambarPulang(h){
+    if (!map) return;
+    if (lapisanPulang){ map.removeLayer(lapisanPulang); lapisanPulang = null; }
+    if (!h || !h.poin || h.poin.length < 2) return;
+    lapisanPulang = L.layerGroup().addTo(map);
+    L.polyline(h.poin, { color:"#12211B", weight:3, opacity:.55, dashArray:"6 6" }).addTo(lapisanPulang);
+    (h.macet || []).forEach(function(m){
+      if (m.garis && m.garis.length >= 2)
+        L.polyline(m.garis, { color:m.tingkat >= 3 ? "#AB0000" : "#EB4C13", weight:6, opacity:.9 }).addTo(lapisanPulang)
+          .bindPopup("<b>Macet +" + Math.round(m.tunda) + " menit</b>" + (m.kmj ? "<br>&plusmn;" + Math.round(m.kmj) + " km/jam" : ""));
+    });
+  }
+  /* Penanda kejadian di jalan (Kejadian.relevan). */
+  function gambarKejadian(daftar){
+    if (!map) return;
+    if (lapisanKejadian){ map.removeLayer(lapisanKejadian); lapisanKejadian = null; }
+    if (!daftar || !daftar.length) return;
+    lapisanKejadian = L.layerGroup().addTo(map);
+    daftar.forEach(function(k){
+      var parah = k.kat === 8 || k.kat === 11 || k.kat === 1;
+      L.circleMarker(k.titik, { radius:parah ? 8 : 6, color:"#fff", weight:2, fillColor:parah ? "#AB0000" : "#EB8A13", fillOpacity:1 })
+        .addTo(lapisanKejadian)
+        .bindPopup("<b>" + esc(k.jenis) + "</b>" + (k.ket ? "<br>" + esc(k.ket) : "") +
+                   (k.dari || k.ke ? "<br>" + esc(k.dari) + (k.ke ? " &rarr; " + esc(k.ke) : "") : "") +
+                   (k.tunda ? "<br>tertahan &plusmn;" + k.tunda + " menit" : ""));
+    });
+  }
+
+  return { init:init, gambarPulang:gambarPulang, gambarKejadian:gambarKejadian, urlInsiden:urlInsiden, posisi:posisi, fokus:fokus, refresh:refresh, tautanMacet:tautanMacet,
            kunciTomTom:kunciTomTom, setKunciTomTom:setKunciTomTom, urlTomTom:urlTomTom,
            adaTomTom:function(){ return !!lapisanTT; },
            statusTomTom:function(){ return statusTT; },

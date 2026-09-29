@@ -407,6 +407,17 @@ a.go{text-decoration:none; display:inline-block; line-height:1.3; font-family:"I
 .rek-catatan{font-size:12px; color:var(--muted); margin-top:10px; padding-top:9px; border-top:1px solid var(--line)}
 .rek-catatan b{color:var(--ink-2)}
 
+/* ---- jalan pulang & kejadian (TomTom langsung) ---- */
+.jalan p{margin:5px 0; font-size:14px}
+.jalan .jl-besar{font-family:"Barlow Condensed",sans-serif; font-size:19px; font-weight:700}
+.jalan .jl-kej{padding:7px 0; border-top:1px solid var(--line); font-size:13.5px}
+.jalan .jl-kej:first-child{border-top:0}
+.jalan .jl-tag{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; font-weight:600; margin-right:6px}
+.jalan .jl-tag.parah{color:var(--signal)}
+.jalan .jl-rute{color:var(--signal); font-weight:600}
+.jalan .muted{color:var(--muted)}
+.jalan .jl-sumber{font-size:11.5px; color:var(--muted); margin-top:8px}
+
 /* ---- briefing dari Claude ---- */
 .ai.briefing{margin-top:15px; gap:8px}
 .ai-head{display:flex; justify-content:space-between; gap:10px; align-items:baseline; flex-wrap:wrap}

@@ -106,18 +106,33 @@ plus token). Pencarian web harus tidak dimatikan admin di Settings → Privacy.
 
 Tanpa kunci, tombol **Lihat kemacetan di Google Maps** membuka Google Maps dengan lapisan lalu lintas tepat di posisi Ibu. Kalau ingin lapisan kemacetan tampil langsung di peta aplikasi, daftarkan akun pengembang TomTom (developer.tomtom.com), buat kunci API dengan produk *Traffic Flow* / *Map Display*, lalu tempel di tab **Catatan → gulir ke bawah → "Pengaturan anak" (ketuk judulnya untuk membuka) → Lapisan macet TomTom di peta**, atau kirim lewat tautan pengaturan `#tomtom=…`.
 
-**Jatah gratis TomTom** (dicek September 2026, bisa berubah — lihat dasbor): 2.500
-permintaan non-ubin per hari per kunci (dipakai bersama semua API), 50.000 ubin peta
-per hari, 5 permintaan per detik; lewat batas dijawab 429 (tanpa kartu kredit tidak
-ada tagihan). Aplikasi membatasi dirinya **1.100 permintaan non-ubin per hari per HP**
-(kunci bisa dipakai di dua HP), dihitung bersama lintas tab (aplikasi terpasang + browser
-tidak menghitung dobel). Balasan 429 (menurut TomTom: terlalu banyak per detik) = jeda
-5 menit; 3 kali 429 tanpa sukses di antaranya = berhenti total sampai besok.
+**Jatah gratis TomTom** (halaman harga resmi developer.tomtom.com/pricing, dicek
+29-09-2026 — bisa berubah, lihat dasbor): dihitung **per bulan, per layanan**, tanpa kartu
+kredit: Routing 20.000, Traffic Incident Details 2.500, Traffic Flow Segment 20.000, ubin
+peta/lalu lintas 200.000. Lewat batas dijawab **429** (FAQ resmi), bukan ditagih. Karena
+kunci bisa dipakai di dua HP (Ibu dan anak), tiap HP memakai paling banyak **separuh**:
+Routing 10.000 dan kejadian jalan 1.200 per bulan kalender. Jatah harian = sisa bulan ÷
+sisa hari (maks 2× rata-rata), dihitung bersama lintas tab. Balasan 429 = jeda 5 menit;
+3 kali 429 tanpa sukses di antaranya = layanan itu berhenti sampai besok. Belum
+terverifikasi: apakah bulan TomTom = bulan kalender dan kapan persisnya hitungannya
+direset. Pemakaian bulan ini tampil di Pengaturan anak.
+
+**Jalan pulang & kejadian di jalan** (tab Sekarang, `js/kejadian.js`): mulai 1,5 jam
+sebelum jam mulai pulang (di Jakarta mulai 18:00, aturan 20:00), atau saat tombol
+"Cek jalan pulang sekarang" ditekan, aplikasi meminta rute langsung posisi → rumah:
+menit sekarang, biasanya jam ini, lancar; jam paling lambat mulai jalan agar tiba di jam
+pulang; potongan macet terparah (garis merah di peta, diberi nama jalan bila ada kejadian
+di situ). Kejadian di jalan (kecelakaan, jalan ditutup, banjir, mogok, lajur ditutup,
+perbaikan jalan besar) dalam radius 15 km, bahasa Indonesia, yang di rute pulang paling
+atas; ubin kejadian TomTom juga tampil di peta. Semua hanya saat aplikasi sedang
+dilihat; gagal dicoba lagi paling cepat 3 menit. Ketersediaan SPKLU langsung dari TomTom
+**tidak** ada untuk Indonesia (dokumen cakupan EV TomTom: Indonesia hanya data statis),
+jadi daftar SPKLU tetap dari data aplikasi.
 
 **Ukur macet rute Ibu** (`js/ukurmacet.js`): kalau kunci ada, aplikasi sendiri mengukur
 waktu tempuh "biasanya" (pola historis TomTom, `departAt`) untuk 72 rute Ibu — rumah ↔
 8 tempat inti dua arah dan antar tempat inti — di 10 jam, hari kerja dan akhir pekan:
-1.440 ukuran per putaran, dicicil maks 300 per hari (60 per sesi), diulang tiap 28 hari,
+1.440 ukuran per putaran, dicicil maks 300 per hari dan maks 45% jatah Routing harian (60 per sesi), diulang tiap 28 hari,
 diabaikan setelah 90 hari. Hasilnya menggantikan asumsi Tangerang (TomTom Traffic Index
 tidak mengukur Tangerang) di semua hitungan: macet langsung > pola terukur > asumsi.
 Status dan tombol "Ukur macet rute Ibu sekarang" ada di Pengaturan anak. Format `departAt`
@@ -127,9 +142,9 @@ halaman login wifi bukan penolakan: sesi itu selesai dan dicoba lagi nanti. Ukur
 tak masuk akal (> 4 jam, atau > 5x waktu lancar) tidak dipakai. Kartu saran menyebut
 sumber macetnya: TomTom langsung, pola terukur, atau perkiraan umum.
 
-Bentuk URL ubin (`…/traffic/map/4/tile/flow/relative/{z}/{x}/{y}.png?key=…`) sudah diverifikasi terhadap dokumentasi resmi TomTom Traffic API v4 (Raster Flow Tiles): host tunggal `api.tomtom.com` (bukan subdomain a/b/c/d gaya OSM), gaya `relative`. Jatah gratis harian TomTom ada, tetapi besarannya berubah-ubah; periksa di dasbor TomTom.
+Bentuk URL ubin (`…/traffic/map/4/tile/flow/relative/{z}/{x}/{y}.png?key=…`) sudah diverifikasi terhadap dokumentasi resmi TomTom Traffic API v4 (Raster Flow Tiles): host tunggal `api.tomtom.com` (bukan subdomain a/b/c/d gaya OSM), gaya `relative`. Ubin kejadian: `…/traffic/map/4/tile/incidents/s0/{z}/{x}/{y}.png` (gaya s0 yang disarankan dokumentasi).
 
-Kunci yang sama juga dipakai untuk faktor macet langsung di perkiraan (menggantikan patokan jam sibuk statis) dan garis rute ke tempat yang disarankan di peta (ikut bentuk jalan sungguhan, bukan garis lurus) lewat TomTom Routing API — daftarkan produk *Routing* juga, bukan cuma *Traffic Flow* / *Map Display*, supaya dua fitur ini ikut jalan. Kedua pemanggilan itu memakai respons yang sama (satu permintaan per pasangan tempat, disimpan 10 menit), jadi garis rutenya tidak menambah pemakaian jatah harian.
+Kunci yang sama juga dipakai untuk faktor macet langsung di perkiraan (menggantikan patokan jam sibuk statis) dan garis rute ke tempat yang disarankan di peta (ikut bentuk jalan sungguhan, bukan garis lurus) lewat TomTom Routing API — daftarkan produk *Routing* dan *Traffic* (termasuk *Incidents*) juga, bukan cuma *Map Display*, supaya fitur-fitur ini ikut jalan (di dasbor TomTom baru biasanya semua produk sudah aktif untuk satu kunci — belum terverifikasi, cek di dasbor). Kedua pemanggilan itu memakai respons yang sama (satu permintaan per pasangan tempat, disimpan 10 menit), jadi garis rutenya tidak menambah pemakaian jatah. Macet langsung antar tempat disegarkan paling sering tiap 15 menit, hanya saat aplikasi dilihat.
 
 ### 3. Tautan pengaturan: tidak perlu mengetik apa pun di HP
 
@@ -209,7 +224,8 @@ app/
   js/acara.js         kalender acara dari pencarian web
   js/sinkron.js       sinkron catatan ke repo GitHub privat
   js/rekomendasi.js   "ke mana sekarang", uji macet parah, tujuan pilihan Ibu
-  js/lalulintas.js    macet langsung TomTom (pengali, garis rute, pola jam pulang), jatah harian bersama
+  js/lalulintas.js    macet langsung TomTom (pengali, garis rute, jalan pulang sekarang), jatah bulanan per layanan
+  js/kejadian.js      kejadian di jalan TomTom (kecelakaan, jalan ditutup, banjir) di sekitar Ibu
   js/ukurmacet.js     ukur pola macet historis rute Ibu (TomTom departAt), dipakai mesin
   js/jejak.js         zona per blok jam dari GPS
   js/belajar.js       belajar pola jam / hari / tempat dari catatan order per jam
@@ -228,6 +244,6 @@ tools/                sdk-entry.mjs, make-icons.py
 ```
 npm install
 npx playwright install chromium
-npm test                                      # 175 pemeriksaan
+npm test                                      # 190 pemeriksaan
 ORIG_HTML=/path/artifact-asli.html npm test   # + uji emas terhadap artifact satu-berkas
 ```

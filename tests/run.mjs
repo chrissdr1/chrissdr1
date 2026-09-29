@@ -982,13 +982,15 @@ async function main(){
     /* matikan pengukuran otomatis dan macet-langsung otomatis di halaman uji ini:
        jumlah permintaan di bawah harus bisa dihitung persis */
     await pu.evaluate(() => { window._ukurAsli = ukurMacet; window.ukurMacet = () => Promise.resolve(); window.lalulintasOtomatis = () => {}; UkurMacet.hapus(); localStorage.removeItem("tomtom-jatah"); });
+    const dasarN = nMinta + nLive;
 
     const tanpaKunci = await pu.evaluate(async () => { Peta.setKunciTomTom(""); return UkurMacet.jalankan({ jeda:0 }); });
     ok(tanpaKunci.alasan === "tanpa kunci" && nMinta === 0, "tanpa kunci TomTom: tidak ada permintaan", JSON.stringify({ tanpaKunci, nMinta }));
 
-    const hari1 = await pu.evaluate(async () => { Peta.setKunciTomTom("kunci-uji"); const h = await UkurMacet.jalankan({ jeda:0, perSesi:5000 }); return { h, s:UkurMacet.status(), sisa:Lalulintas.sisaJatah() }; });
-    ok(hari1.s.hariIni === 300 && hari1.s.segar === 300 && nMinta === 300 && /jatah harian/.test(hari1.h.alasan),
-       "satu hari: berhenti di 300 pengukuran (batas harian), semuanya tersimpan", JSON.stringify({ ...hari1, nMinta }));
+    const hari1 = await pu.evaluate(async () => { Peta.setKunciTomTom("kunci-uji"); const h = await UkurMacet.jalankan({ jeda:0, perSesi:5000 });
+      return { h, s:UkurMacet.status(), batas:UkurMacet.batasHarian(), jh:Lalulintas.jatahHari("rute") }; });
+    ok(hari1.batas === Math.min(300, Math.floor(hari1.jh * 0.45)) && hari1.s.hariIni === hari1.batas && hari1.s.segar === hari1.batas && nMinta === hari1.batas && /jatah harian/.test(hari1.h.alasan),
+       "satu hari: pengukuran berhenti di min(300, 45% jatah Routing harian), semuanya tersimpan", JSON.stringify({ ...hari1, nMinta }));
     ok(contohUrl.every(u => /departAt=\d{4}-\d\d-\d\dT\d\d%3A\d\d%3A00%2B07%3A00/.test(u) && /computeTravelTimeFor=all/.test(u) && !/routeRepresentation/.test(u)),
        "URL: departAt dengan zona +07:00, computeTravelTimeFor=all, tanpa geometri", contohUrl[0]);
     const tgl = await pu.evaluate(() => ({ hk:UkurMacet.tanggalUntuk("hk"), lb:UkurMacet.tanggalUntuk("lb"), dHk:new Date(UkurMacet.tanggalUntuk("hk") + "T00:00:00").getDay(), dLb:new Date(UkurMacet.tanggalUntuk("lb") + "T00:00:00").getDay() }));
@@ -1009,29 +1011,29 @@ async function main(){
     ok(Math.abs(pakai.fTng18 - 2.5) < 0.01 && Math.abs(pakai.fJkt8 - 2.0) < 0.01 && Math.abs(pakai.fTng12 - 1.4) < 0.05,
        "faktor wilayah dari median rute terukur menggantikan asumsi Tangerang/Jakarta", JSON.stringify(pakai));
 
-    /* hari berikutnya (pengukuran) tapi jatah TomTom HP hari ini tetap: berhenti di 1.100 total */
+    /* hari berikutnya (pengukuran) tapi jatah Routing HP hari ini tetap: berhenti tepat di jatah harian */
     const lanjut = await pu.evaluate(async () => {
       const hasil = [];
       for (let i = 0; i < 4; i++){
         const d = JSON.parse(localStorage.getItem("ukur-macet")); d.hari.tgl = "2000-01-0" + (i + 1); localStorage.setItem("ukur-macet", JSON.stringify(d));
         const h = await UkurMacet.jalankan({ jeda:0, perSesi:5000 }); hasil.push(h.diukur + ":" + h.alasan);
       }
-      return { hasil, s:UkurMacet.status(), sisa:Lalulintas.sisaJatah() };
+      return { hasil, s:UkurMacet.status(), sisa:Lalulintas.sisaJatah("rute"), st:Lalulintas.statusJatah("rute") };
     });
-    /* macet-langsung yang sempat jalan saat halaman dibuka (kunci dari halaman uji
-       sebelumnya) memakai jatah yang SAMA -- totalnya tetap tepat 1.100 */
-    ok(lanjut.sisa === 0 && nMinta + nLive === 1100 && lanjut.hasil.some(x => /jatah TomTom/.test(x)),
-       "batas jatah TomTom per HP 1.100/hari dihormati lintas sesi pengukuran (pengukuran + macet langsung)", JSON.stringify({ ...lanjut, nMinta, nLive }));
+    /* macet-langsung yang sempat jalan saat halaman dibuka memakai jatah yang SAMA */
+    ok(lanjut.sisa === 0 && lanjut.st.hari === lanjut.st.hariMaks && nMinta + nLive - dasarN === lanjut.st.hariMaks && lanjut.hasil.some(x => /jatah TomTom/.test(x)),
+       "jatah Routing harian HP dihormati lintas sesi pengukuran (pengukuran + macet langsung), tepat sebanyak jatahnya", JSON.stringify({ ...lanjut, nMinta, nLive, dasarN }));
 
     /* hari baru untuk TomTom: sisa antrean selesai, lalu kosong */
     const selesai = await pu.evaluate(async () => {
-      localStorage.removeItem("tomtom-jatah");
-      const d = JSON.parse(localStorage.getItem("ukur-macet")); d.hari.tgl = "2000-02-01"; localStorage.setItem("ukur-macet", JSON.stringify(d));
-      const a = await UkurMacet.jalankan({ jeda:0, perSesi:5000 });
-      const d2 = JSON.parse(localStorage.getItem("ukur-macet")); d2.hari.tgl = "2000-02-02"; localStorage.setItem("ukur-macet", JSON.stringify(d2));
-      const b = await UkurMacet.jalankan({ jeda:0, perSesi:5000 });
+      let hari = 0;
+      while (UkurMacet._antrean().length && hari < 20){
+        localStorage.removeItem("tomtom-jatah");
+        const d = JSON.parse(localStorage.getItem("ukur-macet")); d.hari.tgl = "2000-02-" + String(++hari).padStart(2, "0"); localStorage.setItem("ukur-macet", JSON.stringify(d));
+        await UkurMacet.jalankan({ jeda:0, perSesi:5000 });
+      }
       const c = await UkurMacet.jalankan({ jeda:0, perSesi:5000 });
-      return { a, b, c, s:UkurMacet.status(), antre:UkurMacet._antrean().length };
+      return { hari, c, s:UkurMacet.status(), antre:UkurMacet._antrean().length };
     });
     ok(selesai.s.segar === selesai.s.total && selesai.s.total === 1440 && selesai.antre === 0 && selesai.c.diukur === 0,
        "satu putaran lengkap 1.440 ukuran (72 rute x 10 jam x 2 jenis hari), lalu antrean kosong", JSON.stringify(selesai));
@@ -1077,26 +1079,28 @@ async function main(){
     const sebelum429 = nMinta; mode = "429";
     const s429 = await pu.evaluate(async () => {
       localStorage.removeItem("tomtom-jatah"); UkurMacet.hapus();
-      const lewatJeda = () => { const j = JSON.parse(localStorage.getItem("tomtom-jatah")); j.jedaSampai = 1; localStorage.setItem("tomtom-jatah", JSON.stringify(j)); };
+      const lewatJeda = () => { const j = JSON.parse(localStorage.getItem("tomtom-jatah")); j.p.rute.jedaSampai = 1; localStorage.setItem("tomtom-jatah", JSON.stringify(j)); };
       const h1 = await UkurMacet.jalankan({ jeda:0 });
-      const t1 = Lalulintas.tertahan(), sisa1 = Lalulintas.sisaJatah();
+      const t1 = Lalulintas.tertahan("rute"), sisa1 = Lalulintas.sisaJatah("rute"), insiden1 = Lalulintas.tertahan("insiden");
       const h1b = await UkurMacet.jalankan({ jeda:0 });            /* masih jeda: tidak ada permintaan */
       await Lalulintas.segarkan([[LOKMAP.kota, LOKMAP.bsd]]);       /* macet langsung juga menunggu */
       lewatJeda(); await UkurMacet.jalankan({ jeda:0 });
       lewatJeda(); const h3 = await UkurMacet.jalankan({ jeda:0 });
-      return { h1, t1, sisa1, h1b, h3, t3:Lalulintas.tertahan(), boleh:Lalulintas.bolehMinta(), sisa:Lalulintas.sisaJatah(), s:UkurMacet.status() };
+      return { h1, t1, sisa1, insiden1, h1b, h3, t3:Lalulintas.tertahan("rute"), boleh:Lalulintas.bolehMinta("rute"), sisa:Lalulintas.sisaJatah("rute"),
+               insiden3:Lalulintas.tertahan("insiden"), s:UkurMacet.status() };
     });
-    ok(s429.t1 === "jeda" && s429.sisa1 > 1000 && /jeda/.test(s429.h1.alasan) && s429.h1b.diukur === 0,
+    ok(s429.t1 === "jeda" && s429.sisa1 > 100 && s429.insiden1 === null && /jeda/.test(s429.h1.alasan) && s429.h1b.diukur === 0,
        "balasan 429 pertama: jeda 5 menit (bukan langsung habis sehari), semua permintaan menunggu", JSON.stringify(s429));
-    ok(nMinta - sebelum429 === 3 && s429.t3 === "stop" && !s429.boleh && s429.sisa === 0 && !s429.s.berhenti,
-       "3x 429 berturut-turut: semua permintaan TomTom berhenti sampai besok (pengukuran tidak ditandai rusak)", JSON.stringify({ s429, n:nMinta - sebelum429 }));
+    ok(nMinta - sebelum429 === 3 && s429.t3 === "stop" && !s429.boleh && s429.sisa === 0 && !s429.s.berhenti && s429.insiden3 === null,
+       "3x 429 berturut-turut: Routing berhenti sampai besok (layanan kejadian jalan tidak ikut; pengukuran tidak ditandai rusak)", JSON.stringify({ s429, n:nMinta - sebelum429 }));
     mode = "ok";
     const reset429 = await pu.evaluate(async () => {
-      localStorage.setItem("tomtom-jatah", JSON.stringify({ tgl:iso(new Date()), n:5, stop:false, n429:2, jedaSampai:1 }));
+      const t = iso(new Date());
+      localStorage.setItem("tomtom-jatah", JSON.stringify({ v:2, bln:t.slice(0, 7), p:{ rute:{ bulan:5, tgl:t, hari:5, stop:false, n429:2, jedaSampai:1 } } }));
       await UkurMacet.jalankan({ jeda:0, perSesi:1 });
-      return JSON.parse(localStorage.getItem("tomtom-jatah"));
+      return JSON.parse(localStorage.getItem("tomtom-jatah")).p.rute;
     });
-    ok(reset429.n429 === 0 && !reset429.stop, "jawaban sukses menghapus hitungan 429", JSON.stringify(reset429));
+    ok(reset429.n429 === 0 && !reset429.stop && reset429.hari === 6 && reset429.bulan === 6, "jawaban sukses menghapus hitungan 429", JSON.stringify(reset429));
 
     /* sinyal putus / 5xx / halaman login wifi: sesi selesai, TIDAK berhenti selamanya */
     for (const [md, pola] of [["putus", /Tidak tersambung/], ["500", /gangguan/], ["html", /bukan dari TomTom/]]){
@@ -1144,15 +1148,16 @@ async function main(){
     const t3 = await pu2.evaluate(() => UkurMacet.jalankan({ jeda:0, perSesi:5000 }));
     pu.off("request", catat); pu2.off("request", catat);
     const sDua = await pu2.evaluate(() => { UkurMacet.muatUlang(); return UkurMacet.status(); });
-    ok(nMinta - n2 === 300 && urlDua.size === 300 && [t1.alasan, t2.alasan].includes("sedang berjalan") && sDua.segar === 300 && /jatah harian/.test(t3.alasan),
-       "dua tab bersamaan: hanya satu yang mengukur, total tetap 300/hari, tidak ada ukuran dobel", JSON.stringify({ t1, t2, t3, n:nMinta - n2, unik:urlDua.size, sDua }));
+    ok(nMinta - n2 === sDua.maksHarian && urlDua.size === sDua.maksHarian && [t1.alasan, t2.alasan].includes("sedang berjalan") && sDua.segar === sDua.maksHarian && /jatah harian/.test(t3.alasan),
+       "dua tab bersamaan: hanya satu yang mengukur, total tetap sebatas jatah harian, tidak ada ukuran dobel", JSON.stringify({ t1, t2, t3, n:nMinta - n2, unik:urlDua.size, sDua }));
 
     const nL0 = nLive;
     await pu.evaluate(() => localStorage.removeItem("tomtom-jatah"));
     const lari = u => u.evaluate(async () => { const url = Lalulintas.urlRute(LOKMAP.kota, LOKMAP.bsd, "kunci-uji", {}); let n = 0;
       while (true){ try { await Lalulintas.minta(url); n++; } catch (e) { return n; } } });
     const [a1, a2] = await Promise.all([lari(pu), lari(pu2)]);
-    ok(a1 + a2 === 1100 && nLive - nL0 === 1100, "dua tab menguras jatah bersamaan: tepat 1.100, tidak lebih", JSON.stringify({ a1, a2, n:nLive - nL0 }));
+    const jh = await pu.evaluate(() => Lalulintas.jatahHari("rute"));
+    ok(a1 + a2 === jh && nLive - nL0 === jh && jh > 0, "dua tab menguras jatah bersamaan: tepat sebanyak jatah Routing hari ini, tidak lebih", JSON.stringify({ a1, a2, n:nLive - nL0, jh }));
     await pu2.close();
 
     /* tombol ditekan saat sedang mengukur; Simpan dengan kolom kunci kosong */
@@ -1179,6 +1184,138 @@ async function main(){
     ok(asumsi.f === 1.6 && asumsi.fj === 2.2 && asumsi.m === null, "tanpa pengukuran: kembali ke asumsi (1,6x Tangerang, 2,2x Jakarta sore)", JSON.stringify(asumsi));
     await pu.evaluate(() => { Peta.setKunciTomTom(""); localStorage.removeItem("tomtom-jatah"); });
     await pu.close();
+  }
+
+  console.log("18. TomTom langsung: jatah bulanan per layanan, jalan pulang sekarang, kejadian di jalan");
+  {
+    const pj = await ctx.newPage();
+    await pj.clock.setFixedTime(new Date("2026-10-06T18:40:00+07:00"));   /* Selasa, jam pulang kantor */
+    const err18 = []; pj.on("pageerror", e => err18.push(e.message));
+    await pj.route("**/api.tomtom.com/traffic/map/**", r => r.fulfill({ status:200, contentType:"image/png", body:Buffer.from("89504e470d0a1a0a0000000d4948445200000001000000010806000000", "hex") }));
+    await pj.goto(url + "index.html?tanpa-mulai", { waitUntil:"load" });
+    await pj.waitForFunction(() => document.querySelector("#n-steps .step"));
+    await pj.evaluate(() => { window.ukurMacet = () => Promise.resolve(); window.lalulintasOtomatis = () => {}; UkurMacet.hapus(); localStorage.removeItem("tomtom-jatah"); });
+    const T = await pj.evaluate(() => ({ cbd:[LOKMAP.cbd.lat, LOKMAP.cbd.lon], rumah:[RUMAH.lat, RUMAH.lon] }));
+    const garis = (a, b, n) => Array.from({ length:n }, (_, i) => [a[0] + (b[0] - a[0]) * i / (n - 1), a[1] + (b[1] - a[1]) * i / (n - 1)]);
+    const ruteCbd = garis(T.cbd, T.rumah, 20);
+    let nPulang = 0, nKej = 0, nLain = 0, urlPulang = "", urlKej = "", modePulang = "ok";
+    await pj.route("**/api.tomtom.com/routing/**", r => {
+      const u = r.request().url();
+      if (!/sectionType=traffic/.test(u)){ nLain++; return r.fulfill({ status:200, contentType:"application/json", body:JSON.stringify({ routes:[{ summary:{ travelTimeInSeconds:1200, noTrafficTravelTimeInSeconds:1000 } }] }) }); }
+      nPulang++; urlPulang = u;
+      if (modePulang === "500") return r.fulfill({ status:503, body:"" });
+      const m = u.match(/calculateRoute\/([-\d.]+),([-\d.]+):([-\d.]+),([-\d.]+)\//);
+      const pts = garis([+m[1], +m[2]], [+m[3], +m[4]], 20).map(([la, lo]) => ({ latitude:la, longitude:lo }));
+      r.fulfill({ status:200, contentType:"application/json", body:JSON.stringify({ routes:[{
+        summary:{ lengthInMeters:21400, travelTimeInSeconds:3600, trafficDelayInSeconds:900, noTrafficTravelTimeInSeconds:1800, historicTrafficTravelTimeInSeconds:2700, liveTrafficIncidentsTravelTimeInSeconds:3500 },
+        legs:[{ points:pts }],
+        sections:[{ startPointIndex:0, endPointIndex:19, sectionType:"TRAVEL_MODE", travelMode:"car" },
+                  { startPointIndex:5, endPointIndex:9, sectionType:"TRAFFIC", simpleCategory:"JAM", effectiveSpeedInKmh:12, delayInSeconds:540, magnitudeOfDelay:3 },
+                  { startPointIndex:12, endPointIndex:14, sectionType:"TRAFFIC", simpleCategory:"JAM", effectiveSpeedInKmh:25, delayInSeconds:180, magnitudeOfDelay:1 }] }] }) });
+    });
+    const titikKe = (i) => ruteCbd[i];
+    await pj.route("**/api.tomtom.com/traffic/services/5/incidentDetails**", r => {
+      nKej++; urlKej = r.request().url();
+      const gj = (pts) => ({ type:"LineString", coordinates:pts.map(([la, lo]) => [lo, la]) });
+      r.fulfill({ status:200, contentType:"application/json", body:JSON.stringify({ incidents:[
+        { type:"Feature", geometry:gj([titikKe(6), titikKe(7)]), properties:{ id:"tutup1", iconCategory:8, magnitudeOfDelay:4, events:[{ description:"Jalan ditutup", code:401, iconCategory:8 }], from:"Grogol", to:"Kalideres", length:1200, delay:720, roadNumbers:["Jl. Daan Mogot"] } },
+        { type:"Feature", geometry:{ type:"Point", coordinates:[T.cbd[1] + 0.03, T.cbd[0] - 0.02] }, properties:{ id:"tabrak1", iconCategory:1, magnitudeOfDelay:2, events:[{ description:"Kecelakaan", code:201, iconCategory:1 }], from:"Semanggi", to:"Senayan", delay:300, roadNumbers:[] } },
+        { type:"Feature", geometry:{ type:"Point", coordinates:[T.cbd[1] - 0.01, T.cbd[0] + 0.01] }, properties:{ id:"kecil1", iconCategory:9, magnitudeOfDelay:0, events:[{ description:"Perbaikan jalan", code:701, iconCategory:9 }], from:"A", to:"B", delay:0 } },
+        { type:"Feature", geometry:{ type:"Point", coordinates:[T.cbd[1] - 0.45, T.cbd[0] + 0.1] }, properties:{ id:"banjirjauh", iconCategory:11, magnitudeOfDelay:4, events:[{ description:"Banjir", code:901, iconCategory:11 }], from:"Jauh", to:"Sekali", delay:900 } }
+      ] }) });
+    });
+
+    /* Jatah bulanan: hitung ulang tiap bulan, jatah harian = sisa / sisa hari, maks 2x rata-rata */
+    const jb = await pj.evaluate(() => {
+      const set = (o) => localStorage.setItem("tomtom-jatah", JSON.stringify(o));
+      set({ v:2, bln:"2026-09", p:{ rute:{ bulan:9999, tgl:"2026-09-30", hari:500, stop:true, n429:3, jedaSampai:0 } } });
+      const ganti = Lalulintas.statusJatah("rute"), batasUkur = UkurMacet.batasHarian();
+      set({ v:2, bln:"2026-10", p:{ rute:{ bulan:9000, tgl:"2026-10-06", hari:0, stop:false, n429:0, jedaSampai:0 } } });
+      const sisaSedikit = Lalulintas.jatahHari("rute");
+      set({ v:2, bln:"2026-10", p:{ rute:{ bulan:10000, tgl:"2026-10-05", hari:40, stop:false, n429:0, jedaSampai:0 } } });
+      const habis = Lalulintas.tertahan("rute"), insiden = Lalulintas.statusJatah("insiden");
+      localStorage.removeItem("tomtom-jatah");
+      return { ganti, batasUkur, sisaSedikit, habis, insiden };
+    });
+    /* 6 Okt: 31 hari, sisa 26 hari termasuk hari ini */
+    ok(jb.ganti.bulan === 0 && jb.ganti.tahan === null && jb.ganti.hariMaks === Math.min(Math.floor(20000 / 31), Math.floor(10000 / 26)) && jb.batasUkur === Math.min(300, Math.floor(jb.ganti.hariMaks * 0.45)),
+       "bulan baru: hitungan Routing mulai dari 0, jatah harian = 10.000 / 26 hari sisa (384), pengukuran maks 45% (172)", JSON.stringify(jb));
+    ok(jb.sisaSedikit === Math.floor(1000 / 26) && jb.habis === "penuh" && jb.insiden.bulanMaks === 1200 && jb.insiden.hariMaks === Math.min(Math.floor(2400 / 31), Math.floor(1200 / 26)),
+       "sisa bulan sedikit: jatah harian ikut kecil; 10.000 terpakai = berhenti sampai bulan depan; kejadian jalan punya jatah sendiri (1.200/bulan)", JSON.stringify(jb));
+
+    /* Jalan pulang: di CBD jam 18:40 (Jakarta, aturan 20:00) diambil sendiri */
+    await pj.evaluate(() => { Peta.setKunciTomTom("kunci-uji"); const s = document.getElementById("n-lok"); s.value = "cbd"; s.dispatchEvent(new Event("change", { bubbles:true }));
+      document.getElementById("n-pulang").value = "21.5"; runNow(); });
+    await pj.waitForFunction(() => /menit ke rumah/.test(document.getElementById("jalan-pulang").textContent) && /Jalan ditutup/.test(document.getElementById("jalan-kejadian").textContent), null, { timeout:5000 });
+    const kartu = await pj.evaluate(() => ({ hidden:document.getElementById("jalan").hidden, p:document.getElementById("jalan-pulang").textContent,
+      k:[...document.querySelectorAll("#jalan-kejadian .jl-kej")].map(x => x.textContent),
+      est:Math.round(jamTempuhRumah(LOKMAP.cbd, jamSekarangTepat(), LOKMAP.cbd.home, "hk") * 60),
+      rute:Lalulintas.statusJatah("rute"), ins:Lalulintas.statusJatah("insiden") }));
+    const lebihLama = 60 - kartu.est >= 10;
+    ok(!kartu.hidden && /±60 menit ke rumah/.test(kartu.p) && /biasanya jam ini ±45/.test(kartu.p) && /lancar ±30/.test(kartu.p) && /21,4 km/.test(kartu.p) &&
+       /Lebih lama/.test(kartu.p) === lebihLama,
+       "kartu jalan pulang: 60 menit sekarang, biasanya 45, lancar 30, 21,4 km; peringatan 'lebih lama' hanya bila >= 10 menit di atas hitungan aplikasi", JSON.stringify(kartu));
+    ok(/mulai jalan paling lambat ±20:15/.test(kartu.p) && /\+9 menit/.test(kartu.p) && /Jl\. Daan Mogot/.test(kartu.p),
+       "jalan pulang: mulai paling lambat 20:15 (21:30 - 60 mnt - 15 mnt), macet terparah +9 menit diberi nama jalan dari kejadian di dekatnya", JSON.stringify(kartu.p));
+    ok(kartu.k.length === 2 && /Jalan ditutup/.test(kartu.k[0]) && /di rute pulang/.test(kartu.k[0]) && /tertahan ±12 menit/.test(kartu.k[0]) && /Kecelakaan/.test(kartu.k[1]) && !/di rute pulang/.test(kartu.k[1]),
+       "kejadian: jalan ditutup di rute pulang paling atas, kecelakaan di dekat; perbaikan jalan kecil dan banjir 40 km tidak ditampilkan", JSON.stringify(kartu.k));
+    const uK = new URL(urlKej), bb = uK.searchParams.get("bbox").split(",").map(Number);
+    const luas = (bb[2] - bb[0]) * 111.32 * Math.cos(((bb[1] + bb[3]) / 2) * Math.PI / 180) * (bb[3] - bb[1]) * 110.57;
+    ok(luas <= 10000 && uK.searchParams.get("language") === "id-ID" && uK.searchParams.get("categoryFilter") === "1,3,7,8,9,11,14" && uK.searchParams.get("timeValidityFilter") === "present" &&
+       /^\{incidents\{type,geometry\{type,coordinates\},properties\{id,iconCategory,magnitudeOfDelay,events\{description,code,iconCategory\}/.test(uK.searchParams.get("fields")) &&
+       /traffic=true/.test(urlPulang) && /sectionType=traffic/.test(urlPulang) && /computeTravelTimeFor=all/.test(urlPulang) && !/departAt/.test(urlPulang),
+       "permintaan sesuai dokumentasi: kotak kejadian " + Math.round(luas) + " km2 (maks 10.000), id-ID, kategori, fields; rute pulang langsung + potongan macet", JSON.stringify({ urlKej, urlPulang }));
+    ok(kartu.ins.hari === 1 && kartu.rute.hari === nPulang + nLain && nPulang === 1,
+       "kejadian jalan memakai jatahnya sendiri; rute pulang memakai jatah Routing", JSON.stringify({ ins:kartu.ins, rute:kartu.rute, nPulang, nLain }));
+    await pj.evaluate(() => { runNow(); runNow(); runNow(); });
+    await pj.waitForTimeout(300);
+    ok(nPulang === 1 && nKej === 1, "hitung ulang berkali-kali tidak meminta ulang (disimpan 10/20 menit)", JSON.stringify({ nPulang, nKej }));
+
+    /* peta: garis merah macet di rute pulang, penanda kejadian, ubin kejadian */
+    await pj.click("#peta-toggle"); await pj.waitForTimeout(400);
+    await pj.evaluate(() => runNow()); await pj.waitForTimeout(200);
+    const peta = await pj.evaluate(() => ({ macet:document.querySelectorAll('#peta path[stroke="#AB0000"]').length, ringan:document.querySelectorAll('#peta path[stroke="#EB4C13"]').length,
+      kejadian:document.querySelectorAll('#peta path[fill="#AB0000"]').length, ubin:!!document.querySelector('#peta img[src*="/tile/incidents/s0/"]') }));
+    ok(peta.macet === 1 && peta.ringan === 1 && peta.kejadian === 2 && peta.ubin, "peta: potongan macet parah dan jalan ditutup digambar merah, ubin kejadian TomTom terpasang", JSON.stringify(peta));
+
+    /* siang di BSD: belum waktunya, tidak diambil; tombol mengambil sekarang */
+    await pj.clock.setFixedTime(new Date("2026-10-06T13:00:00+07:00"));
+    const n0 = nPulang;
+    await pj.evaluate(() => { const s = document.getElementById("n-lok"); s.value = "bsd"; s.dispatchEvent(new Event("change", { bubbles:true })); runNow(); });
+    await pj.waitForTimeout(300);
+    const siang = await pj.evaluate(() => document.getElementById("jalan-pulang").textContent);
+    ok(nPulang === n0 && /muncul sendiri mulai/.test(siang), "siang, jauh dari jam pulang: jalan pulang tidak diambil sendiri (hemat jatah)", JSON.stringify({ siang, n:nPulang - n0 }));
+    await pj.click("#jalan-cek");
+    await pj.waitForFunction(() => /menit ke rumah/.test(document.getElementById("jalan-pulang").textContent), null, { timeout:5000 });
+    ok(nPulang === n0 + 1, "tombol 'Cek jalan pulang sekarang' mengambil saat itu juga", JSON.stringify({ n:nPulang - n0 }));
+
+    /* gagal: tidak dicoba di setiap hitung ulang (paling cepat 3 menit lagi) */
+    await pj.clock.setFixedTime(new Date("2026-10-06T19:30:00+07:00"));
+    modePulang = "500"; const n1 = nPulang;
+    await pj.evaluate(() => { const s = document.getElementById("n-lok"); s.value = "jakbar"; s.dispatchEvent(new Event("change", { bubbles:true })); });
+    await pj.waitForTimeout(400);
+    await pj.evaluate(() => { for (let i = 0; i < 5; i++) runNow(); });
+    await pj.waitForTimeout(300);
+    const gagal = await pj.evaluate(() => document.getElementById("jalan-pulang").textContent);
+    ok(nPulang === n1 + 1 && /belum bisa diambil/.test(gagal), "TomTom gagal: satu permintaan saja, pesan jelas, dicoba lagi nanti (bukan tiap hitung ulang)", JSON.stringify({ n:nPulang - n1, gagal }));
+    await pj.clock.setFixedTime(new Date("2026-10-06T19:34:00+07:00"));
+    await pj.evaluate(() => runNow()); await pj.waitForTimeout(300);
+    ok(nPulang === n1 + 2, "3 menit kemudian dicoba lagi sekali", JSON.stringify({ n:nPulang - n1 }));
+    modePulang = "ok";
+
+    /* aplikasi tidak sedang dilihat: tidak ada permintaan sama sekali */
+    const nSemua = nPulang + nKej + nLain;
+    await pj.evaluate(() => { Object.defineProperty(document, "hidden", { get:() => true, configurable:true });
+      window.lalulintasOtomatis = window._llAsli || window.lalulintasOtomatis;
+      const s = document.getElementById("n-lok"); s.value = "karawaci"; s.dispatchEvent(new Event("change", { bubbles:true })); runNow(); });
+    await pj.waitForTimeout(1600);
+    ok(nPulang + nKej + nLain === nSemua, "aplikasi di latar belakang: tidak ada permintaan TomTom", JSON.stringify({ n:nPulang + nKej + nLain - nSemua }));
+
+    /* tanpa kunci: kartu tidak tampil */
+    const tanpa = await pj.evaluate(() => { Peta.setKunciTomTom(""); runNow(); return document.getElementById("jalan").hidden; });
+    ok(tanpa && err18.length === 0, "tanpa kunci TomTom: kartu jalan tidak tampil; tidak ada galat halaman", JSON.stringify({ tanpa, err18 }));
+    await pj.evaluate(() => localStorage.removeItem("tomtom-jatah"));
+    await pj.close();
   }
 
   console.log("15. Logika saran tempat (regresi temuan audit)");
