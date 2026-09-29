@@ -1627,7 +1627,10 @@ el("save").addEventListener("click", function(){
   if (zona) rec.blokZona = zona;
   /* Jendela kerja hari itu (dari rencana/Mulai hari) -- penyebut untuk Belajar:
      blok pertama/terakhir yang hanya separuh dikerjakan tidak dihitung penuh. */
-  if (PLAN && PLAN.date === tgl && PLAN.pulang > PLAN.keluar) rec.jendela = { keluar:PLAN.keluar, pulang:PLAN.pulang, zona:PLAN.zona };
+  if (PLAN && PLAN.date === tgl && PLAN.pulang > PLAN.keluar){
+    rec.jendela = { keluar:PLAN.keluar, pulang:PLAN.pulang, zona:PLAN.zona, rehat:PLAN.rehat, bat:PLAN.bat };
+    if (MULAI_HARI && MULAI_HARI.date === tgl && MULAI_HARI.soc > 0) rec.jendela.soc = MULAI_HARI.soc;
+  }
   rec.diubah = new Date().toISOString();   /* untuk penggabungan saat sinkron */
   rows = rows.filter(function(r){ return r.id!==rec.id; }); rows.push(rec); sortRows();
   var tersimpan = lsWrite(rows); renderAll();

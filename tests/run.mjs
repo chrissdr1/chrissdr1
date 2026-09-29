@@ -850,19 +850,25 @@ async function main(){
       const kosong = Belajar.hitung([]);
       const nol = BASE.every(b => Belajar.pengali(1, b.n) === 1) && Belajar.tempat("karawaci") === 1;
       /* n hari kerja (Selasa-Kamis), 09:30-20:00: Peak sore 2x perkiraan, Siang 0,5x, lainnya pas. */
-      function hari(n, faktor, tempat, mulaiTgl){
+      /* Order buatan = perkiraan mesin untuk jam BENAR-BENAR menyetir hari itu
+         (Belajar.jamPerBlok: istirahat & ngecas dikeluarkan) x faktor pola. */
+      function hari(n, faktor, tempat, mulaiTgl, opsi){
+        opsi = opsi || {};
         const rows = [], d0 = new Date(mulaiTgl + "T00:00:00");
-        for (let i = 0, k = 0; rows.length < n; i++){
+        for (let i = 0; rows.length < n; i++){
           const d = new Date(d0.getTime() + i * 864e5); if ([2, 3, 4].indexOf(d.getDay()) < 0) continue;
           const tgl = iso(d); if (HOLI[tgl]) continue;
-          const ctx = dayCtx(tgl), jd = { keluar:9.5, pulang:20, zona:"tng" }, blok = {}, blokZona = {};
+          const ctx = dayCtx(tgl), jd = Object.assign({ keluar:9.5, pulang:20, zona:"tng" }, opsi.jendela || {}), blok = {}, blokZona = {};
+          const jamB = Belajar.jamPerBlok({ jendela:jd }, jd, ctx);
+          let total = 0;
           BASE.forEach(b => {
-            const jam = Math.max(0, Math.min(b.e, jd.pulang) - Math.max(b.s, jd.keluar)); if (jam < 0.25) return;
+            const jam = jamB[b.n] || 0; if (jam < 0.25) return;
             const t = tempat ? LOKMAP[tempat] : null;
             blok[b.n] = Math.round(Belajar.perJam(b, ctx, t, "tng") * jam * (faktor[b.n] || 1) * 10) / 10;
+            total += blok[b.n];
             if (t) blokZona[b.n] = tempat;
           });
-          rows.push({ id:tgl, blok, blokZona, jendela:jd, trip:0, dpt:1, kmt:1 });
+          rows.push(opsi.totalSaja ? { id:tgl, jendela:jd, trip:total, dpt:1, kmt:1 } : { id:tgl, blok, blokZona, jendela:jd, trip:0, dpt:1, kmt:1 });
         }
         return rows;
       }
@@ -882,13 +888,25 @@ async function main(){
       Belajar.hitung(hari(12, f16, "karawaci", "2026-06-01").concat(hari(12, {}, "bsd", "2026-08-03")));
       const tmp = { f:Belajar.tempat("karawaci"), bsd:Belajar.tempat("bsd"), bobot:bobotTempat("karawaci", "Siang"), lain:Belajar.tempat("alsut") };
       Belajar.hitung([]);
-      return { nol, sedikit, banyak, netBelajar, netAwal, tmp };
+      /* Double check #3: istirahat 10:30-15:00, order PAS perkiraan -> tidak ada yang terbaca sepi */
+      const pas = (rows) => { Belajar.hitung(rows); const m = BASE.map(b => Belajar.pengali(2, b.n)); Belajar.hitung([]); return m; };
+      const istirahatBlok = pas(hari(20, {}, null, "2026-06-01", { jendela:{ keluar:5.25, pulang:21.5, rehat:[10.5, 15] } }));
+      const istirahatTotal = pas(hari(20, {}, null, "2026-06-01", { jendela:{ keluar:5.25, pulang:21.5, rehat:[10.5, 15] }, totalSaja:true }));
+      /* salah ketik: 10 hari normal + 1 hari Malam = 40 */
+      const normal = hari(10, {}, null, "2026-06-01"), ketik = hari(1, {}, null, "2026-09-01")[0];
+      ketik.blok.Malam = 40;
+      Belajar.hitung(normal.concat([ketik])); const malam40 = Belajar.pengali(2, "Malam"); Belajar.hitung([]);
+      const nolSatu = hari(1, { "Siang":0 }, null, "2026-06-01"); Belajar.hitung(nolSatu); const siang0 = Belajar.pengali(2, "Siang"); Belajar.hitung([]);
+      return { nol, sedikit, banyak, netBelajar, netAwal, tmp, istirahatBlok, istirahatTotal, malam40, siang0 };
     });
     ok(bel.nol, "tanpa data: semua pengali belajar = 1 (angka awal)", JSON.stringify(bel));
     ok(bel.banyak.ps > 1.6 && bel.banyak.si < 0.65 && Math.abs(bel.banyak.pa - 1) < 0.1 && Math.abs(bel.banyak.pr - 1) < 0.1,
        "20 hari: pola 2x sore / 0,5x siang ditemukan kembali, blok lain tetap ±1", JSON.stringify(bel.banyak));
     ok(bel.sedikit.ps < bel.banyak.ps && bel.sedikit.si > bel.banyak.si && bel.sedikit.ps < 1.6,
        "1 hari saja: masih ditarik ke angka awal (tidak langsung percaya)", JSON.stringify({ sedikit:bel.sedikit, banyak:bel.banyak }));
+    ok(bel.istirahatBlok.every(m => Math.abs(m - 1) < 0.08) && bel.istirahatTotal.every(m => Math.abs(m - 1) < 0.08),
+       "istirahat 10:30-15:00 dan jam ngecas tidak terbaca 'sepi' (order pas perkiraan -> semua pengali ±1)", JSON.stringify({ blok:bel.istirahatBlok.map(m => +m.toFixed(2)), total:bel.istirahatTotal.map(m => +m.toFixed(2)) }));
+    ok(bel.malam40 < 1.3 && bel.siang0 === 1, "salah ketik '40' tidak menjenuhkan pola; satu hari '0' belum dipakai (minimal 3 hari)", JSON.stringify({ malam40:bel.malam40, siang0:bel.siang0 }));
     ok(bel.netBelajar > bel.netAwal, "hasil belajar dipakai perkiraan bersih (sore ramai -> bersih sore naik)", `${Math.round(bel.netAwal)} -> ${Math.round(bel.netBelajar)}`);
     ok(bel.tmp.f > 1.1 && bel.tmp.bsd < 0.95 && bel.tmp.f / bel.tmp.bsd > 1.35 && bel.tmp.lain === 1,
        "tempat yang lebih ramai (zona GPS) terpisah dari yang biasa; tempat tanpa data tetap 1", JSON.stringify(bel.tmp));
