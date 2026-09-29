@@ -62,24 +62,58 @@ var Lalulintas = (function(){
      Gratis TomTom: 2.500 permintaan non-ubin per hari PER KUNCI, dipakai
      bersama Routing / macet langsung / pengukuran. Kunci yang sama bisa
      dipakai di dua HP (Ibu dan anak), jadi tiap HP dibatasi 1.100 per hari.
-     Balasan 429 (jatah habis) menghentikan SEMUA permintaan sampai besok. */
-  var LS_JATAH = "tomtom-jatah", MAKS_HARIAN = 1100;
+     Hitungannya dikunci lintas tab (navigator.locks): aplikasi terpasang +
+     tab browser yang terbuka bersamaan tidak boleh sama-sama menghabiskan.
+     Balasan 429: menurut dokumen TomTom itu tanda terlalu banyak permintaan
+     per DETIK, belum tentu jatah harian habis -- jadi jeda 5 menit dulu;
+     baru kalau 3 kali 429 tanpa jawaban sukses di antaranya, semua
+     permintaan berhenti sampai besok. */
+  var LS_JATAH = "tomtom-jatah", MAKS_HARIAN = 1100, JEDA_429 = 5 * 60e3, BATAS_429 = 3;
   function jatah(){
     var j = null; try { j = JSON.parse(localStorage.getItem(LS_JATAH) || "null"); } catch (e) {}
     var hari = iso(new Date());
-    if (!j || j.tgl !== hari) j = { tgl:hari, n:0, stop:false };
+    if (!j || j.tgl !== hari) j = { tgl:hari, n:0, stop:false, n429:0, jedaSampai:0 };
     return j;
   }
   function simpanJatah(j){ try { localStorage.setItem(LS_JATAH, JSON.stringify(j)); } catch (e) {} }
-  function bolehMinta(){ var j = jatah(); return !j.stop && j.n < MAKS_HARIAN; }
+  /* null = boleh; selain itu alasannya: "stop" (sampai besok), "penuh"
+     (1.100 hari ini), "jeda" (menunggu setelah 429). */
+  function tertahan(j){
+    j = j || jatah();
+    if (j.stop) return "stop";
+    if (j.n >= MAKS_HARIAN) return "penuh";
+    if (j.jedaSampai && Date.now() < j.jedaSampai) return "jeda";
+    return null;
+  }
+  function bolehMinta(){ return tertahan() === null; }
   function sisaJatah(){ var j = jatah(); return j.stop ? 0 : Math.max(0, MAKS_HARIAN - j.n); }
-  /* Promise<Response>; menolak (tanpa menghubungi TomTom) kalau jatah habis. */
+  /* fn dijalankan eksklusif lintas tab bila browser mendukung Web Locks. */
+  function eksklusif(nama, fn){
+    if (typeof navigator !== "undefined" && navigator.locks && navigator.locks.request)
+      return navigator.locks.request(nama, function(){ return fn(); });
+    return Promise.resolve().then(fn);
+  }
+  /* Promise<Response>; menolak (tanpa menghubungi TomTom) kalau jatah habis
+     atau sedang jeda. */
   function minta(url){
-    var j = jatah();
-    if (j.stop || j.n >= MAKS_HARIAN) return Promise.reject(new Error("jatah"));
-    j.n++; simpanJatah(j);
-    return fetchTimeout(url, {}, 10000).then(function(r){
-      if (r.status === 429){ var jj = jatah(); jj.stop = true; simpanJatah(jj); }
+    return eksklusif("tomtom-jatah", function(){
+      var j = jatah();
+      if (tertahan(j)) return false;
+      j.n++; simpanJatah(j); return true;
+    }).then(function(boleh){
+      if (!boleh) throw new Error("jatah");
+      return fetchTimeout(url, {}, 10000);
+    }).then(function(r){
+      if (r.status === 429 || (r.ok && jatah().n429)){
+        return eksklusif("tomtom-jatah", function(){
+          var jj = jatah();
+          if (r.status === 429){
+            jj.n429 = (jj.n429 || 0) + 1;
+            if (jj.n429 >= BATAS_429) jj.stop = true; else jj.jedaSampai = Date.now() + JEDA_429;
+          } else jj.n429 = 0;
+          simpanJatah(jj);
+        }).then(function(){ return r; });
+      }
       return r;
     });
   }
@@ -172,5 +206,5 @@ var Lalulintas = (function(){
 
   return { pengaliCache:pengaliCache, poinCache:poinCache, segarkan:segarkan, aktif:aktif,
            pulangBiasa:pulangBiasa, pulangBiasaCache:pulangBiasaCache,
-           urlRute:urlRute, minta:minta, bolehMinta:bolehMinta, sisaJatah:sisaJatah, MAKS_HARIAN:MAKS_HARIAN };
+           urlRute:urlRute, minta:minta, bolehMinta:bolehMinta, tertahan:tertahan, sisaJatah:sisaJatah, MAKS_HARIAN:MAKS_HARIAN };
 })();

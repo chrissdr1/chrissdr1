@@ -110,7 +110,9 @@ Tanpa kunci, tombol **Lihat kemacetan di Google Maps** membuka Google Maps denga
 permintaan non-ubin per hari per kunci (dipakai bersama semua API), 50.000 ubin peta
 per hari, 5 permintaan per detik; lewat batas dijawab 429 (tanpa kartu kredit tidak
 ada tagihan). Aplikasi membatasi dirinya **1.100 permintaan non-ubin per hari per HP**
-(kunci bisa dipakai di dua HP) dan berhenti total sampai besok begitu TomTom menjawab 429.
+(kunci bisa dipakai di dua HP), dihitung bersama lintas tab (aplikasi terpasang + browser
+tidak menghitung dobel). Balasan 429 (menurut TomTom: terlalu banyak per detik) = jeda
+5 menit; 3 kali 429 tanpa sukses di antaranya = berhenti total sampai besok.
 
 **Ukur macet rute Ibu** (`js/ukurmacet.js`): kalau kunci ada, aplikasi sendiri mengukur
 waktu tempuh "biasanya" (pola historis TomTom, `departAt`) untuk 72 rute Ibu — rumah ↔
@@ -119,8 +121,11 @@ waktu tempuh "biasanya" (pola historis TomTom, `departAt`) untuk 72 rute Ibu —
 diabaikan setelah 90 hari. Hasilnya menggantikan asumsi Tangerang (TomTom Traffic Index
 tidak mengukur Tangerang) di semua hitungan: macet langsung > pola terukur > asumsi.
 Status dan tombol "Ukur macet rute Ibu sekarang" ada di Pengaturan anak. Format `departAt`
-belum diuji dengan kunci sungguhan: kalau TomTom menolak 3 kali berturut-turut,
-pengukuran berhenti sendiri dan statusnya menyebut galatnya.
+belum diuji dengan kunci sungguhan: kalau TomTom menolak (4xx) 3 kali berturut-turut,
+pengukuran berhenti sendiri dan statusnya menyebut galatnya. Sinyal putus, 5xx, atau
+halaman login wifi bukan penolakan: sesi itu selesai dan dicoba lagi nanti. Ukuran yang
+tak masuk akal (> 4 jam, atau > 5x waktu lancar) tidak dipakai. Kartu saran menyebut
+sumber macetnya: TomTom langsung, pola terukur, atau perkiraan umum.
 
 Bentuk URL ubin (`…/traffic/map/4/tile/flow/relative/{z}/{x}/{y}.png?key=…`) sudah diverifikasi terhadap dokumentasi resmi TomTom Traffic API v4 (Raster Flow Tiles): host tunggal `api.tomtom.com` (bukan subdomain a/b/c/d gaya OSM), gaya `relative`. Jatah gratis harian TomTom ada, tetapi besarannya berubah-ubah; periksa di dasbor TomTom.
 
@@ -223,6 +228,6 @@ tools/                sdk-entry.mjs, make-icons.py
 ```
 npm install
 npx playwright install chromium
-npm test                                      # 163 pemeriksaan
+npm test                                      # 175 pemeriksaan
 ORIG_HTML=/path/artifact-asli.html npm test   # + uji emas terhadap artifact satu-berkas
 ```

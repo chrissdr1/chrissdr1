@@ -961,23 +961,27 @@ async function main(){
     let nMinta = 0, nLive = 0, contohUrl = [], mode = "ok";
     /* TomTom tiruan: waktu = jarak lurus x 1,3 / 50 km/jam, dikali faktor jam
        (sore 2,5x, pagi 2,0x, lainnya 1,4x) -- sengaja beda dari asumsi. */
-    await pu.route("**/api.tomtom.com/routing/**", r => {
+    const tiruan = r => {
       const u = r.request().url();
       if (!/departAt=/.test(u)){ nLive++; return r.fulfill({ status:200, contentType:"application/json", body:JSON.stringify({ routes:[{ summary:{ travelTimeInSeconds:1200, noTrafficTravelTimeInSeconds:1000 } }] }) }); }
       nMinta++; if (contohUrl.length < 3) contohUrl.push(u);
       if (mode === "429") return r.fulfill({ status:429, body:"" });
       if (mode === "400") return r.fulfill({ status:400, body:"" });
+      if (mode === "putus") return r.abort("failed");
+      if (mode === "500") return r.fulfill({ status:503, body:"" });
+      if (mode === "html") return r.fulfill({ status:200, contentType:"text/html", body:"<html>Login wifi</html>" });
       if (mode === "kosong") return r.fulfill({ status:200, contentType:"application/json", body:JSON.stringify({ routes:[{ summary:{} }] }) });
       const m = u.match(/calculateRoute\/([-\d.]+),([-\d.]+):([-\d.]+),([-\d.]+)\//), d = u.match(/departAt=\d{4}-\d\d-\d\dT(\d\d)%3A(\d\d)/);
       const km = Math.hypot((+m[3] - +m[1]) * 111, (+m[4] - +m[2]) * 110) * 1.3, jam = +d[1] + +d[2] / 60;
       const t0 = km / 50 * 3600, f = (jam >= 16.5 && jam < 20) ? 2.5 : (jam >= 6 && jam < 9) ? 2.0 : 1.4;
       r.fulfill({ status:200, contentType:"application/json", body:JSON.stringify({ routes:[{ summary:{ travelTimeInSeconds:t0 * f, noTrafficTravelTimeInSeconds:t0, historicTrafficTravelTimeInSeconds:t0 * f } }] }) });
-    });
+    };
+    await pu.route("**/api.tomtom.com/routing/**", tiruan);
     await pu.goto(url + "index.html", { waitUntil:"load" });
     await pu.waitForFunction(() => document.querySelector("#n-steps .step"));
     /* matikan pengukuran otomatis dan macet-langsung otomatis di halaman uji ini:
        jumlah permintaan di bawah harus bisa dihitung persis */
-    await pu.evaluate(() => { window.ukurMacet = () => Promise.resolve(); window.lalulintasOtomatis = () => {}; UkurMacet.hapus(); localStorage.removeItem("tomtom-jatah"); });
+    await pu.evaluate(() => { window._ukurAsli = ukurMacet; window.ukurMacet = () => Promise.resolve(); window.lalulintasOtomatis = () => {}; UkurMacet.hapus(); localStorage.removeItem("tomtom-jatah"); });
 
     const tanpaKunci = await pu.evaluate(async () => { Peta.setKunciTomTom(""); return UkurMacet.jalankan({ jeda:0 }); });
     ok(tanpaKunci.alasan === "tanpa kunci" && nMinta === 0, "tanpa kunci TomTom: tidak ada permintaan", JSON.stringify({ tanpaKunci, nMinta }));
@@ -1032,6 +1036,21 @@ async function main(){
     ok(selesai.s.segar === selesai.s.total && selesai.s.total === 1440 && selesai.antre === 0 && selesai.c.diukur === 0,
        "satu putaran lengkap 1.440 ukuran (72 rute x 10 jam x 2 jenis hari), lalu antrean kosong", JSON.stringify(selesai));
 
+    /* faktor wilayah tidak tergantung urutan panggilan (dulu memo per 15 menit) */
+    const urut = await pu.evaluate(() => { UkurMacet.muatUlang(); UkurMacet.faktorWilayah(16.4, false, "hk"); const b = UkurMacet.faktorWilayah(16.6, false, "hk");
+      UkurMacet.muatUlang(); return { b, c:UkurMacet.faktorWilayah(16.6, false, "hk") }; });
+    ok(urut.b === urut.c, "faktor wilayah jam 16:36 sama, dihitung sesudah 16:24 atau langsung", JSON.stringify(urut));
+
+    /* jawaban tak masuk akal (rute memutar 6 jam) tidak dipakai mesin */
+    const aneh = await pu.evaluate(() => {
+      const d = JSON.parse(localStorage.getItem("ukur-macet")), k = "kota>bsd|hk|12.5", asli = d.hasil[k];
+      d.hasil[k] = { m:360, f:9, at:Date.now() }; localStorage.setItem("ukur-macet", JSON.stringify(d)); UkurMacet.muatUlang();
+      const m = UkurMacet.menitRute("kota", "bsd", 12.5, "hk");
+      d.hasil[k] = asli; localStorage.setItem("ukur-macet", JSON.stringify(d)); UkurMacet.muatUlang();
+      return { m, pulih:UkurMacet.menitRute("kota", "bsd", 12.5, "hk") };
+    });
+    ok(aneh.m !== 360 && aneh.pulih > 0, "ukuran tak masuk akal (360 menit, 9x) diabaikan; ukuran wajar tetap dipakai", JSON.stringify(aneh));
+
     /* kartu menyebut sumber macetnya: pola TomTom terukur (bukan asumsi) */
     const sumber = await pu.evaluate(() => {
       const c = dayCtx("2026-10-06"), L = LOKMAP.kota;
@@ -1054,16 +1073,43 @@ async function main(){
     ok(umur.antre30 && umur.dipakai30, "ukuran 28-90 hari: masih dipakai, tapi masuk antrean ukur ulang", JSON.stringify(umur));
     ok(umur.m100 === null && umur.f100 === null && umur.f === 1.6, "ukuran lebih tua dari 90 hari tidak dipakai (kembali ke asumsi)", JSON.stringify(umur));
 
-    /* 429: semua berhenti sampai besok */
+    /* 429 = terlalu cepat (per detik): jeda 5 menit; 3x 429 tanpa sukses = berhenti sampai besok */
     const sebelum429 = nMinta; mode = "429";
     const s429 = await pu.evaluate(async () => {
       localStorage.removeItem("tomtom-jatah"); UkurMacet.hapus();
-      const h = await UkurMacet.jalankan({ jeda:0 });
-      const h2 = await UkurMacet.jalankan({ jeda:0 });
-      await Lalulintas.segarkan([[LOKMAP.kota, LOKMAP.bsd]]);
-      return { h, h2, boleh:Lalulintas.bolehMinta(), sisa:Lalulintas.sisaJatah() };
+      const lewatJeda = () => { const j = JSON.parse(localStorage.getItem("tomtom-jatah")); j.jedaSampai = 1; localStorage.setItem("tomtom-jatah", JSON.stringify(j)); };
+      const h1 = await UkurMacet.jalankan({ jeda:0 });
+      const t1 = Lalulintas.tertahan(), sisa1 = Lalulintas.sisaJatah();
+      const h1b = await UkurMacet.jalankan({ jeda:0 });            /* masih jeda: tidak ada permintaan */
+      await Lalulintas.segarkan([[LOKMAP.kota, LOKMAP.bsd]]);       /* macet langsung juga menunggu */
+      lewatJeda(); await UkurMacet.jalankan({ jeda:0 });
+      lewatJeda(); const h3 = await UkurMacet.jalankan({ jeda:0 });
+      return { h1, t1, sisa1, h1b, h3, t3:Lalulintas.tertahan(), boleh:Lalulintas.bolehMinta(), sisa:Lalulintas.sisaJatah(), s:UkurMacet.status() };
     });
-    ok(nMinta - sebelum429 === 1 && !s429.boleh && s429.sisa === 0, "balasan 429: satu permintaan saja, lalu semua permintaan TomTom berhenti sampai besok", JSON.stringify({ s429, n:nMinta - sebelum429 }));
+    ok(s429.t1 === "jeda" && s429.sisa1 > 1000 && /jeda/.test(s429.h1.alasan) && s429.h1b.diukur === 0,
+       "balasan 429 pertama: jeda 5 menit (bukan langsung habis sehari), semua permintaan menunggu", JSON.stringify(s429));
+    ok(nMinta - sebelum429 === 3 && s429.t3 === "stop" && !s429.boleh && s429.sisa === 0 && !s429.s.berhenti,
+       "3x 429 berturut-turut: semua permintaan TomTom berhenti sampai besok (pengukuran tidak ditandai rusak)", JSON.stringify({ s429, n:nMinta - sebelum429 }));
+    mode = "ok";
+    const reset429 = await pu.evaluate(async () => {
+      localStorage.setItem("tomtom-jatah", JSON.stringify({ tgl:iso(new Date()), n:5, stop:false, n429:2, jedaSampai:1 }));
+      await UkurMacet.jalankan({ jeda:0, perSesi:1 });
+      return JSON.parse(localStorage.getItem("tomtom-jatah"));
+    });
+    ok(reset429.n429 === 0 && !reset429.stop, "jawaban sukses menghapus hitungan 429", JSON.stringify(reset429));
+
+    /* sinyal putus / 5xx / halaman login wifi: sesi selesai, TIDAK berhenti selamanya */
+    for (const [md, pola] of [["putus", /Tidak tersambung/], ["500", /gangguan/], ["html", /bukan dari TomTom/]]){
+      mode = md; const n0 = nMinta;
+      const sj = await pu.evaluate(async () => {
+        localStorage.removeItem("tomtom-jatah"); UkurMacet.hapus();
+        const hs = [];
+        for (let i = 0; i < 4; i++) hs.push((await UkurMacet.jalankan({ jeda:0 })).alasan);
+        return { hs, s:UkurMacet.status() };
+      });
+      ok(nMinta - n0 === 4 && !sj.s.berhenti && pola.test(sj.hs[0]) && pola.test(sj.s.galat),
+         "gangguan jaringan (" + md + "): tiap sesi berhenti di galat pertama, tapi dicoba lagi sesi berikutnya (tidak mati)", JSON.stringify({ sj, n:nMinta - n0 }));
+    }
 
     /* 400 tiga kali: berhenti sendiri dengan pesan, tidak mencoba lagi tanpa ditekan */
     mode = "400"; const sebelum400 = nMinta;
@@ -1083,6 +1129,48 @@ async function main(){
     mode = "kosong";
     const sKosong = await pu.evaluate(async () => { localStorage.removeItem("tomtom-jatah"); UkurMacet.hapus(); await UkurMacet.jalankan({ jeda:0 }); return UkurMacet.status(); });
     ok(sKosong.segar === 0 && sKosong.berhenti && /tanpa waktu tempuh/.test(sKosong.galat), "jawaban tanpa waktu tempuh: tidak disimpan, berhenti dengan pesan", JSON.stringify(sKosong));
+
+    /* dua tab bersamaan (aplikasi terpasang + browser): tidak dobel */
+    mode = "ok";
+    const pu2 = await ctx.newPage();
+    await pu2.route("**/api.tomtom.com/routing/**", tiruan);
+    await pu2.goto(url + "index.html", { waitUntil:"networkidle" });
+    await pu2.evaluate(() => { window.ukurMacet = () => Promise.resolve(); window.lalulintasOtomatis = () => {}; });
+    await pu.evaluate(() => { localStorage.removeItem("tomtom-jatah"); UkurMacet.hapus(); });
+    const n2 = nMinta, urlDua = new Set();
+    const catat = req => { if (/departAt=/.test(req.url())) urlDua.add(req.url()); };
+    pu.on("request", catat); pu2.on("request", catat);
+    const [t1, t2] = await Promise.all([pu.evaluate(() => UkurMacet.jalankan({ jeda:0, perSesi:5000 })), pu2.evaluate(() => UkurMacet.jalankan({ jeda:0, perSesi:5000 }))]);
+    const t3 = await pu2.evaluate(() => UkurMacet.jalankan({ jeda:0, perSesi:5000 }));
+    pu.off("request", catat); pu2.off("request", catat);
+    const sDua = await pu2.evaluate(() => { UkurMacet.muatUlang(); return UkurMacet.status(); });
+    ok(nMinta - n2 === 300 && urlDua.size === 300 && [t1.alasan, t2.alasan].includes("sedang berjalan") && sDua.segar === 300 && /jatah harian/.test(t3.alasan),
+       "dua tab bersamaan: hanya satu yang mengukur, total tetap 300/hari, tidak ada ukuran dobel", JSON.stringify({ t1, t2, t3, n:nMinta - n2, unik:urlDua.size, sDua }));
+
+    const nL0 = nLive;
+    await pu.evaluate(() => localStorage.removeItem("tomtom-jatah"));
+    const lari = u => u.evaluate(async () => { const url = Lalulintas.urlRute(LOKMAP.kota, LOKMAP.bsd, "kunci-uji", {}); let n = 0;
+      while (true){ try { await Lalulintas.minta(url); n++; } catch (e) { return n; } } });
+    const [a1, a2] = await Promise.all([lari(pu), lari(pu2)]);
+    ok(a1 + a2 === 1100 && nLive - nL0 === 1100, "dua tab menguras jatah bersamaan: tepat 1.100, tidak lebih", JSON.stringify({ a1, a2, n:nLive - nL0 }));
+    await pu2.close();
+
+    /* tombol ditekan saat sedang mengukur; Simpan dengan kolom kunci kosong */
+    const ui = await pu.evaluate(async () => {
+      localStorage.removeItem("tomtom-jatah"); UkurMacet.hapus();
+      const jalan = UkurMacet.jalankan({ jeda:30, perSesi:5 });
+      await new Promise(r => setTimeout(r, 10));
+      await window._ukurAsli(true);
+      const teks = document.getElementById("ukur-status").textContent;
+      await jalan;
+      let n = 0; window.ukurMacet = () => { n++; return Promise.resolve(); };
+      document.getElementById("tt-key").value = ""; document.getElementById("tt-save").click();
+      const kosong = n;
+      document.getElementById("tt-key").value = "kunci-uji"; document.getElementById("tt-save").click();
+      return { teks, kosong, isi:n };
+    });
+    ok(/sedang berjalan/.test(ui.teks) && !/Berhenti/.test(ui.teks) && ui.kosong === 0 && ui.isi === 1,
+       "tombol saat sedang mengukur: 'sedang berjalan' (bukan 'Berhenti'); Simpan tanpa kunci tidak memulai pengukuran", JSON.stringify(ui));
 
     /* tanpa data terukur: mesin kembali ke asumsi */
     const asumsi = await pu.evaluate(() => { UkurMacet.hapus(); return { f:faktorLalin(18, false, "hk"), fj:faktorLalin(18, true, "hk"), m:UkurMacet.menitRute("cbd", "kota", 18, "hk") }; });

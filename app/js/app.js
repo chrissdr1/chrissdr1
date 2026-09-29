@@ -2674,6 +2674,8 @@ el("tt-save").addEventListener("click", function(){
   var k = el("tt-key").value.trim();
   if (!k){ el("tt-status").textContent = "Tempel kuncinya dulu."; return; }
   Peta.setKunciTomTom(k); el("tt-key").value = ""; tandaiTomTom();
+  /* kunci baru: mulai ukur (paksa = hapus tanda "berhenti" dari kunci lama) */
+  if (Lalulintas.aktif()) ukurMacet(true);
 });
 el("tt-clear").addEventListener("click", function(){ Peta.setKunciTomTom(""); tandaiTomTom(); tandaiUkur(); });
 
@@ -2692,12 +2694,13 @@ function ukurMacet(paksa){
   if (!Lalulintas.aktif()){ tandaiUkur(); return Promise.resolve(); }
   if (paksa) tandaiUkur("Mengukur…");
   return UkurMacet.jalankan({ paksa:!!paksa }).then(function(h){
-    tandaiUkur(paksa && h.alasan && h.alasan !== "selesai" ? "Berhenti: " + h.alasan + "." : "");
-    if (h.diukur > 0) runNow();
+    tandaiUkur(!paksa || !h.alasan || h.alasan === "selesai" ? "" :
+               h.alasan === "sedang berjalan" ? "Pengukuran sedang berjalan (mungkin di jendela lain)." : "Berhenti: " + h.alasan + ".");
+    /* renderAll, bukan runNow: kalibrasi kecepatan ikut memakai angka baru */
+    if (h.diukur > 0) renderAll();
   });
 }
 el("ukur-sekarang").addEventListener("click", function(){ ukurMacet(true); });
-el("tt-save").addEventListener("click", function(){ if (Lalulintas.aktif()) ukurMacet(true); });
 window.addEventListener("online", function(){ ukurMacet(false); });
 tandaiUkur();
 setTimeout(function(){ ukurMacet(false); }, 8000);

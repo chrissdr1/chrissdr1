@@ -11,9 +11,12 @@
    HP, berhenti total bila TomTom membalas 429).
 
    PERLU VERIFIKASI saat kunci sungguhan dipakai: format departAt
-   (yyyy-MM-ddTHH:mm:ss+07:00) dan nama field ringkasan. Kalau TomTom menolak
-   3 kali berturut-turut (400/403) atau jawabannya tanpa angka, pengukuran
-   BERHENTI sendiri dan statusnya menyebut galatnya; mesin kembali ke asumsi.
+   (yyyy-MM-ddTHH:mm:ss+07:00) dan nama field ringkasan. Kalau TomTom MENOLAK
+   3 kali berturut-turut (HTTP 4xx selain 429) atau jawabannya tanpa angka,
+   pengukuran BERHENTI sendiri dan statusnya menyebut galatnya; mesin kembali
+   ke asumsi. Sinyal putus / timeout / 5xx / halaman login wifi BUKAN
+   penolakan: sesi selesai dan dicoba lagi nanti, tanpa menghentikan apa pun.
+   Satu sesi saja lintas tab (navigator.locks).
 
    Tanggal ukur: Selasa/Rabu berikutnya (hari kerja) dan Sabtu berikutnya
    (akhir pekan, lebih ramai dari Minggu -- sengaja yang lebih hati-hati),
@@ -80,26 +83,30 @@ var UkurMacet = (function(){
   }
   function titik(id){ var L = LOKMAP[id]; return L ? { lat:L.lat, lon:L.lon } : null; }
 
-  /* Satu ukuran. Promise<"ok"|"galat"|"henti"> */
+  /* Satu ukuran. Promise<"ok"|"tolak"|"jaringan"|"henti"> */
   function ukurSatu(d, it, key){
     var A = titik(it.a), B = titik(it.b);
-    if (!A || !B) return Promise.resolve("galat");
+    if (!A || !B) return Promise.resolve("tolak");
     var tgl = tanggalUntuk(it.tipe);
     var url = Lalulintas.urlRute(A, B, key, { departAt:tgl + "T" + hhmm(it.jam) + ":00+07:00", tanpaGaris:true });
     return Lalulintas.minta(url).then(function(r){
       if (r.status === 429) return "henti";
-      if (!r.ok){ d.galat = "TomTom menolak (HTTP " + r.status + ")"; return "galat"; }
+      if (r.status >= 500){ d.galat = "TomTom sedang gangguan (HTTP " + r.status + "), dicoba lagi nanti"; return "jaringan"; }
+      if (!r.ok){ d.galat = "TomTom menolak (HTTP " + r.status + ")"; return "tolak"; }
       return r.json().then(function(j){
         var s = j && j.routes && j.routes[0] && j.routes[0].summary;
         var t = s && (typeof s.historicTrafficTravelTimeInSeconds === "number" ? s.historicTrafficTravelTimeInSeconds : s.travelTimeInSeconds);
-        if (typeof t !== "number" || !(t > 0)){ d.galat = "Jawaban TomTom tanpa waktu tempuh"; return "galat"; }
+        if (typeof t !== "number" || !(t > 0)){ d.galat = "Jawaban TomTom tanpa waktu tempuh"; return "tolak"; }
         var t0 = s.noTrafficTravelTimeInSeconds;
         d.hasil[it.k] = { m:Math.round(t / 6) / 10, f:(typeof t0 === "number" && t0 > 0) ? Math.round(t / t0 * 100) / 100 : null, at:Date.now() };
         return "ok";
+      }, function(){
+        /* 200 tapi bukan JSON: biasanya halaman login wifi, bukan TomTom */
+        d.galat = "Jawaban bukan dari TomTom (wifi perlu login?), dicoba lagi nanti"; return "jaringan";
       });
     })["catch"](function(e){
       if (e && e.message === "jatah") return "henti";
-      d.galat = "Tidak tersambung ke TomTom"; return "galat";
+      d.galat = "Tidak tersambung ke TomTom, dicoba lagi nanti"; return "jaringan";
     });
   }
 
@@ -110,6 +117,20 @@ var UkurMacet = (function(){
     if (sedangJalan) return Promise.resolve({ diukur:0, alasan:"sedang berjalan" });
     if (typeof Lalulintas === "undefined" || !Lalulintas.aktif()) return Promise.resolve({ diukur:0, alasan:"tanpa kunci" });
     if (typeof navigator !== "undefined" && navigator.onLine === false) return Promise.resolve({ diukur:0, alasan:"offline" });
+    /* Satu sesi lintas tab: tab lain yang sedang mengukur = "sedang berjalan".
+       Data dibaca ulang SETELAH kunci didapat, jadi hasil tab lain tidak
+       tertimpa. */
+    if (typeof navigator !== "undefined" && navigator.locks && navigator.locks.request)
+      return navigator.locks.request("ukur-macet", { ifAvailable:true }, function(kunciLock){
+        return kunciLock ? sesi(opsi) : { diukur:0, alasan:"sedang berjalan" };
+      });
+    return sesi(opsi);
+  }
+  function alasanTahan(){
+    var t = Lalulintas.tertahan ? Lalulintas.tertahan() : (Lalulintas.bolehMinta() ? null : "stop");
+    return t === "jeda" ? "TomTom minta jeda sebentar" : "jatah TomTom hari ini";
+  }
+  function sesi(opsi){
     var d = muat();
     if (d.berhenti && !opsi.paksa) return Promise.resolve({ diukur:0, alasan:"berhenti" });
     if (opsi.paksa){ d.berhenti = false; d.berturut = 0; }
@@ -119,11 +140,12 @@ var UkurMacet = (function(){
     function langkah(){
       if (i >= batas) return Promise.resolve("selesai");
       if (d.hari.n >= MAKS_HARIAN) return Promise.resolve("jatah harian pengukuran");
-      if (!Lalulintas.bolehMinta()) return Promise.resolve("jatah TomTom hari ini");
+      if (!Lalulintas.bolehMinta()) return Promise.resolve(alasanTahan());
       var it = q[i++];
       d.hari.n++;
       return ukurSatu(d, it, key).then(function(hasil){
-        if (hasil === "henti") return "jatah TomTom hari ini";
+        if (hasil === "henti") return alasanTahan();
+        if (hasil === "jaringan"){ d.gagal++; return d.galat; }   /* bukan penolakan: tidak menambah hitungan berhenti */
         if (hasil === "ok"){ diukur++; d.ok++; d.berturut = 0; d.galat = null; }
         else { d.gagal++; d.berturut++; if (d.berturut >= 3){ d.berhenti = true; return "berhenti: " + d.galat; } }
         simpan(d);
@@ -141,6 +163,9 @@ var UkurMacet = (function(){
     var d = muat(), kini = Date.now(); indeks = {};
     Object.keys(d.hasil).forEach(function(k){
       var h = d.hasil[k]; if (!h || kini - h.at > UMUR_PAKAI) return;
+      /* jawaban tak masuk akal (mis. rute memutar jauh) tidak dipakai; tetap
+         tersimpan supaya tidak diukur ulang terus-menerus sebelum 28 hari */
+      if (!(h.m > 0 && h.m <= 240) || (h.f != null && (h.f < 0.7 || h.f > 5))) return;
       var p = k.split("|"), rt = p[0] + "|" + p[1], j = parseFloat(p[2]);
       (indeks[rt] || (indeks[rt] = {}))[j] = h;
     });
@@ -173,7 +198,7 @@ var UkurMacet = (function(){
      CBD; selain itu Tangerang (termasuk bandara). null bila < 3 rute. */
   function faktorWilayah(jam, jkt, tipe){
     tipe = tipe || tipeTgl();
-    var mk = (jkt ? "j" : "t") + tipe + Math.round(jam * 4);
+    var mk = (jkt ? "j" : "t") + tipe + jam;   /* jam persis: hasil tidak tergantung urutan panggilan */
     if (mk in memoWil) return memoWil[mk];
     var ix = indeks || bangunIndeks(), fs = [];
     Object.keys(ix).forEach(function(rt){
@@ -197,6 +222,9 @@ var UkurMacet = (function(){
   function hapus(){ try { localStorage.removeItem(LS); } catch (e) {} indeks = null; memoWil = {}; }
   /* baca ulang dari penyimpanan (mis. setelah dipulihkan / diubah di luar modul) */
   function muatUlang(){ indeks = null; memoWil = {}; }
+  /* tab lain menyimpan hasil ukur: indeks di tab ini dibangun ulang */
+  if (typeof window !== "undefined" && window.addEventListener)
+    window.addEventListener("storage", function(e){ if (e.key === LS || e.key === null) muatUlang(); });
 
   return { jalankan:jalankan, menitRute:menitRute, faktorWilayah:faktorWilayah, status:status, hapus:hapus, muatUlang:muatUlang,
            tipeCtx:tipeCtx, tipeTgl:tipeTgl, tanggalUntuk:tanggalUntuk, JAM:JAM, INTI:INTI, MAKS_HARIAN:MAKS_HARIAN,
