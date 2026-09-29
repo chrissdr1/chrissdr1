@@ -27,9 +27,9 @@
 
 var Belajar = (function(){
   /* Order semu (penyusut) cukup besar supaya satu hari aneh tidak menggeser
-     banyak; tiap pengamatan dibatasi 2,5x perkiraan + 2 order (salah ketik
+     banyak; tiap pengamatan dibatasi 2x perkiraan + 1 order (salah ketik
      "40" tidak menjadi bukti); pola baru dipakai setelah cukup hari. */
-  var K_BLOK = 12, K_HARI = 16, K_TEMPAT = 15, MIN = 0.5, MAKS = 1.8;
+  var K_BLOK = 15, K_HARI = 18, K_TEMPAT = 15, MIN = 0.5, MAKS = 1.8;
   var MIN_HARI_BLOK = 3, MIN_HARI_HB = 2, MIN_HARI_TEMPAT = 3;
   var H = kosong(), nonaktif = false;
 
@@ -47,24 +47,20 @@ var Belajar = (function(){
     if (tempat) m *= bobotAwal(tempat.id, b.n);
     return b.km * blockU(b, ctx.shapeDay) * m / tripLen(b.n, z);
   }
-  /* Jam BENAR-BENAR menyetir per blok: dengan jendela hari itu (rencana: jam
-     mulai, pulang, istirahat, baterai) dari simulate() -- istirahat dan jam
-     ngecas versi mesin tidak dihitung, jadi tidak terbaca "sepi" dan tidak
-     dihukum dua kali. Hasil belajar dimatikan selama itu (tidak ada umpan
-     balik). Tanpa jendela: jam penuh blok yang Ibu isi (kurang teliti). */
+  /* Jam per blok = irisan blok dengan jendela kerja hari itu DIKURANGI
+     istirahat (jendela dari rencana; tanpa jendela: jam penuh blok yang Ibu
+     isi). Istirahat tidak terbaca "sepi".
+     Jam ngecas SENGAJA tidak ditebak: versi sebelumnya memakai jadwal ngecas
+     tebakan mesin, dan kalau Ibu ternyata tidak ngecas di jam itu bloknya
+     terbaca "ramai" sampai 1,8x. Batas jujurnya: blok yang memang selalu
+     dipakai ngecas bisa terbaca sedikit lebih sepi dari kenyataan. */
   function jamPerBlok(r, jd, ctx){
-    var h = {};
-    if (r.jendela){
-      nonaktif = true;
-      try {
-        var q = { ctx:ctx, keluar:jd.keluar, pulang:jd.pulang, rehat:jd.rehat || "none", zona:(jd.zona && ZONA[jd.zona]) ? jd.zona : "tng",
-                  filter:2, bat:jd.bat || 30.08, rumah:false, hujan:false, acara:false, stay:true, deadKm:0 };
-        if (jd.soc > 0) q.soc = jd.soc;
-        simulate(q).perBlok.forEach(function(p){ h[p.n] = (h[p.n] || 0) + p.jam; });
-      } finally { nonaktif = false; }
-    } else {
-      BASE.forEach(function(b){ h[b.n] = Math.max(0, Math.min(b.e, jd.pulang) - Math.max(b.s, jd.keluar)); });
-    }
+    var h = {}, rr = (jd.rehat && typeof rehatRange === "function") ? rehatRange(jd.rehat) : null;
+    BASE.forEach(function(b){
+      var s = Math.max(b.s, jd.keluar), e = Math.min(b.e, jd.pulang), jam = Math.max(0, e - s);
+      if (rr && jam > 0) jam -= Math.max(0, Math.min(e, rr[1]) - Math.max(s, rr[0]));
+      h[b.n] = Math.max(0, jam);
+    });
     return h;
   }
   function tumpangIstirahat(jd, b){
@@ -107,7 +103,7 @@ var Belajar = (function(){
       }
       H.nHari++;
       bagian.forEach(function(x){
-        var act = Math.min(x.act, x.pred * 2.5 + 2);
+        var act = Math.min(x.act, x.pred * 2 + 1);
         H.nOrder += x.act; butir.push({ hari:r.id, d:ctx.shapeDay, b:x.b.n, act:act, pred:x.pred, tempat:x.tempat });
       });
     });

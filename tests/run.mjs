@@ -897,7 +897,11 @@ async function main(){
       ketik.blok.Malam = 40;
       Belajar.hitung(normal.concat([ketik])); const malam40 = Belajar.pengali(2, "Malam"); Belajar.hitung([]);
       const nolSatu = hari(1, { "Siang":0 }, null, "2026-06-01"); Belajar.hitung(nolSatu); const siang0 = Belajar.pengali(2, "Siang"); Belajar.hitung([]);
-      return { nol, sedikit, banyak, netBelajar, netAwal, tmp, istirahatBlok, istirahatTotal, malam40, siang0 };
+      /* regresi A: hasil belajar tidak boleh bergantung pada tebakan baterai / jadwal ngecas mesin */
+      const dasarSoc = hari(10, { "Peak sore":1.4 }, null, "2026-06-01");
+      const pakaiSoc = (soc) => { Belajar.hitung(dasarSoc.map(r => Object.assign({}, r, { jendela:Object.assign({}, r.jendela, soc ? { soc } : {}) }))); const m = BASE.map(b => Belajar.pengali(2, b.n)); Belajar.hitung([]); return m.join(","); };
+      const socSama = pakaiSoc(null) === pakaiSoc(20) && pakaiSoc(20) === pakaiSoc(95);
+      return { nol, sedikit, banyak, netBelajar, netAwal, tmp, istirahatBlok, istirahatTotal, malam40, siang0, socSama };
     });
     ok(bel.nol, "tanpa data: semua pengali belajar = 1 (angka awal)", JSON.stringify(bel));
     ok(bel.banyak.ps > 1.6 && bel.banyak.si < 0.65 && Math.abs(bel.banyak.pa - 1) < 0.1 && Math.abs(bel.banyak.pr - 1) < 0.1,
@@ -906,7 +910,8 @@ async function main(){
        "1 hari saja: masih ditarik ke angka awal (tidak langsung percaya)", JSON.stringify({ sedikit:bel.sedikit, banyak:bel.banyak }));
     ok(bel.istirahatBlok.every(m => Math.abs(m - 1) < 0.08) && bel.istirahatTotal.every(m => Math.abs(m - 1) < 0.08),
        "istirahat 10:30-15:00 dan jam ngecas tidak terbaca 'sepi' (order pas perkiraan -> semua pengali ±1)", JSON.stringify({ blok:bel.istirahatBlok.map(m => +m.toFixed(2)), total:bel.istirahatTotal.map(m => +m.toFixed(2)) }));
-    ok(bel.malam40 < 1.3 && bel.siang0 === 1, "salah ketik '40' tidak menjenuhkan pola; satu hari '0' belum dipakai (minimal 3 hari)", JSON.stringify({ malam40:bel.malam40, siang0:bel.siang0 }));
+    ok(bel.malam40 < 1.2 && bel.siang0 === 1, "salah ketik '40' tidak menjenuhkan pola; satu hari '0' belum dipakai (minimal 3 hari)", JSON.stringify({ malam40:bel.malam40, siang0:bel.siang0 }));
+    ok(bel.socSama, "hasil belajar tidak bergantung pada tebakan baterai/jadwal ngecas mesin", String(bel.socSama));
     ok(bel.netBelajar > bel.netAwal, "hasil belajar dipakai perkiraan bersih (sore ramai -> bersih sore naik)", `${Math.round(bel.netAwal)} -> ${Math.round(bel.netBelajar)}`);
     ok(bel.tmp.f > 1.1 && bel.tmp.bsd < 0.95 && bel.tmp.f / bel.tmp.bsd > 1.35 && bel.tmp.lain === 1,
        "tempat yang lebih ramai (zona GPS) terpisah dari yang biasa; tempat tanpa data tetap 1", JSON.stringify(bel.tmp));
@@ -1037,6 +1042,15 @@ async function main(){
        "langkah 'Waktunya pulang' mulai persis saat angka berhenti menghitung narik", JSON.stringify(sama.map(x => [x.lok, x.akhirKerja, x.langkahPulang])));
     await setField(pr, "n-lok", "kota"); await setField(pr, "n-soc", 80);
 
+    const lanjut = await pr.evaluate(() => {
+      const K = LOKMAP.cbd, o = { ctx:dayCtx("2026-10-06"), keluar:17, pulang:19.5, rehat:"none", zona:"jkt", filter:2, bat:30.08, rumah:false, hujan:false, acara:false, soc:80, deadKm:0 };
+      o.urutan = Peluang.urutanTinggal(K, o); o.tempatAwal = K;
+      const r = simulate(o), tj = tambahanJam(o, r, 1.5);
+      const p = Object.assign({}, o, { pulang:tj.sampai }); p.urutan = Peluang.urutanTinggal(K, p);
+      const r2 = simulate(p);
+      return { tambah:Math.round(tj.tambah), harus:Math.round(r2.net - r.net), jkt20:r2.pieces.some(x => !x.jeda && x.jamJalan > 0.05 && x.e > 20.01 && x.tempat.z === "jkt") };
+    });
+    ok(lanjut.tambah === lanjut.harus && !lanjut.jkt20, "'kalau lanjut 1,5 jam' menyusun ulang urutan tempat (tidak narik di Jakarta lewat 20:00)", JSON.stringify(lanjut));
     const apt = await pr.evaluate(() => BASE.map(b => advise(b, LOKMAP.bandara, { ctx:dayCtx("2026-10-06"), keluar:b.s, pulang:21.5, filter:2 }).h));
     ok(apt.every(h => !/Jakarta/.test(h)), "saran kartu Bandara memakai teks bandara, bukan 'Bertahan di Jakarta'", JSON.stringify(apt));
 

@@ -1137,6 +1137,7 @@ function konteksTanya(){
       terakhirP = p2;
       var o2 = {}; Object.keys(o0).forEach(function(k){ o2[k] = o0[k]; });
       o2.pulang = p2;
+      if (o2.tempatAwal) o2.urutan = Peluang.urutanTinggal(o2.tempatAwal, o2);   /* aturan 20:00 untuk jam pulang baru */
       var r2 = simulate(o2);
       var selisih = r2.net - r0.net;
       baris.push("  pulang " + hhmm(p2) + ": bersih Rp " +
@@ -2289,6 +2290,8 @@ function renderTujuan(){
   var biasa = Lalulintas.pulangBiasaCache(K, x.mulaiPulang, tgl);
   if (x.keluarJkt != null)
     p.push("Keluar Jakarta jam " + hhmm(x.keluarJkt) + " (aturan 20:00), &plusmn;" + Math.round(x.keluarJktJam * 60) + " menit ke arah rumah, lalu narik dekat rumah sampai &plusmn;" + hhmm(x.mulaiPulang) + ".");
+  else if (x.mulaiPulang <= x.tiba + 0.01)
+    p.push("<b>Sampai di sana sudah waktunya pulang</b> &mdash; tidak ada waktu narik di sana.");
   else
     p.push("Mulai pulang dari sana &plusmn;" + hhmm(x.mulaiPulang) + (biasa != null ? " &middot; pola macet TomTom jam itu: &plusmn;" + biasa + " menit ke rumah" : "") + ".");
   if (h.basis){
@@ -2339,7 +2342,7 @@ function renderRekomendasi(o, L, soc, stay){
   }
   var tampil = rekSemua ? h.daftar : h.daftar.slice(0, 3);
   el("rek-list").innerHTML = tampil.map(function(x, i){
-    var sel = x.diSini ? "kalau tetap di sini" : (x.selisih >= 0 ? "+" : "−") + rp(Math.abs(x.selisih)) + " dibanding tetap di sini";
+    var sel = x.diSini ? "kalau tetap di sini" : (!h.basis ? "" : (x.selisih >= 0 ? "+" : "−") + rp(Math.abs(x.selisih)) + " dibanding tetap di sini");
     var macetTeks = x.sumberMacet === "tomtom" ? ", macet: TomTom langsung" : ", " + labelLalin(x.macet);
     var gerak = x.diSini ? "Tetap di sini."
       : "Pindah " + Math.round(x.kmPindah) + " km (±" + Math.round(x.jamPindah * 60) + " menit" + macetTeks + "), sampai " + hhmm(x.tiba) +

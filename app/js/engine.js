@@ -980,6 +980,8 @@ function tambahanJam(o, r, jam){
   if (sampai <= o.pulang) return { sampai:sampai, tambah:0 };
   var p = {}; Object.keys(o).forEach(function(k){ p[k] = o[k]; });
   p.pulang = sampai;
+  /* urutan tempat disusun ulang untuk jam pulang yang baru (aturan 20:00) */
+  if (p.tempatAwal && typeof Peluang !== "undefined") p.urutan = Peluang.urutanTinggal(p.tempatAwal, p);
   return { sampai:sampai, tambah: simulate(p).net - r.net };
 }
 
