@@ -59,7 +59,7 @@ var Rekomendasi = (function(){
     /* Tidak terjangkau: tiba di bawah 8% (lantai mutlak 5% + ragam taksiran).
        Dulu tetap ditawarkan dengan "baterai 1%" padahal perjalanannya butuh
        lebih dari sisa baterai. */
-    if (!diSini && soc - socPindah < 8) return { terlewat:true, n:K.n, socPindah:socPindah };
+    if (!diSini && soc - socPindah < 8 && !(K.id === "kota" && o.rumah)) return { terlewat:true, n:K.n, socPindah:socPindah };
     var keluar = o.keluar + jamPindah;
     if (o.pulang - keluar < 0.5) return null;   /* tidak sempat kerja di sana */
     var o2 = salin(o);
@@ -78,7 +78,7 @@ var Rekomendasi = (function(){
     var jamPulang = stay ? 0 : jamMulaiPulang(o2, o2.tempatAkhir || K);
     /* Aturan 20:00 (Jakarta): jam keluar Jakarta dan lama perjalanannya ke arah rumah */
     var pm = o2.urutan.pindahMalam ? r.pieces.filter(function(p){ return !p.jeda && p.s >= 20 && p.pindahJam > 0; })[0] : null;
-    return { id:K.id, n:K.n, z:K.z, lat:K.lat, lon:K.lon, diSini:diSini,
+    return { id:K.id, n:K.n, z:K.z, lat:K.lat, lon:K.lon, diSini:diSini, tempat:K,
              kmPindah:kmPindah, jamPindah:jamPindah, macet:macet, sumberMacet:sumberMacet, tiba:keluar, socTiba:Math.round(o2.soc),
              sisa:sisa, sesi:r.sessions, kmHome:stay ? 0 : K.home, res:K.res, pulangMalam:!!o2.urutan.pindahMalam,
              mulaiPulang:o.pulang - jamPulang, jamPulang:jamPulang,
@@ -98,15 +98,19 @@ var Rekomendasi = (function(){
   function sisaParahDari(biasa, p){ return (p && !p.terlewat) ? Math.min(biasa.sisa, p.sisa) : null; }
   function ujiMacet(o, L, soc, stay, x, basisParahSisa){
     if (x.diSini || basisParahSisa == null) return;
-    x.sisaParah = sisaParahDari(x, nilaiSatu(o, L, soc, stay, LOKMAP[x.id], KALI_PARAH));
+    x.sisaParah = sisaParahDari(x, nilaiSatu(o, L, soc, stay, x.tempat, KALI_PARAH));
     x.selisihParah = x.sisaParah == null ? null : x.sisaParah - basisParahSisa;
     x.rapuh = x.selisih > 0 && (x.selisihParah == null || x.selisihParah <= 0);
   }
 
   function hitung(o, L, soc, stay){
     var out = [], terlewat = [];
-    KANDIDAT.forEach(function(id){
-      var K = LOKMAP[id]; if (!K) return;
+    /* Posisi GPS / kecamatan di luar sembilan inti: "tetap di sini" dihitung
+       dari titik itu sendiri, supaya selisih tiap kartu punya pembanding. */
+    var tp = tempatPosisi(L), daftarK = KANDIDAT.map(function(id){ return LOKMAP[id]; });
+    if (tp && tp.posisi) daftarK.unshift(tp);
+    daftarK.forEach(function(K){
+      if (!K) return;
       var x = nilaiSatu(o, L, soc, stay, K, 1);
       if (!x) return;
       if (x.terlewat){ terlewat.push(x.n); return; }
@@ -118,18 +122,18 @@ var Rekomendasi = (function(){
     out.forEach(function(x){ x.selisih = basis ? x.sisa - basis.sisa : 0; });
     /* uji macet parah untuk 3 teratas yang pindah (yang benar-benar tampil) */
     if (basis){
-      var bpSisa = sisaParahDari(basis, nilaiSatu(o, L, soc, stay, LOKMAP[basis.id], KALI_PARAH));
+      var bpSisa = sisaParahDari(basis, nilaiSatu(o, L, soc, stay, basis.tempat, KALI_PARAH));
       if (bpSisa == null) bpSisa = basis.sisa;
       out.filter(function(x){ return !x.diSini; }).slice(0, 3).forEach(function(x){ ujiMacet(o, L, soc, stay, x, bpSisa); });
     }
-    return { daftar:out, basis:basis, terlewat:terlewat };
+    return { daftar:out, basis:basis, terlewat:terlewat, kiraKira:!tp };
   }
 
   /* Tujuan pilihan Ibu sendiri (tempat mana pun di LOK), dibandingkan dengan
      tetap di tempat sekarang -- dengan uji macet parah yang sama. */
   function tujuan(o, L, soc, stay, id){
     var K = LOKMAP[id]; if (!K) return null;
-    var tinggal = (L && LOKMAP[L.id]) ? LOKMAP[L.id] : Peluang.tempatAwal(L);
+    var tinggal = tempatPosisi(L) || Peluang.tempatAwal(L);
     var x = nilaiSatu(o, L, soc, stay, K, 1);
     if (!x || x.terlewat) return { K:K, x:x, tinggal:tinggal };
     var b = nilaiSatu(o, L, soc, stay, tinggal, 1);

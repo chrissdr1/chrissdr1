@@ -29,12 +29,10 @@ var Peluang = (function(){
   /* Tempat awal: LOK inti bila ada; posisi lain dipetakan ke inti terdekat
      (jarak pindah pertama dihitung dari koordinatnya bila ada). */
   function tempatAwal(L){
-    if (L && LOKMAP[L.id] && LOKMAP[L.id].lat != null) return LOKMAP[L.id];
-    if (L && L.lat != null){
-      var best = null, bd = Infinity;
-      KANDIDAT.forEach(function(id){ var K = LOKMAP[id]; var d = jarakLurus(L.lat, L.lon, K.lat, K.lon); if (d < bd){ bd = d; best = K; } });
-      return best;
-    }
+    /* Posisi dengan koordinat = tempat sendiri (tempatPosisi), jadi pindah
+       pertama dihitung dari titik Ibu yang sebenarnya, bukan dari tempat inti
+       terdekat dengan 0 km. */
+    var tp = tempatPosisi(L); if (tp) return tp;
     /* Lokasi ketik-manual tanpa koordinat (kecamatan di luar 9 inti): tanpa
        lintang/bujur tidak bisa dicari yang terdekat sungguhan, jadi dipilih
        inti dengan jarak-ke-rumah paling mirip -- tebakan kasar yang sama
@@ -139,9 +137,10 @@ var Peluang = (function(){
     var seen = {};
     kandidat = kandidat.filter(function(u){ var k = u.join(">"); if (seen[k]) return false; seen[k] = true; return true; });
 
+    function cari(id){ return LOKMAP[id] || (id === awal.id ? awal : LOKMAP.kota); }
     function nilai(u){
       var q = salin(o);
-      q.urutan = u; q.tempatAwal = awal; q.zona = LOKMAP[u[0]].z === "apt" ? "apt" : LOKMAP[u[0]].z;
+      q.urutan = u; q.tempatAwal = awal; q.zona = cari(u[0]).z;
       q.deadKm = 0;
       var r = simulate(q);
       /* segmen: potongan berurutan di tempat yang sama digabung untuk dibaca */
@@ -154,10 +153,18 @@ var Peluang = (function(){
       });
       var pindahN = 0; r.pieces.forEach(function(p){ if (p.pindahKm > 0.5) pindahN++; });
       var diamIni = u.join(">") === kunciDiam;
-      return { urutan:u, segmen:seg, r:r, net:r.net, kmPindah:r.kmPindah, pindahN:pindahN, akhir:LOKMAP[u[u.length - 1]],
+      return { urutan:u, segmen:seg, r:r, net:r.net, kmPindah:r.kmPindah, pindahN:pindahN, akhir:cari(u[u.length - 1]),
                diam:diamIni, diamPulangMalam:diamIni && !!diam.pindahMalam };
     }
-    var hasil = kandidat.map(nilai);
+    /* Sama dengan kartu "ke mana sekarang": rencana yang tiba di suatu tempat
+       dengan baterai < 8% tidak ditawarkan -- kecuali pulang ke Kota dan ada
+       charger di rumah. "Tetap di sini" selalu ada sebagai pembanding. */
+    function terjangkau(h){
+      return h.diam || !h.r.pieces.some(function(p){
+        return p.pindahKm > 0.5 && p.socMulai < 0.08 && !(p.tempat && p.tempat.id === "kota" && o.rumah);
+      });
+    }
+    var hasil = kandidat.map(nilai).filter(terjangkau);
     var basis = hasil.filter(function(h){ return h.diam; })[0] || null;
     hasil.sort(function(a, b){ return b.net - a.net; });
     hasil.forEach(function(h){ h.selisih = basis ? h.net - basis.net : 0; });

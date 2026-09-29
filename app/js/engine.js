@@ -501,7 +501,8 @@ function simulate(o){
         if (R) sebelum = R;
         return;
       }
-      var T = LOKMAP[o.urutan[kk++]] || sebelum || LOKMAP.kota;
+      var idU = o.urutan[kk++];
+      var T = LOKMAP[idU] || (o.tempatAwal && o.tempatAwal.id === idU ? o.tempatAwal : null) || sebelum || LOKMAP.kota;
       p.tempat = T; p.zonaT = ZONA[T.z] || z;
       p.pindahKm = sebelum ? jarakAntar(sebelum, T) : 0;
       p.pindahJam = sebelum ? jamTempuhAntar(sebelum, T, p.s, iso(ctx.d)) * (o.kaliMacet || 1) : 0;
@@ -991,9 +992,27 @@ function cariKecamatan(teks){
   for (var m = 0; m < cocok.length; m++) if (cocok[m] !== jauh) lain.push(INDUK[cocok[m][1]] + " " + cocok[m][4] + " km");
   return { kec:jauh, catatan:" · ada juga " + lain.join(", ") + " — kalau itu yang benar, ketik lengkap dengan wilayahnya" };
 }
+/* Posisi Ibu sebagai "tempat" untuk mesin: tempat inti apa adanya; posisi
+   GPS / kecamatan dengan koordinat menjadi tempat sendiri (id = id posisi),
+   BUKAN ditempelkan ke tempat inti terdekat dengan jarak 0 km. null kalau
+   tidak ada koordinat (ketik km manual / hasil tebakan Claude). */
+function tempatPosisi(L){
+  if (!L) return null;
+  if (LOKMAP[L.id] && LOKMAP[L.id].lat != null) return LOKMAP[L.id];
+  if (L.lat == null || L.lon == null) return null;
+  return { id:L.id, n:L.n, lat:L.lat, lon:L.lon, home:L.home, z:L.z || "tng", res:L.res || 20,
+           luar:L.luar || 0, jauh:L.jauh || 0, posisi:true };
+}
+/* Koordinat kecamatan terukur dari nama registri ("Kec, Induk") untuk catatan
+   lama yang disimpan sebelum catatKecamatan menyimpan lat/lon. */
+function koordinatKecamatan(nama){
+  for (var i = 0; i < KEC.length; i++) if (KEC[i][0] + ", " + INDUK[KEC[i][1]] === nama) return { lat:KEC[i][3], lon:KEC[i][2] };
+  return null;
+}
 function catatKecamatan(kec){
   var i = KEC.indexOf(kec);
   return { nama: kec[0] + ", " + INDUK[kec[1]], km: kec[4], menit: kec[5], anchor:"kota",
+           lat: kec[3], lon: kec[2],
            rmax: (i >= 0 ? RKEC[i] : 0),
            terukur:true, zPaksa: kec[6], v:3, dibuat: iso(new Date()) };
 }

@@ -948,7 +948,18 @@ async function main(){
       const jktMalam = h2.daftar.some(h => h.r.pieces.some(p => !p.jeda && p.s >= 20 && p.tempat && p.tempat.z === "jkt"));
       const diam = h2.daftar.find(h => h.diam);
       /* #3 posisi GPS di Cikupa: tempat awal dari koordinat, bukan jarak-ke-rumah */
-      const awalGps = Peluang.tempatAwal({ id:"custom:gps:-6.218,106.517", n:"Cikupa", home:20.5, lat:-6.218, lon:106.517, z:"tng" }).id;
+      const Lc = { id:"custom:gps:-6.218,106.517", n:"Cikupa", home:20.5, lat:-6.218, lon:106.517, z:"tng", res:25 };
+      const ta = Peluang.tempatAwal(Lc);
+      const hc = Rekomendasi.hitung(Object.assign({}, dasar, { keluar:14.5, pulang:21.5, zona:"tng" }), Lc, 80, false);
+      const cbdC = hc.daftar.find(x => x.id === "cbd"), siniC = hc.daftar.find(x => x.diSini);
+      /* Balaraja diketik (kecamatan terukur): koordinat ikut, CBD bukan "4 km" */
+      const kb = KEC.find(k => k[0] === "Balaraja"), rb = catatKecamatan(kb);
+      const Lb = { id:"custom:balaraja", n:rb.nama, home:rb.km, lat:rb.lat, lon:rb.lon, z:rb.zPaksa, res:30 };
+      const hb = Rekomendasi.hitung(Object.assign({}, dasar, { keluar:14.5, pulang:21.5, zona:"tng" }), Lb, 80, false);
+      const cbdB = hb.daftar.find(x => x.id === "cbd");
+      const pb = Peluang.hitung(Object.assign({}, dasar, { keluar:14.5, pulang:21.5, zona:"tng" }), Lb);
+      const awalGps = { posisi:!!ta.posisi, lat:ta.lat, cbdKm:cbdC && Math.round(cbdC.kmPindah), sini:!!siniC,
+                        balLat:rb.lat, cbdBKm:cbdB ? Math.round(cbdB.kmPindah) : null, pelAwal:pb.awal.id, pelAwalPosisi:!!pb.awal.posisi };
       /* #4 baterai 10% di Kota jam 16: tempat yang tidak terjangkau tidak ditawarkan */
       const h4 = Rekomendasi.hitung(o({ keluar:16, pulang:21.5, zona:"tng", soc:10 }), LOKMAP.kota, 10, false);
       const minTiba = Math.min(...h4.daftar.filter(x => !x.diSini).map(x => x.socTiba));
@@ -962,7 +973,10 @@ async function main(){
     });
     ok(a.akhirKerja <= a.mulaiPulang + 0.01 && a.mulaiPulang < 21.5 - 0.5, "narik berhenti di jam mulai pulang, perjalanan pulang tidak dihitung sebagai jam narik", JSON.stringify(a));
     ok(!a.jktMalam && a.diamLabel, "tidak ada rencana di Jakarta setelah 20:00; \"tetap di CBD\" jadi \"sampai 20:00 lalu ke arah rumah\"", JSON.stringify(a));
-    ok(a.awalGps === "karawaci", "posisi GPS Cikupa -> tempat awal terdekat menurut koordinat (Karawaci), bukan Jakarta Barat", a.awalGps);
+    ok(a.awalGps.posisi && a.awalGps.lat === -6.218 && a.awalGps.sini && a.awalGps.cbdKm > 35,
+       "posisi GPS Cikupa = tempat sendiri di koordinatnya; ada pembanding 'tetap di sini'; CBD dihitung jauh", JSON.stringify(a.awalGps));
+    ok(a.awalGps.balLat != null && (a.awalGps.cbdBKm == null || a.awalGps.cbdBKm > 40) && a.awalGps.pelAwalPosisi,
+       "Balaraja diketik: koordinat kecamatan ikut; CBD tidak lagi '4 km'; Urutan tempat mulai dari Balaraja", JSON.stringify(a.awalGps));
     ok(a.minTiba >= 8 && a.terlewat.length > 0, "baterai 10%: tempat yang tidak terjangkau disaring dan disebutkan", JSON.stringify({ minTiba:a.minTiba, terlewat:a.terlewat }));
     ok(a.rekBasis === a.pelBasis, "\"tetap di sini\": angka sama di kartu ke-mana-sekarang dan urutan tempat", `${a.rekBasis} vs ${a.pelBasis}`);
     ok(Math.abs(a.ins[0] - a.ins[1]) < 1, "insentif Grab sama di Selasa dan Jumat (tidak ikut pengali hari)", JSON.stringify(a.ins));

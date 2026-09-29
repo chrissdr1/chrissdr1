@@ -191,7 +191,8 @@ function currentLok(){
       if (kk.indexOf("gps:") === 0){
         var pr = kk.slice(4).split(","); la = parseFloat(pr[0]); lo = parseFloat(pr[1]);
         if (!isFinite(la) || !isFinite(lo)){ la = null; lo = null; }
-      }
+      } else if (r.lat != null && r.lon != null){ la = r.lat; lo = r.lon; }
+      else if (r.terukur){ var kc = koordinatKecamatan(r.nama); if (kc){ la = kc.lat; lo = kc.lon; } }
       var hasil = { id:v, n:r.nama, home:r.km, res:Math.round(kmAman/2+15),
                z: r.zPaksa || a.z,
                luar:r.km>10?1:0, jauh:r.km>34?1:0, anchor:a.n, perkiraan:!r.terukur };
@@ -2343,7 +2344,8 @@ function renderRekomendasi(o, L, soc, stay){
   var t = el("rek-toggle");
   if (t) t.addEventListener("click", function(){ rekSemua = !rekSemua; runNow(); });
   el("rek-catatan").innerHTML = "Dihitung dengan cara yang sama dengan perkiraan di atas dan kartu urutan tempat: hari, jam, daerah tarif, jarak dan waktu pindah (koridor terukur), baterai, cuaca, acara, jarak dan waktu pulang, insentif, dan ramainya tiap tempat per jam (dari Rute 700K, bukan pengukuran). Di Jakarta, mulai 20:00 dihitung sudah ke arah rumah. Yang ikut: " + Rekomendasi.faktor(o, soc).join(", ") + "." +
-    (h.terlewat && h.terlewat.length ? " <b>Tidak ditawarkan karena baterai tidak cukup untuk sampai:</b> " + h.terlewat.map(esc).join(", ") + "." : "");
+    (h.terlewat && h.terlewat.length ? " <b>Tidak ditawarkan karena baterai tidak cukup untuk sampai:</b> " + h.terlewat.map(esc).join(", ") + "." : "") +
+    (h.kiraKira ? " <b>Posisi Ibu tanpa koordinat</b> (km diketik sendiri), jadi jarak pindah di atas tebakan kasar &mdash; tekan &ldquo;Cari posisi&rdquo; atau pilih titik di peta untuk angka yang benar." : "");
   return h;
 }
 
