@@ -18,8 +18,8 @@ keluarannya dengan artifact aslinya.
 | Tab | Fungsi |
 |---|---|
 | **Sekarang** | Posisi (GPS, peta, atau pilih sendiri), sisa baterai, sudah dapat berapa → kartu *langkah berikutnya*, urutan sampai pulang, kapan dan di mana ngecas, SPKLU terdekat menurut jarak jalan. Peta OpenStreetMap dengan posisi Ibu, titik terukur, SPKLU, dan tombol ke Google Maps berlapis kemacetan. |
-| **Catatan** | Catat angka harian dari aplikasi Grab (±1 menit). Setelah 3 hari, Rp/km, insentif, dan km/kWh Ibu sendiri menggantikan asumsi bawaan. Saldo bulanan menuju Rp 13,4 juta. Sinkron otomatis ke repo GitHub privat milik anak. |
-| **Rencana** | Simulasi satu hari → perkiraan bersih, urutan langkah, perbandingan 7 pola sif. Kalender acara besar: bawaan + hasil pencarian web oleh Claude. |
+| **Catatan** | Catat angka harian dari aplikasi Grab (±1 menit), opsional **order per blok jam** dan **carter**. Setelah 3 hari, Rp/km, insentif, dan km/kWh Ibu sendiri menggantikan asumsi bawaan; dari order per jam aplikasi belajar jam, hari, dan tempat yang ramai untuk Ibu. Saldo bulanan (termasuk carter) menuju Rp 13,4 juta. Sinkron otomatis ke repo GitHub privat milik anak. |
+| **Rencana** | Simulasi satu hari → perkiraan bersih, urutan langkah, perbandingan 7 pola sif. **Ada tawaran carter?** membandingkan tawaran dengan perkiraan narik di jam yang sama. Kalender acara besar: bawaan + hasil pencarian web oleh Claude. |
 | **Tanya** | Asisten Claude yang tahu isi halaman dan bisa menjalankan mesin hitung yang sama lewat alat, plus pencarian web untuk hal yang berubah hari ini. |
 
 Yang diambil dari internet, dan dari mana:
@@ -32,14 +32,20 @@ Yang diambil dari internet, dan dari mana:
 | Acara besar 90 hari | Claude + pencarian web, disegarkan tiap minggu | kunci API Anthropic |
 | Tanya | Claude (`claude-opus-5`) + alat hitung halaman + pencarian web | kunci API Anthropic |
 | Catatan Ibu → anak | GitHub Contents API ke repo privat | token GitHub terbatas |
+| Macet langsung, garis rute, pola macet jam pulang (opsional) | TomTom Traffic Flow + Routing (`departAt`) | kunci TomTom |
 
 Yang terjadi sendiri setiap kali aplikasi dibuka:
 
 - **Rekomendasi rute** (tab Sekarang): sembilan tempat kerja dibandingkan dari
-  posisi Ibu sekarang, memakai mesin yang sama dengan proyeksi: hari, jam, wilayah
-  tarif, jarak pindah, baterai setelah pindah, cuaca, acara, jarak pulang. Diurutkan,
-  tiap kartu punya tombol arah ke Google Maps. Tempat di wilayah tarif yang sama
-  hanya berbeda karena jarak; mesin ini tidak punya data permintaan per tempat.
+  posisi Ibu sekarang, dengan cara yang sama persis dengan kartu *Urutan tempat*:
+  hari, jam, wilayah tarif, bobot ramai tiap tempat per jam, waktu pindah dengan
+  faktor lalu lintas, baterai setelah pindah (tempat yang tidak terjangkau tidak
+  ditawarkan), cuaca, acara, waktu pulang, insentif, aturan "keluar Jakarta jam
+  20:00". Tiga teratas diuji "kalau macet parah" (perjalanan 1,5×); yang
+  keuntungannya hilang saat macet ditandai **berisiko**.
+- **Mau ke tempat lain?**: tujuan mana pun dari 21 tempat dihitung dulu — waktu
+  tempuh, jam tiba, baterai tiba, uji macet parah, jam keluar Jakarta / mulai
+  pulang, dan vonis sepadan / berisiko / tidak sepadan dibanding tetap di tempat.
 - **Briefing dari Claude** (kalau tersambung): satu paragraf tiap blok jam berganti,
   disusun dari rekomendasi mesin dan konteks yang sama dengan tab Tanya. Disimpan di
   HP supaya tidak membayar dua kali; bisa dimatikan di tab Tanya.
@@ -47,8 +53,10 @@ Yang terjadi sendiri setiap kali aplikasi dibuka:
   disegarkan tiap minggu (butuh kunci API); **posisi** dibaca dari GPS.
 
 Tanpa kunci apa pun, semua hitungan tetap jalan dan aplikasi mengatakan apa yang
-sedang tidak aktif. Tidak ada lapisan kemacetan di dalam aplikasi: tidak ada sumber
-gratis untuk itu, dan tombol Google Maps memberi data yang sama tanpa biaya.
+sedang tidak aktif. Waktu tempuh tanpa kunci TomTom memakai jarak jalan terukur
+(OSRM, jalan kosong) × faktor lalu lintas: Jakarta dari TomTom Traffic Index 2025
+(pagi 1,67×, sore 2,2×, siang ±1,5×, malam ±1,15×), Tangerang asumsi (1,6× jam
+sibuk, 1,25× siang, 1,1× malam) karena TomTom tidak punya angkanya.
 
 ## Pengaturan sekali oleh anak
 
@@ -128,8 +136,11 @@ di tabel Riwayat supaya Ibu bisa lihat sendiri kalau ada polanya.
 1. **Mulai hari.** Saat aplikasi dibuka (sekali sehari, jam 03:30–23:30) muncul halaman *Mulai hari*: baterai sekarang, varian, jam mulai, rencana pulang, wilayah, jatah filter, sudah dapat, jeda, charger di rumah. Hari, jam, tanggal merah, acara, cuaca, dan posisi GPS diisi mesin. Isian ini menjadi rencana hari itu dan jangkar perkiraan baterai. Bisa dilewati; bisa dibuka lagi lewat tombol **Isi keadaan hari ini**.
 2. **Baterai diperkirakan sendiri.** Dari jangkar terakhir, mesin mengurangi km yang ditempuh: odometer GPS selama halaman terbuka (bila masuk akal) atau model km per jam tiap blok jam dikurangi jeda. Kolom *Sisa baterai* terisi sendiri sampai Ibu mengetik angka lain; angka yang diketik dan tombol **Selesai ngecas ke %** menjadi jangkar baru. Selalu bertanda "perkiraan" dengan keraguannya.
 3. **Rencana dan langkah.** Jeda bebas dari–sampai. Sesi ngecas ditempatkan dengan mencoba semua kombinasi (jeda gratis, blok peak dihindari, lantai 20%/25% boleh ditembus sedikit hanya bila lebih murah daripada satu sesi lagi), diisi secukupnya sampai sesi berikutnya atau sampai pulang dengan cadangan; jeda panjang boleh sampai 100%. Tiap langkah menyebut perkiraan order, km berbayar, Rp/order, dan baterai; baris rekap bertemu angka bersih.
-4. **Sebaiknya ke mana sekarang** membandingkan sembilan tempat dari posisi sekarang dengan waktu tempuh koridor terukur (tabel Koridor kerja Rute 700K, jam sibuk vs lancar) dan bobot ramainya tiap tempat per blok jam (`BOBOT_TEMPAT`, diturunkan dari Peringkat rute Rute 700K; asumsi bertanda). **Urutan tempat sampai pulang** (`js/peluang.js`) menyusun 3 urutan tempat per blok jam untuk sisa hari, dinilai lengkap oleh mesin yang sama (pindah, ngecas, filter Jakarta, cadangan pulang), dengan aturan Rute 700K: lewat 20:00 hanya mendekat ke rumah, keluar Jakarta sebelum 20:00, bandara perlu antre. Lapisan TomTom opsional di peta.
+4. **Sebaiknya ke mana sekarang** membandingkan sembilan tempat dari posisi sekarang dengan jarak koridor terukur (tabel Koridor kerja Rute 700K) × faktor lalu lintas per jam (lihat di atas) dan bobot ramainya tiap tempat per blok jam (`BOBOT_TEMPAT`, diturunkan dari Peringkat rute Rute 700K; asumsi bertanda). **Urutan tempat sampai pulang** (`js/peluang.js`) menyusun 3 urutan tempat per blok jam untuk sisa hari, dinilai lengkap oleh mesin yang sama (pindah, ngecas, filter Jakarta, cadangan pulang), dengan aturan Rute 700K: lewat 20:00 hanya mendekat ke rumah, keluar Jakarta sebelum 20:00, bandara perlu antre. Lapisan TomTom opsional di peta.
 5. **Jam nyata.** Tab Sekarang memakai jam sekarang tepat ke menit; pilihan jam manual (untuk "kalau saya keluar jam 15:00?") kedaluwarsa sendiri setelah 20 menit.
+6. **Jam narik berhenti saat "Waktunya pulang"**, bukan saat tiba di rumah: perjalanan pulang tidak dihitung sebagai pendapatan (order searah lewat Filter Tujuan itu bonus).
+7. **Malam: catat.** Selain angka harian, isi *Order per jam* dari riwayat perjalanan Grab (kosong = tidak narik di jam itu, 0 = narik tapi sepi), dan *Carter* kalau hari itu ada sewa. Selama aplikasi terbuka, GPS mencatat zona tiap blok jam (`js/jejak.js`).
+8. **Aplikasi belajar** (`js/belajar.js`): order sungguhan dibanding perkiraan per blok jam, per hari × blok, dan per tempat; rasionya ditarik ke angka awal selama datanya sedikit, lalu makin mengikuti Ibu. Hasilnya dipakai perkiraan dan saran tempat, dan diringkas di tab Catatan (*Pola jam dari catatan Ibu*).
 
 ## Memasang di HP Ibu
 
@@ -155,7 +166,8 @@ Yang berubah menurut waktu ada di `app/js/data.js`:
 
 | Variabel | Isi |
 |---|---|
-| `HOLI` + `HOLI_SAMPAI` | Tanggal merah SKB 3 Menteri 2026; 2027 baru tanggal pasti. |
+| `HOLI` + `HOLI_SAMPAI` | Tanggal merah SKB 3 Menteri 2026 dan 2027 (18 libur + 8 cuti bersama). |
+| `LIBUR_SEKOLAH`, `RAMADAN` + `KONTEKS_SAMPAI` | Libur sekolah Banten 2026/2027 dan Ramadan 1448 H (perkiraan, tunggu isbat). Hanya konteks + kartu panduan; tidak mengubah angka — dampaknya dipelajari dari catatan. |
 | `EVENTS` + `EVENTS_SAMPAI` | Kalender acara bawaan (disusun tangan). Hasil web ditambahkan di atasnya, tidak menimpa. |
 | `CUACA` | Cadangan bila Open-Meteo tidak terjangkau. |
 | `TERBIT` | Tanggal terbit versi ini. `VERSION` di `app/sw.js` harus diawali tanggal ini (tes memeriksanya). |
@@ -174,7 +186,10 @@ app/
   js/peta.js          peta Leaflet: posisi, titik terukur, SPKLU, tautan kemacetan
   js/acara.js         kalender acara dari pencarian web
   js/sinkron.js       sinkron catatan ke repo GitHub privat
-  js/rekomendasi.js   rekomendasi rute otomatis dari posisi sekarang (faktor macet jam sibuk)
+  js/rekomendasi.js   "ke mana sekarang", uji macet parah, tujuan pilihan Ibu
+  js/lalulintas.js    macet langsung TomTom (pengali, garis rute, pola jam pulang)
+  js/jejak.js         zona per blok jam dari GPS
+  js/belajar.js       belajar pola jam / hari / tempat dari catatan order per jam
   js/baterai.js       jejak baterai: jangkar (Mulai hari, selesai ngecas), odometer GPS, model km per blok
   js/peluang.js       urutan tempat per blok jam (pencarian berkas + simulate dengan o.urutan)
   js/app.js           antarmuka, halaman Mulai hari, dan boot
@@ -190,6 +205,6 @@ tools/                sdk-entry.mjs, make-icons.py
 ```
 npm install
 npx playwright install chromium
-npm test                                      # 48 pemeriksaan
+npm test                                      # 139 pemeriksaan
 ORIG_HTML=/path/artifact-asli.html npm test   # + uji emas terhadap artifact satu-berkas
 ```
