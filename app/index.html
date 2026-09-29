@@ -167,6 +167,8 @@
     </div>
   </details>
 
+  <p class="pintas"><button type="button" class="linkbtn" id="ke-carter">Ada tawaran carter? Hitung untung-ruginya &rsaquo;</button></p>
+
   <div class="rek jalan" id="jalan" hidden>
     <div class="rek-head"><span class="eyebrow">Jalan pulang &amp; kejadian di jalan &middot; TomTom langsung</span><button type="button" class="linkbtn" id="jalan-cek">Cek jalan pulang sekarang</button></div>
     <div id="jalan-pulang"></div>
@@ -315,6 +317,23 @@
 <div id="v-plan" hidden>
 <section>
   <div class="sec-head"><h2>Rencana hari ini / besok</h2><span class="eyebrow">coba-coba dulu</span></div>
+  <details class="lipat" id="tf-wrap">
+    <summary>Ada tawaran carter? <span class="eyebrow">bandingkan dengan narik di jam yang sama</span></summary>
+    <div class="panel">
+      <div class="grid">
+        <div class="f"><label for="tf-tgl">Tanggal</label><input id="tf-tgl" type="date"></div>
+        <div class="f"><label for="tf-mulai">Mulai jam</label><select id="tf-mulai"></select></div>
+        <div class="f"><label for="tf-jam">Lama (jam)</label><input id="tf-jam" type="number" inputmode="decimal" step="0.5" value="6"></div>
+        <div class="f"><label for="tf-tarif">Tawaran (Rp)</label><input id="tf-tarif" type="number" inputmode="numeric" placeholder="400000"></div>
+        <div class="f"><label for="tf-km">Perkiraan km</label><input id="tf-km" type="number" inputmode="numeric" placeholder="120"></div>
+        <div class="f"><label for="tf-biaya">Biaya ditanggung Ibu (Rp)</label><input id="tf-biaya" type="number" inputmode="numeric" value="0"></div>
+      </div>
+      <div class="actions">
+        <button class="go" id="tf-hitung" type="button">Bandingkan</button>
+      </div>
+      <div class="ai-out" id="tf-hasil" style="margin-top:12px"></div>
+    </div>
+  </details>
   <div class="panel">
     <div class="grid">
       <div class="f"><label for="p-tgl">Tanggal</label><input id="p-tgl" type="date"></div>
@@ -382,31 +401,11 @@
 
 <section>
   <div class="sec-head"><h2>Bandingkan pola jam kerja</h2><span class="eyebrow" id="cmphead"></span></div>
-  <div class="tblwrap">
-    <table>
-      <thead><tr><th>Pola</th><th>Jam</th><th>Lama</th><th>Bersih</th><th>Per jam</th></tr></thead>
-      <tbody id="cmp"></tbody>
-    </table>
-  </div>
+  <p class="hint" style="margin:0 0 8px">Ketuk satu pola untuk memakainya di rencana di atas.</p>
+  <div class="pola-list" id="cmp"></div>
+  <details class="kenapa"><summary>Dari mana angkanya?</summary><div id="cmp-asal"></div></details>
 </section>
 
-<section>
-  <div class="sec-head"><h2>Ada tawaran carter?</h2><span class="eyebrow">bandingkan dengan narik</span></div>
-  <div class="panel">
-    <div class="grid">
-      <div class="f"><label for="tf-tgl">Tanggal</label><input id="tf-tgl" type="date"></div>
-      <div class="f"><label for="tf-mulai">Mulai jam</label><select id="tf-mulai"></select></div>
-      <div class="f"><label for="tf-jam">Lama (jam)</label><input id="tf-jam" type="number" inputmode="decimal" step="0.5" value="6"></div>
-      <div class="f"><label for="tf-tarif">Tawaran (Rp)</label><input id="tf-tarif" type="number" inputmode="numeric" placeholder="400000"></div>
-      <div class="f"><label for="tf-km">Perkiraan km</label><input id="tf-km" type="number" inputmode="numeric" placeholder="120"></div>
-      <div class="f"><label for="tf-biaya">Biaya ditanggung Ibu (Rp)</label><input id="tf-biaya" type="number" inputmode="numeric" value="0"></div>
-    </div>
-    <div class="actions">
-      <button class="go" id="tf-hitung" type="button">Bandingkan</button>
-    </div>
-    <div class="ai-out" id="tf-hasil" style="margin-top:12px"></div>
-  </div>
-</section>
 
 <section>
   <div class="sec-head"><h2>Kalender acara</h2><span class="eyebrow" id="acara-head"></span></div>

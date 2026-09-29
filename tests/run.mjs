@@ -237,7 +237,21 @@ async function main(){
   ok(aistat0 === "Belum ada kunci", "status AI jujur tanpa kunci", aistat0);
   await page.click("#t-plan");
   ok(await page.$eval("#v-plan", e => !e.hidden), "tab Rencana tampil");
-  ok((await page.$$("#cmp tr")).length === 8, "tabel bandingkan sif: 8 pola");
+  ok((await page.$$("#cmp .pola")).length === 8, "bandingkan pola jam kerja: 8 kartu");
+  {
+    await page.evaluate(() => document.getElementById("t-plan").click());
+    const sebelum = await page.evaluate(() => ({ k:el("p-keluar").value, p:el("p-pulang").value, r:el("p-rehat").value }));
+    await page.click('#cmp .pola[data-pola="4"]');   /* Sore-malam 15:00-23:00 tanpa istirahat */
+    const pakai = await page.evaluate(() => ({ k:el("p-keluar").value, p:el("p-pulang").value, r:el("p-rehat").value,
+      tag:document.querySelector('#cmp .pola.dipakai') && document.querySelector('#cmp .pola.dipakai').getAttribute("data-pola"),
+      net:el("p-net").textContent, asal:el("cmp-asal").textContent, status:el("p-status").textContent,
+      lebar:document.getElementById("cmp").scrollWidth <= document.getElementById("cmp").clientWidth + 1 }));
+    ok(pakai.k === "15" && pakai.p === "23" && pakai.r === "none" && pakai.tag === "4" && /Sore/.test(pakai.status) && pakai.lebar,
+       "ketuk kartu pola: rencana di atas memakai jam dan istirahatnya, kartu itu ditandai 'dipakai', tidak perlu digeser ke samping", JSON.stringify({ sebelum, pakai }));
+    ok(/Bersih = pendapatan \+ insentif/.test(pakai.asal) && /Rute 700K|catatan Ibu sendiri/.test(pakai.asal) && /12 jam/.test(pakai.asal),
+       "'Dari mana angkanya?' menjelaskan sumber tarif, arti bersih/per jam/narik, dan batas 12 jam", pakai.asal);
+    await page.evaluate(([k, p, r]) => { el("p-keluar").value = k; el("p-pulang").value = p; setJedaUI(r); runPlan(); document.getElementById("t-now").click(); }, [sebelum.k, sebelum.p, sebelum.r]);
+  }
   await page.click("#t-now");
 
   console.log("2. uji mandiri bawaan");
@@ -356,7 +370,9 @@ async function main(){
   await page.waitForFunction(() => /Open-Meteo/.test(document.getElementById("cuaca").textContent), null, { timeout:15000 });
   const cu = await page.evaluate(() => ({ teks: document.getElementById("cuaca").textContent.replace(/\s+/g, " "),
     hujan: document.getElementById("n-hujan").checked, cache: JSON.parse(localStorage.getItem("cuaca-openmeteo")),
-    notes: document.getElementById("n-notes").textContent,
+    /* semua catatan (bukan hanya 4 teratas): di jam tertentu catatan lain yang
+       lebih penting bisa mendorong "Hujan" ke balik "Lihat N catatan lainnya" */
+    notes: (() => { notesSemua = true; runNow(); const t = document.getElementById("n-notes").textContent; notesSemua = false; runNow(); return t; })(),
     pita: document.querySelectorAll("#cuaca .jamstrip i").length, pitaHujan: document.querySelectorAll("#cuaca .jamstrip i.l3").length }));
   ok(cu.pita === 24 && cu.pitaHujan === 4, "pita 24 jam, 4 jam hujan ditandai", `${cu.pita} ${cu.pitaHujan}`);
   ok(/Hujan sekitar 13:00-17:00/.test(cu.teks) && /70%/.test(cu.teks) && /Open-Meteo/.test(cu.teks), "kotak cuaca dari internet: jam, peluang, sumber", cu.teks);
@@ -941,8 +957,12 @@ async function main(){
     ok(Math.abs(c1.net - (400000 - 20000 - c1.listrikHarus)) < 1, "bersih carter = dibayar - biaya - listrik km carter", `${c1.net}`);
     ok(/Rp/.test(c1.mnet) && !/Rp 0$/.test(c1.mnet) && !c1.hidden && /Setengah hari/.test(c1.info), "saldo bulan memuat carter; ringkasan carter tampil", JSON.stringify({ mnet:c1.mnet, info:c1.info }));
     ok(c1.rpkm === c1.BASE_RPKM, "carter tidak mencemari kalibrasi Grab (Rp/km tetap angka awal)", `${c1.rpkm}`);
-    /* kalkulator tawaran */
-    await pc.evaluate(() => document.getElementById("t-plan").click());
+    /* kalkulator tawaran: pintasan dari tab Sekarang membuka kotaknya di atas tab Rencana */
+    await pc.evaluate(() => document.getElementById("t-now").click());
+    await pc.click("#ke-carter");
+    const buka = await pc.evaluate(() => ({ open:document.getElementById("tf-wrap").open, plan:!document.getElementById("v-plan").hidden,
+      pertama:document.querySelector("#v-plan section").contains(document.getElementById("tf-wrap")) }));
+    ok(buka.open && buka.plan && buka.pertama, "'Ada tawaran carter?' dibuka dari tab Sekarang; kotaknya paling atas di tab Rencana", JSON.stringify(buka));
     const tawaran = async (tarif) => {
       for (const [k, v] of Object.entries({ "tf-tgl":"2026-10-06", "tf-mulai":8, "tf-jam":6, "tf-tarif":tarif, "tf-km":120, "tf-biaya":0 })) await setField(pc, k, v);
       await pc.click("#tf-hitung");
@@ -1475,6 +1495,21 @@ async function main(){
     ok(peta.hijau === 1 && peta.abu === 1 && /CCS2 200 kW/.test(peta.pop) && /cocok Atto 1, cepat ±30 kW/.test(peta.pop) && !peta.img && !peta.xss && err19.length === 0,
        "peta: SPKLU baru dari TomTom (hijau = CCS2, abu = tidak cocok), yang sudah ada di daftar tidak digandakan; popup tanpa XSS", JSON.stringify({ peta, err19 }));
     await ps.close(); await ctx19.close();
+  }
+
+  console.log("20. Dibuka dini hari (sebelum 03:30)");
+  {
+    const c20 = await browser.newContext({ locale:"id-ID", timezoneId:"Asia/Jakarta", serviceWorkers:"block" });
+    const pd = await c20.newPage();
+    await pd.clock.setFixedTime(new Date("2026-10-06T02:30:00+07:00"));
+    await pd.route(/^https?:\/\/(?!127\.0\.0\.1)/, r => r.abort());
+    await pd.goto(url + "index.html?tanpa-mulai", { waitUntil:"load" });
+    await pd.waitForFunction(() => document.querySelector("#n-steps .step"));
+    const dini = await pd.evaluate(() => ({ jam:el("n-jam").value, src:el("src-jam").textContent, keluar:SEKARANG.o.keluar,
+      verdict:el("verdict").textContent, lewat:/Sudah lewat jam/.test(el("n-notes").textContent) }));
+    ok(dini.jam === "3.5" && dini.keluar === 3.5 && /belum 03:30/.test(dini.src) && /03:30/.test(dini.verdict) && !dini.lewat,
+       "dibuka 02:30: dihitung dari 03:30 (blok subuh), bukan dari 09:30 dan bukan 'sudah lewat jam'", JSON.stringify(dini));
+    await pd.close(); await c20.close();
   }
 
   console.log("15. Logika saran tempat (regresi temuan audit)");

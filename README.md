@@ -258,6 +258,6 @@ tools/                sdk-entry.mjs, make-icons.py
 ```
 npm install
 npx playwright install chromium
-npm test                                      # 208 pemeriksaan
+npm test                                      # 212 pemeriksaan
 ORIG_HTML=/path/artifact-asli.html npm test   # + uji emas terhadap artifact satu-berkas
 ```

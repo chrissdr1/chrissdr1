@@ -310,6 +310,19 @@ tbody tr:last-child td{border-bottom:0}
 td{color:var(--ink-2); font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums}
 td.n{color:var(--ink); font-weight:600; font-family:"IBM Plex Sans",sans-serif}
 tr.best td{background:var(--accent-soft)}
+/* pola jam kerja: kartu yang bisa diketuk */
+.pola-list{display:flex; flex-direction:column; gap:8px}
+.pola{display:flex; flex-direction:column; gap:3px; text-align:left; width:100%; padding:11px 14px; min-height:44px; cursor:pointer;
+  background:var(--surface); border:1px solid var(--line); border-radius:4px; color:var(--ink); font:inherit}
+.pola:active{background:var(--surface-2)}
+.pola.best{background:var(--accent-soft)}
+.pola.dipakai{border-color:var(--accent); box-shadow:inset 3px 0 0 var(--accent)}
+.pola-n{font-weight:600; font-size:15px}
+.pola-tag{font-style:normal; font-family:"IBM Plex Mono",monospace; font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); margin-left:6px}
+.pola-jam{font-size:13px; color:var(--ink-2)}
+.pola-angka{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; font-size:13px; color:var(--ink-2)}
+.pola-angka b{color:var(--ink)}
+.pintas{margin:10px 0 0}
 .empty{padding:24px 18px; text-align:center; color:var(--muted); font-size:14px}
 
 .tlbar{display:flex; height:42px; border-radius:3px; overflow:hidden; border:1px solid var(--line);

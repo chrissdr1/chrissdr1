@@ -466,6 +466,8 @@ function jamSekarangTepat(){ var d = new Date(); return d.getHours() + d.getMinu
 function jamKeluarSekarang(){
   var t = jamSekarangTepat();
   if (!jamManual && !jamLuar && t >= 3.5 && t <= 23.5) return Math.round(t * 60) / 60;
+  /* dini hari (00:00-03:29): Ibu belum mulai -- hitung dari blok pertama 03:30 */
+  if (!jamManual && t < 3.5) return 3.5;
   return parseFloat(el("n-jam").value);
 }
 function jamHidup(){
@@ -480,6 +482,7 @@ function tandaiJam(){
   if (jamLuar && !jamManual){
     e.textContent = "di luar 03:30\u201323:30"; e.className = "err"; if (b) b.hidden = true; return;
   }
+  if (!jamManual && jamSekarangTepat() < 3.5){ e.textContent = "belum 03:30 \u00b7 dihitung dari 03:30"; e.className = ""; if (b) b.hidden = true; return; }
   if (jamManual){ e.textContent = "diubah sendiri \u00b7 otomatis lagi 20 menit"; e.className = "man"; if (b) b.hidden = false; }
   else { e.textContent = "otomatis"; e.className = ""; if (b) b.hidden = true; }
 }
@@ -502,7 +505,15 @@ function ikutJam(paksa){
      Dan itu jatuh persis di malam yang halaman ini sendiri sebut paling
      berharga -- bubaran konser 22:30-23:30, malam sebelum libur panjang.
      Keluarga bug yang sama dengan GPS gagal diam-diam dan cuaca basi. */
-  if (t < 3.5 || t > 23.5){
+  /* Dini hari (00:00-03:29) BUKAN "lewat jam": Ibu bersiap berangkat
+     subuh. Dulu kolom jam tertinggal di 09:30 (nilai awal) dan seluruh tab
+     Sekarang -- termasuk perkiraan baterai -- dihitung untuk jam 09:30. */
+  if (t < 3.5){
+    jamLuar = false; if (paksa) jamManual = false;
+    if (!jamManual){ el("n-jam").value = 3.5; if (parseFloat(el("n-pulang").value) <= 3.5) el("n-pulang").value = 4; }
+    tandaiJam(); runNow(); return;
+  }
+  if (t > 23.5){
     if (!jamLuar){ jamLuar = true; tandaiJam(); runNow(); }
     return;
   }
@@ -948,11 +959,30 @@ function runPlan(){
     if (sah && rr.net>best) best=rr.net; return {p:p,r:rr,sah:sah};
   });
   el("cmphead").textContent = ctx.name+(ctx.holi?" · tanggal merah":"")+" · "+ZONA[o.zona].label;
-  el("cmp").innerHTML = res.map(function(x){
-    return '<tr'+(x.sah && x.r.net===best?' class="best"':"")+'><td class="n">'+x.p.n+(x.sah?"":' <em class="man">&gt;12 jam</em>')+"</td><td>"+
-      hhmm(x.p.k)+"&ndash;"+hhmm(x.p.p)+"</td><td>"+x.r.effHours.toFixed(1)+" j</td><td>"+
-      rp(x.r.net)+"</td><td>"+rp(x.r.perHour)+"</td></tr>";
+  /* Kartu yang bisa diketuk (dulu tabel 560 px yang harus digeser dan tidak
+     bisa dipakai): ketuk = pakai pola itu di rencana di atas. */
+  var rehatSekarang = JSON.stringify(rehatRange(o.rehat));
+  el("cmp").innerHTML = res.map(function(x, i){
+    var rg = rehatRange(x.p.r), dipakai = x.p.k === o.keluar && x.p.p === o.pulang && JSON.stringify(rg) === rehatSekarang;
+    return '<button type="button" class="pola' + (x.sah && x.r.net === best ? " best" : "") + (dipakai ? " dipakai" : "") + '" data-pola="' + i + '">' +
+      '<span class="pola-n">' + x.p.n + (x.sah ? "" : ' <em class="man">&gt;12 jam</em>') + (x.sah && x.r.net === best ? ' <em class="pola-tag">paling untung</em>' : "") + (dipakai ? ' <em class="pola-tag">dipakai</em>' : "") + "</span>" +
+      '<span class="pola-jam">' + hhmm(x.p.k) + "&ndash;" + hhmm(x.p.p) + (rg ? " &middot; istirahat " + hhmm(rg[0]) + "&ndash;" + hhmm(rg[1]) : " &middot; tanpa istirahat") + "</span>" +
+      '<span class="pola-angka"><b>' + rp(x.r.net) + "</b> bersih &middot; " + rp(x.r.perHour) + "/jam &middot; narik " + x.r.effHours.toFixed(1).replace(".", ",") + " jam</span></button>";
   }).join("");
+  Array.prototype.forEach.call(el("cmp").querySelectorAll("[data-pola]"), function(b){
+    b.addEventListener("click", function(){
+      var p = PRESETS[+b.getAttribute("data-pola")];
+      el("p-keluar").value = p.k; el("p-pulang").value = p.p; setJedaUI(p.r); runPlan();
+      el("p-net").scrollIntoView({ behavior:"smooth", block:"center" });
+      el("p-status").textContent = "Pola \u201c" + p.n + "\u201d dipakai. Tekan Simpan rencana kalau mau dipakai hari itu.";
+    });
+  });
+  el("cmp-asal").innerHTML = "Tiap pola dihitung dengan mesin yang sama dengan rencana di atas: hari yang Ibu pilih (" + esc(ctx.name) +
+    (ctx.holi ? ", tanggal merah" : "") + "), daerah, filter tujuan, baterai, hujan, dan acara dari isian di atas. " +
+    "Tarif per blok jam " + (CALIB.live ? "dari <b>catatan Ibu sendiri</b>" : "dari <b>Rute 700K</b> (angka umum; setelah 3 hari catatan, angka Ibu sendiri yang dipakai)") + ". " +
+    "<b>Bersih</b> = pendapatan + insentif &minus; listrik &minus; biaya ngecas &minus; parkir (sebelum cicilan, servis, ban). " +
+    "<b>Per jam</b> = bersih &divide; jam di luar rumah tanpa istirahat. <b>Narik</b> = jam benar-benar narik (tanpa istirahat, ngecas, dan jalan pulang). " +
+    "&ldquo;Paling untung&rdquo; hanya dipilih dari pola yang narik &le; 12 jam (batas jam kerja pengemudi).";
   var gap=best-r.net;
   el("p-vs").innerHTML = gap>5000
     ? "Target Rp 515.000 &middot; pola terbaik <b>"+rp(best)+"</b> (+"+rp(gap)+")"
@@ -1512,7 +1542,11 @@ function renderCarter(){
     " Bersih carter = dibayar &minus; biaya Ibu &minus; listrik km carter.";
 }
 
-/* Kalkulator tawaran carter (tab Rencana). */
+/* Kalkulator tawaran carter (paling atas tab Rencana; pintasan dari tab Sekarang). */
+el("ke-carter").addEventListener("click", function(){
+  tab("plan"); el("tf-wrap").open = true;
+  el("tf-wrap").scrollIntoView({ behavior:"smooth", block:"start" });
+});
 fillTimes(el("tf-mulai"), 3.5, 20, 8);
 el("tf-tgl").value = iso(new Date());
 el("tf-hitung").addEventListener("click", function(){
@@ -1783,7 +1817,7 @@ fillTimes(el("n-pulang"),9,24,21.5);
 fillTimes(el("p-keluar"),3.5,23,5.25);
 fillTimes(el("p-pulang"),9,24,21.5);
 var t = Math.round((now.getHours()+now.getMinutes()/60)*4)/4;
-if (t>=3.5 && t<=23.5) el("n-jam").value = t;
+if (t>=3.5 && t<=23.5) el("n-jam").value = t; else if (t < 3.5) el("n-jam").value = 3.5;   /* dini hari: dari blok pertama */
 el("tgl").value = iso(now); el("p-tgl").value = iso(now);
 
 ["n-jam","n-lok","n-soc","n-dpt","n-pulang","n-tujuan","n-bat","n-filter","n-hujan","n-acara","n-rumah"]
