@@ -1911,7 +1911,10 @@ async function main(){
     ok(m.konsisten && m.diuji >= 1, "uji macet parah: tidak pernah lebih untung dari jalan biasa; tanda 'berisiko' konsisten", JSON.stringify(m));
     ok(m.cbd.jam > 0.3 && m.cbd.parah <= m.cbd.sisa + 1 && m.cbd.mulaiPulang < 21.5 && m.lemah,
        "tujuan pilihan (CBD jam 16): waktu tempuh, hasil macet parah, jam mulai pulang; baterai 5% ke Bekasi: tidak terjangkau", JSON.stringify(m));
-    await pr.evaluate(() => { document.getElementById("t-now").click(); document.getElementById("tujuan-wrap").open = true; });
+    /* baterai dipatok 80% (diketik Ibu): perkiraan baterai dari jangkar ke jam
+       12:00 yang dipilih manual bergantung jam nyata saat tes dijalankan */
+    await pr.evaluate(() => { document.getElementById("t-now").click(); document.getElementById("mode-narik").click(); document.getElementById("tujuan-wrap").open = true;
+      el("n-soc").value = 80; el("n-soc").dataset.touched = "1"; runNow(); });
     await setField(pr, "tj-pilih", "cbd");
     const teksTj = await pr.evaluate(() => document.getElementById("tj-hasil").innerText);
     ok(/Ke Jakarta CBD/.test(teksTj) && /macet parah/.test(teksTj) && /(Mulai pulang|Keluar Jakarta jam 20:00)/.test(teksTj), "kotak 'Mau ke tempat lain?' menampilkan waktu, uji macet, dan jam pulang/keluar Jakarta", teksTj.slice(0, 400));
