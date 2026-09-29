@@ -15,11 +15,18 @@ keluarannya dengan artifact aslinya.
 
 **Alamat aplikasi:** https://chrissdr1.github.io/chrissdr1/
 
-| Tab | Fungsi |
+Tiga tab: **Hari ini**, **Catatan**, **Tanya**. "Hari ini" punya sakelar besar
+**Sedang narik / Rencanakan** (dulu dua tab terpisah, Sekarang dan Rencana). Keadaan
+bawaan: sudah isi Mulai hari → Sedang narik; malam (≥ 20:30) atau dini hari (< 03:30) →
+Rencanakan; pilihan Ibu sendiri diingat untuk hari itu. Isian yang sama cukup diubah
+sekali: tipe mobil dan colokan rumah selalu; filter, jam pulang, hujan, acara bila
+rencananya untuk hari ini.
+
+| Bagian | Fungsi |
 |---|---|
-| **Sekarang** | Posisi (GPS, peta, atau pilih sendiri), sisa baterai, sudah dapat berapa → kartu *langkah berikutnya*, urutan sampai pulang, kapan dan di mana ngecas, SPKLU terdekat menurut jarak jalan. Peta OpenStreetMap dengan posisi Ibu, titik terukur, SPKLU, dan tombol ke Google Maps berlapis kemacetan. |
+| **Hari ini** → **Sedang narik** | Posisi (GPS, peta, atau pilih sendiri), sisa baterai, sudah dapat berapa → kartu *langkah berikutnya*, urutan sampai pulang, kapan dan di mana ngecas, SPKLU terdekat menurut jarak jalan. Peta OpenStreetMap dengan posisi Ibu, titik terukur, SPKLU, dan tombol ke Google Maps berlapis kemacetan. |
 | **Catatan** | Catat angka harian dari aplikasi Grab (±1 menit), opsional **order per blok jam** dan **carter**. Setelah 3 hari, Rp/km, insentif, dan km/kWh Ibu sendiri menggantikan asumsi bawaan; dari order per jam aplikasi belajar jam, hari, dan tempat yang ramai untuk Ibu. Saldo bulanan (termasuk carter) menuju Rp 13,4 juta. Sinkron otomatis ke repo GitHub privat milik anak. |
-| **Rencana** | Simulasi satu hari → perkiraan bersih, urutan langkah, perbandingan 7 pola sif. **Ada tawaran carter?** membandingkan tawaran dengan perkiraan narik di jam yang sama. Kalender acara besar: bawaan + hasil pencarian web oleh Claude. |
+| **Hari ini** → **Rencanakan** | Simulasi satu hari (hari ini atau besok) → perkiraan bersih, urutan langkah, 8 pola jam kerja yang bisa diketuk untuk dipakai. **Ada tawaran carter?** membandingkan tawaran dengan perkiraan narik di jam yang sama. Kalender acara besar: bawaan + hasil pencarian web oleh Claude. |
 | **Tanya** | Asisten Claude yang tahu isi halaman dan bisa menjalankan mesin hitung yang sama lewat alat, plus pencarian web untuk hal yang berubah hari ini. |
 
 Yang diambil dari internet, dan dari mana:
@@ -37,7 +44,7 @@ Yang diambil dari internet, dan dari mana:
 
 Yang terjadi sendiri setiap kali aplikasi dibuka:
 
-- **Rekomendasi rute** (tab Sekarang): sembilan tempat kerja dibandingkan dari
+- **Rekomendasi rute** (Sedang narik): sembilan tempat kerja dibandingkan dari
   posisi Ibu sekarang, dengan cara yang sama persis dengan kartu *Urutan tempat*:
   hari, jam, wilayah tarif, bobot ramai tiap tempat per jam, waktu pindah dengan
   faktor lalu lintas, baterai setelah pindah (tempat yang tidak terjangkau tidak
@@ -118,7 +125,7 @@ hari disisakan untuk "jalan pulang sekarang" (macet latar belakang dan pengukura
 terverifikasi: apakah bulan TomTom = bulan kalender dan kapan persisnya hitungannya
 direset. Pemakaian bulan ini tampil di Pengaturan anak.
 
-**Jalan pulang & kejadian di jalan** (tab Sekarang, `js/kejadian.js`): mulai 1,5 jam
+**Jalan pulang & kejadian di jalan** (Sedang narik, `js/kejadian.js`): mulai 1,5 jam
 sebelum jam mulai pulang (di Jakarta mulai 18:00, aturan 20:00), atau saat tombol
 "Cek jalan pulang sekarang" ditekan, aplikasi meminta rute langsung posisi → rumah:
 menit sekarang, biasanya jam ini, lancar; jam paling lambat mulai jalan agar tiba di jam
@@ -187,7 +194,7 @@ di tabel Riwayat supaya Ibu bisa lihat sendiri kalau ada polanya.
 2. **Baterai diperkirakan sendiri.** Dari jangkar terakhir, mesin mengurangi km yang ditempuh: odometer GPS selama halaman terbuka (bila masuk akal) atau model km per jam tiap blok jam dikurangi jeda. Kolom *Sisa baterai* terisi sendiri sampai Ibu mengetik angka lain; angka yang diketik dan tombol **Selesai ngecas ke %** menjadi jangkar baru. Selalu bertanda "perkiraan" dengan keraguannya.
 3. **Rencana dan langkah.** Jeda bebas dari–sampai. Sesi ngecas ditempatkan dengan mencoba semua kombinasi (jeda gratis, blok peak dihindari, lantai 20%/25% boleh ditembus sedikit hanya bila lebih murah daripada satu sesi lagi), diisi secukupnya sampai sesi berikutnya atau sampai pulang dengan cadangan; jeda panjang boleh sampai 100%. Tiap langkah menyebut perkiraan order, km berbayar, Rp/order, dan baterai; baris rekap bertemu angka bersih.
 4. **Sebaiknya ke mana sekarang** membandingkan sembilan tempat dari posisi sekarang dengan jarak koridor terukur (tabel Koridor kerja Rute 700K) × faktor lalu lintas per jam (lihat di atas) dan bobot ramainya tiap tempat per blok jam (`BOBOT_TEMPAT`, diturunkan dari Peringkat rute Rute 700K; asumsi bertanda). **Urutan tempat sampai pulang** (`js/peluang.js`) menyusun 3 urutan tempat per blok jam untuk sisa hari, dinilai lengkap oleh mesin yang sama (pindah, ngecas, filter Jakarta, cadangan pulang), dengan aturan Rute 700K: lewat 20:00 hanya mendekat ke rumah, keluar Jakarta sebelum 20:00, bandara perlu antre. Lapisan TomTom opsional di peta.
-5. **Jam nyata.** Tab Sekarang memakai jam sekarang tepat ke menit; pilihan jam manual (untuk "kalau saya keluar jam 15:00?") kedaluwarsa sendiri setelah 20 menit.
+5. **Jam nyata.** Sedang narik memakai jam sekarang tepat ke menit; pilihan jam manual (untuk "kalau saya keluar jam 15:00?") kedaluwarsa sendiri setelah 20 menit.
 6. **Jam narik berhenti saat "Waktunya pulang"**, bukan saat tiba di rumah: perjalanan pulang tidak dihitung sebagai pendapatan (order searah lewat Filter Tujuan itu bonus).
 7. **Malam: catat.** Selain angka harian, isi *Order per jam* dari riwayat perjalanan Grab (kosong = tidak narik di jam itu, 0 = narik tapi sepi), dan *Carter* kalau hari itu ada sewa. Selama aplikasi terbuka, GPS mencatat zona tiap blok jam (`js/jejak.js`).
 8. **Aplikasi belajar** (`js/belajar.js`): order sungguhan dibanding perkiraan per blok jam, per hari × blok, dan per tempat; rasionya ditarik ke angka awal selama datanya sedikit, lalu makin mengikuti Ibu. Hasilnya dipakai perkiraan dan saran tempat, dan diringkas di tab Catatan (*Pola jam dari catatan Ibu*).
@@ -258,6 +265,6 @@ tools/                sdk-entry.mjs, make-icons.py
 ```
 npm install
 npx playwright install chromium
-npm test                                      # 212 pemeriksaan
+npm test                                      # 220 pemeriksaan
 ORIG_HTML=/path/artifact-asli.html npm test   # + uji emas terhadap artifact satu-berkas
 ```

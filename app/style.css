@@ -130,7 +130,7 @@ header.mast{display:flex; flex-direction:column; gap:10px; border-bottom:2px sol
 .tab + .tab{border-left:1px solid var(--line-strong)}
 .tab.on{background:var(--accent); color:var(--accent-ink)}
 /* Hari ini: dua keadaan (Sedang narik / Rencanakan) -- kartu besar, bukan tab kedua */
-.modehari{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:12px 0 4px}
+.modehari{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:12px 0 14px}
 .modehari[hidden]{display:none}
 .mode{display:flex; flex-direction:column; align-items:flex-start; gap:2px; text-align:left; min-height:56px; padding:9px 12px;
   background:var(--surface); border:1px solid var(--line-strong); border-radius:4px; color:var(--ink-2); font:inherit; cursor:pointer}
