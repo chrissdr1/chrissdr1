@@ -840,6 +840,13 @@ function blockAt(t, shapeDay){
    kenapa = penjelasan panjang untuk "Kenapa?" (buildSteps menyalinnya ke k langkah). */
 function advise(blk, L, o){
   var ctx=o.ctx, noPagi = !!ctx.holi||ctx.dow===6||ctx.dow===0;
+  /* Bandara punya teks per blok sendiri (STEP_APT, sama dengan daftar langkah).
+     Dulu cabang di bawah memperlakukannya seperti Jakarta ("Bertahan di
+     Jakarta sampai peak sore" di kartu Bandara). */
+  if (L && L.z === "apt" && !L.jauh && typeof STEP_APT !== "undefined" && STEP_APT[blk.n]){
+    var sa = STEP_APT[blk.n];
+    return { k:"good", h:sa.b, r:sa.s, p:sa.i, kenapa:sa.k || "" };
+  }
   if (L.jauh){
     var jamPulang = Math.max(0.75, jamTempuhRumah(L, o.pulang - 0.5));
     var slack = (o.pulang - o.keluar) - jamPulang;

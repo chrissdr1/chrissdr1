@@ -1037,6 +1037,9 @@ async function main(){
        "langkah 'Waktunya pulang' mulai persis saat angka berhenti menghitung narik", JSON.stringify(sama.map(x => [x.lok, x.akhirKerja, x.langkahPulang])));
     await setField(pr, "n-lok", "kota"); await setField(pr, "n-soc", 80);
 
+    const apt = await pr.evaluate(() => BASE.map(b => advise(b, LOKMAP.bandara, { ctx:dayCtx("2026-10-06"), keluar:b.s, pulang:21.5, filter:2 }).h));
+    ok(apt.every(h => !/Jakarta/.test(h)), "saran kartu Bandara memakai teks bandara, bukan 'Bertahan di Jakarta'", JSON.stringify(apt));
+
     /* Double check #4: kalibrasi kecepatan pulang memakai jam berangkat */
     const kal = await pr.evaluate(() => {
       const simpan = rows;
