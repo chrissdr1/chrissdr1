@@ -569,6 +569,10 @@ function simulate(o){
     if (stabil) break;
   }
   if (adaUrutan) o.tempatAkhir = akhir;
+  /* Tidak ada lagi narik (jam mulai pulang / batas 22:00 sudah lewat): kartu
+     besar (advise) membaca tanda ini supaya tidak menyuruh narik lagi --
+     keputusan yang SAMA dengan hitungan dan langkah. */
+  o.habisKerja = !o.stay && !pieces.some(function(p){ return !p.jeda && p.w > 0.01; });
   var kerja = pieces.filter(function(p){ return !p.jeda; });
   var jedaJam = 0; pieces.forEach(function(p){ if (p.jeda) jedaJam += p.w; });
 
@@ -827,7 +831,9 @@ function buildSteps(o, r, opts){
                   : "Filter tujuan &rarr; Modernland &middot; " + Math.round(kmHome) + " km &middot; &plusmn;" + Math.round(jamTempuh*60) + " menit",
       i:opts.stay ? "Ngecas malam ini supaya cukup untuk peak pagi besok."
                   : "Pasang filter jam ini; kalau filter habis, order ke barat saja &mdash; paling telat " + hhmm(batas) + "." +
-                    (perluCas ? " Sampai rumah &plusmn;" + socTibaPct + "%: <b>mampir SPKLU dekat rumah dulu, ngecas ke 85%</b>." : ""),
+                    (perluCas ? (r.socTiba < 0.08
+                      ? " <b>Baterai tidak cukup sampai rumah (&plusmn;" + socTibaPct + "% kalau langsung): ngecas dulu di SPKLU terdekat sebelum pulang.</b>"
+                      : " Sampai rumah &plusmn;" + socTibaPct + "%: <b>mampir SPKLU dekat rumah dulu, ngecas ke 85%</b>.") : ""),
       k:opts.stay ? "" : "Jam mulai pulang = rencana pulang dikurangi " + Math.round(jamTempuh*60) + " menit perjalanan" + (jamSibuk(o.pulang - 0.5) ? " (jam macet)" : "") +
                          " plus cadangan 15 menit; batas " + hhmm(batas) + " tidak pernah dilewati." +
                          (perluCas ? " Ngecas malam ini, bukan besok pagi: peak pagi besok mulai 05:15." : ""),
@@ -859,31 +865,48 @@ function blockAt(t, shapeDay){
 /* Nasihat kartu utama: k = kelas warna (bad/warn/good, dipakai app.js),
    h = perintah <= 6 kata, r = tempat/rute, p = satu kalimat,
    kenapa = penjelasan panjang untuk "Kenapa?" (buildSteps menyalinnya ke k langkah). */
-/* Jam tempuh pulang (+15 menit) untuk kartu besar: dari isian runNow bila
-   lengkap (sama persis dengan langkah "Waktunya pulang"), selain itu dari
-   tempat L sendiri (pemanggil lain: kartu bandara, saran tempat). */
+/* Jam tempuh pulang (+15 menit) untuk kartu besar: dari TEMPAT TERAKHIR
+   hasil simulate (o.tempatAkhir, sama dengan langkah "Waktunya pulang"),
+   selain itu dari isian runNow, selain itu dari tempat L sendiri. */
 function jpAdvise(o, L){
+  if (o.tempatAkhir) return jamMulaiPulang(o, o.tempatAkhir);
   var lengkap = typeof o.kmProtokol === "number" || typeof o.kmHome === "number" || (o.zona && ZONA[o.zona]);
   return lengkap ? jamMulaiPulang(o, null) : (L ? jamMulaiPulang(o, L) : 0);
 }
+/* Jam mulai pulang untuk kartu besar: batas 22:00 (Minggu 20:30) sama
+   dengan simulate dan langkah. */
+function mulaiPulangKartu(o, L){
+  var batas = (o.ctx.dow === 0 && !o.ctx.holi) ? 20.5 : 22;
+  return Math.min(o.pulang - jpAdvise(o, L), batas);
+}
 function advise(blk, L, o){
   var ctx=o.ctx, noPagi = !!ctx.holi||ctx.dow===6||ctx.dow===0;
-  /* Jam mulai pulang sudah lewat (rumus yang sama dengan langkah "Waktunya
-     pulang"): kartu besar tidak boleh menyuruh narik lagi. Dulu CBD 20:40
-     mendapat "Order terakhir malam ini, ambil posisi sebelum mal tutup". */
-  if (!o.stay && typeof o.pulang === "number" && L && L.home > 1 && o.keluar >= o.pulang - jpAdvise(o, L) - 0.01){
+  /* Tidak ada narik tersisa menurut simulate (o.habisKerja, dipasang oleh
+     simulate pada o yang sama): kartu besar = langkah berikutnya, yaitu
+     pulang -- atau ngecas dulu kalau baterai tidak cukup sampai rumah. Dulu
+     Kota 21:10 / Minggu 20:45 / CBD 20:40 masih "Order terakhir malam ini". */
+  if (o.habisKerja && !o.stay && L){
+    if (o.perluCasPulang) return { k:"bad", h:"Ngecas dulu, lalu pulang",
+      r:(typeof spkluTeks === "function" && spkluTeks(spkluUntuk(L))) ? "SPKLU terdekat: " + spkluTeks(spkluUntuk(L)) : "SPKLU terdekat yang searah pulang",
+      p:"Baterai tidak cukup untuk sampai rumah dengan aman. Ngecas secukupnya dulu, baru pulang; tolak order baru.",
+      kenapa:"Jam mulai pulang sudah lewat, tapi sisa baterai di bawah batas minimal untuk pulang dari sini." };
+    if (L.home <= 1) return { k:"good", h:"Selesai untuk hari ini",
+      r:"Sudah dekat rumah",
+      p:"Jam pulang Ibu sudah tiba. Kalau masih ada order searah rumah, boleh diambil; selebihnya istirahat.",
+      kenapa:"Tidak ada lagi jam narik sebelum jam pulang yang Ibu isi." };
     var jp0 = jpAdvise(o, L);
     return { k:"bad", h:"Waktunya pulang",
       r:"Filter tujuan &rarr; Modernland" + (L.z === "jkt" ? " &middot; keluar Jakarta sekarang" : ""),
-      p:"Perjalanan pulang &plusmn;" + Math.round((jp0 - 0.25) * 60) + " menit; untuk tiba " + hhmm(o.pulang) + " berangkat sekarang. Terima hanya order yang searah pulang.",
-      kenapa:"Jam mulai pulang (jam pulang dikurangi waktu tempuh + 15 menit) sudah lewat" +
-        (L.z === "jkt" && o.keluar >= 20 ? ", dan mulai 20:00 aplikasi menghitung Ibu sudah keluar dari Jakarta" : "") + ". Narik di sini lagi berarti pulang telat." };
+      p:"Perjalanan pulang &plusmn;" + Math.max(10, Math.round((jp0 - 0.25) * 60)) + " menit; berangkat sekarang. Terima hanya order yang searah pulang.",
+      kenapa:"Jam mulai pulang (jam pulang dikurangi waktu tempuh + 15 menit" + ((o.ctx.dow === 0 && !o.ctx.holi) ? ", paling telat 20:30 hari Minggu" : ", paling telat 22:00") +
+        ") sudah lewat" + (L.z === "jkt" && o.keluar >= 20 ? ", dan mulai 20:00 aplikasi menghitung Ibu sudah keluar dari Jakarta" : "") + "." };
   }
-  /* Jakarta mulai 20:00: arah rumah (aturan yang sama dengan urutan tempat). */
+  /* Jakarta mulai 20:00 dan masih ada jam narik: arah rumah (aturan yang
+     sama dengan urutan tempat); jam mulai pulangnya dari tempat terakhir. */
   if (!o.stay && L && L.z === "jkt" && o.keluar >= 20)
     return { k:"warn", h:"Keluar Jakarta sekarang",
       r:"Filter tujuan &rarr; Modernland &middot; order searah pulang",
-      p:"Mulai 20:00 aplikasi menghitung Ibu sudah di arah rumah; lanjut narik di sekitar Tangerang sampai jam mulai pulang " + hhmm(o.pulang - jpAdvise(o, L)) + ".",
+      p:"Mulai 20:00 aplikasi menghitung Ibu sudah di arah rumah; lanjut narik di sekitar Tangerang sampai jam mulai pulang " + hhmm(mulaiPulangKartu(o, L)) + ".",
       kenapa:"Rute 700K: jam 20:00 seharusnya sudah tidak di Jakarta. Order malam di Jakarta sering ke timur, dan pulang dari sana panjang tanpa penumpang." };
   /* Bandara punya teks per blok sendiri (STEP_APT, sama dengan daftar langkah).
      Dulu cabang di bawah memperlakukannya seperti Jakarta ("Bertahan di

@@ -168,6 +168,9 @@ var Peluang = (function(){
     var basis = hasil.filter(function(h){ return h.diam; })[0] || null;
     hasil.sort(function(a, b){ return b.net - a.net; });
     hasil.forEach(function(h){ h.selisih = basis ? h.net - basis.net : 0; });
+    /* Jam mulai pulang sudah lewat: tidak ada urutan tempat untuk ditawarkan
+       (dulu 3-4 kartu "Pindah 0 kali" yang sama persis). */
+    if (!o.stay && basis && !basis.r.pieces.some(function(p){ return !p.jeda && p.w > 0.01; })) return { daftar:[], basis:null, awal:awal, habis:true };
     var daftar = hasil.slice(0, banyak);
     if (basis && daftar.indexOf(basis) < 0) daftar.push(basis);
     return { daftar:daftar, basis:basis, awal:awal, pieces:pieces };

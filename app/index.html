@@ -92,12 +92,12 @@
 <!-- Satu tab "Hari ini" dengan dua keadaan (dulu dua tab Sekarang dan
      Rencana yang isinya mirip dan membingungkan). -->
 <div class="modehari" id="modehari" role="tablist" aria-label="Keadaan Ibu">
-  <button type="button" class="mode on" id="mode-narik" role="tab" aria-selected="true"><b>Sedang narik</b><span>ke mana sekarang, kapan pulang</span></button>
-  <button type="button" class="mode" id="mode-rencana" role="tab" aria-selected="false"><b>Rencanakan</b><span>sebelum berangkat, hari ini / besok</span></button>
+  <button type="button" class="mode on" id="mode-narik" role="tab" aria-selected="true" aria-controls="v-now"><b>Sedang narik</b><span>ke mana sekarang, kapan pulang</span></button>
+  <button type="button" class="mode" id="mode-rencana" role="tab" aria-selected="false" aria-controls="v-plan"><b>Rencanakan</b><span>sebelum berangkat, hari ini / besok</span></button>
 </div>
 
 <!-- ============ SEKARANG ============ -->
-<div id="v-now">
+<div id="v-now" role="tabpanel" aria-labelledby="mode-narik">
 <section>
   <button type="button" class="statusbar" id="statusbar" aria-controls="masukan"></button>
   <details class="lipat" id="masukan">
@@ -320,7 +320,7 @@
 </div>
 
 <!-- ============ RENCANA ============ -->
-<div id="v-plan" hidden>
+<div id="v-plan" role="tabpanel" aria-labelledby="mode-rencana" hidden>
 <section>
   <div class="sec-head"><h2>Rencana hari ini / besok</h2><span class="eyebrow">coba-coba dulu</span></div>
   <details class="lipat" id="tf-wrap">

@@ -1550,25 +1550,32 @@ async function main(){
        "keadaan bawaan: siang Sedang narik; malam & dini hari Rencanakan; sudah Mulai hari = Sedang narik; pilihan Ibu diingat hari itu saja", JSON.stringify(kasus));
 
     const { c, p } = await bukaJam("2026-10-06T10:00:00+07:00");
-    /* isian kembar: rencana HARI INI */
+    /* isian kembar: Sedang narik = keadaan hari ini -> Rencanakan (hari ini) + rencana tersimpan;
+       Rencanakan = coba-coba sampai "Pakai rencana ini"; filter tidak disamakan */
     const kembar = await p.evaluate(() => {
       const ubah = (id, v) => { const e = el(id); if (e.type === "checkbox") e.checked = v; else e.value = String(v); e.dispatchEvent(new Event("change", { bubbles:true })); };
-      ubah("n-bat", 38.88); ubah("n-filter", 0); ubah("p-pulang", 20); ubah("p-hujan", true); ubah("n-rumah", true);
-      const a = { pBat:el("p-bat").value, pFilter:el("p-filter").value, nPulang:el("n-pulang").value, nHujan:el("n-hujan").checked,
-                  nHujanIbu:el("n-hujan").dataset.touched, pRumah:el("p-rumah").checked, oPulang:SEKARANG.o.pulang, oBat:SEKARANG.o.bat };
-      /* rencana BESOK: filter/pulang tidak ikut; tipe mobil tetap ikut */
-      ubah("p-tgl", "2026-10-07"); ubah("n-filter", 2); ubah("n-pulang", 22); ubah("n-bat", 30.08);
-      const b = { pFilter:el("p-filter").value, pPulang:el("p-pulang").value, pBat:el("p-bat").value };
-      /* kembali ke hari ini: ambil keadaan Sedang narik */
+      savePlan({ date:"2026-10-06", keluar:5.25, pulang:21.5, rehat:"none", zona:"tng", filter:2, bat:30.08, rumah:false, hujan:false, acara:false });
+      el("p-tgl").value = "2026-10-06";
+      ubah("n-bat", 38.88); ubah("n-pulang", 20); ubah("n-hujan", true); ubah("n-rumah", true); ubah("n-filter", 0);
+      const a = { pBat:el("p-bat").value, pPulang:el("p-pulang").value, pHujan:el("p-hujan").checked, pRumah:el("p-rumah").checked, pFilter:el("p-filter").value,
+                  plan:{ pulang:PLAN.pulang, bat:PLAN.bat, hujan:PLAN.hujan, rumah:PLAN.rumah, filter:PLAN.filter }, oBat:SEKARANG.o.bat };
+      /* Rencanakan diubah: Sedang narik belum ikut, ada pesan 'belum dipakai' */
+      ubah("p-pulang", 22); ubah("p-bat", 30.08);
+      const b = { nPulang:el("n-pulang").value, planPulang:PLAN.pulang, status:el("p-status").textContent, nBat:el("n-bat").value, planBat:PLAN.bat };
+      /* rencana besok: keadaan hari ini tidak ikut */
+      ubah("p-tgl", "2026-10-07"); ubah("n-pulang", 21); ubah("n-hujan", false);
+      const c = { pPulang:el("p-pulang").value, pHujan:el("p-hujan").checked };
       ubah("p-tgl", "2026-10-06");
-      const d = { pFilter:el("p-filter").value, pPulang:el("p-pulang").value };
-      return { a, b, d };
+      const d = { pPulang:el("p-pulang").value, pHujan:el("p-hujan").checked };
+      return { a, b, c, d };
     });
-    ok(kembar.a.pBat === "38.88" && kembar.a.pFilter === "0" && kembar.a.nPulang === "20" && kembar.a.nHujan && kembar.a.nHujanIbu === "1" && kembar.a.pRumah &&
-       kembar.a.oPulang === 20 && kembar.a.oBat === 38.88,
-       "isian kembar (rencana hari ini): tipe mobil, filter, jam pulang, hujan, colokan rumah cukup diubah sekali; hitungan Sedang narik ikut", JSON.stringify(kembar.a));
-    ok(kembar.b.pFilter === "0" && kembar.b.pPulang === "20" && kembar.b.pBat === "30.08" && kembar.d.pFilter === "2" && kembar.d.pPulang === "22",
-       "rencana besok: filter & jam pulang tidak ikut hari ini (tipe mobil tetap ikut); kembali ke hari ini = mengambil keadaan hari ini", JSON.stringify({ b:kembar.b, d:kembar.d }));
+    ok(kembar.a.pBat === "38.88" && kembar.a.pPulang === "20" && kembar.a.pHujan && kembar.a.pRumah && kembar.a.pFilter === "2" &&
+       kembar.a.plan.pulang === 20 && kembar.a.plan.bat === 38.88 && kembar.a.plan.hujan === true && kembar.a.plan.rumah === true && kembar.a.plan.filter === 2 && kembar.a.oBat === 38.88,
+       "Sedang narik diubah: Rencanakan (hari ini) dan rencana tersimpan ikut (jam pulang, hujan, tipe mobil, colokan); filter sisa TIDAK mengubah jatah filter rencana", JSON.stringify(kembar.a));
+    ok(kembar.b.nPulang === "20" && kembar.b.planPulang === 20 && /belum dipakai/.test(kembar.b.status) && kembar.b.nBat === "30.08" && kembar.b.planBat === 30.08,
+       "Rencanakan diubah: jam pulang masih coba-coba ('belum dipakai'), tipe mobil (fakta) langsung ikut", JSON.stringify(kembar.b));
+    ok(kembar.c.pPulang === "22" && kembar.c.pHujan === true && kembar.d.pPulang === "21" && kembar.d.pHujan === false,
+       "rencana besok tidak ikut keadaan hari ini; kembali ke hari ini = mengambil keadaan hari ini", JSON.stringify({ c:kembar.c, d:kembar.d }));
 
     /* simpan rencana hari ini -> tombol 'Lihat' ke Sedang narik */
     await p.click("#mode-rencana");
@@ -1583,6 +1590,39 @@ async function main(){
     ok(alias, "tab('plan') lama tetap membuka Rencanakan", String(alias));
     await c.close();
 
+    /* baterai kritis setelah jam pulang: kartu 'Ngecas dulu', bukan 'berangkat sekarang' */
+    const kr = await bukaJam("2026-10-06T20:50:00+07:00");
+    const kritis = await kr.p.evaluate(() => { const s = el("n-lok"); s.value = "cbd"; s.dispatchEvent(new Event("change", { bubbles:true }));
+      el("n-soc").value = 14; el("n-soc").dataset.touched = "1"; el("n-soc").dispatchEvent(new Event("change", { bubbles:true })); runNow();
+      return { h:el("verdict").querySelector("h3").textContent, banner:el("batwarn").textContent, langkah:SEKARANG.langkah.map(x => x.i || "").join(" ") }; });
+    ok(kritis.h === "Ngecas dulu, lalu pulang" && /Ngecas sekarang/.test(kritis.banner) && /ngecas dulu di SPKLU terdekat sebelum pulang/.test(kritis.langkah),
+       "CBD 20:50, baterai 14%: kartu besar 'Ngecas dulu, lalu pulang' sejalan dengan spanduk dan langkah", JSON.stringify(kritis));
+    await kr.c.close();
+    /* dibuka malam 22:10: Rencanakan untuk BESOK, jam pulang tidak terbawa 22:45 */
+    const mlm = await bukaJam("2026-10-06T22:10:00+07:00");
+    const malam = await mlm.p.evaluate(() => ({ rencana:!el("v-plan").hidden, tgl:el("p-tgl").value, pulang:el("p-pulang").value, nPulang:el("n-pulang").value, net:el("p-net").textContent }));
+    ok(malam.rencana && malam.tgl === "2026-10-07" && malam.pulang !== malam.nPulang && parseFloat(malam.pulang) <= 22 && /Rp/.test(malam.net),
+       "dibuka 22:10: Rencanakan untuk besok (7 Okt), jam pulang besok tidak ikut jam pulang malam ini", JSON.stringify(malam));
+    await mlm.c.close();
+    /* hujan/acara rencana hari ini tidak dihapus saat dibuka ulang */
+    const hj = await bukaJam("2026-10-06T10:00:00+07:00", () => localStorage.setItem("buku-setoran-plan",
+      JSON.stringify({ date:"2026-10-06", keluar:5.25, pulang:21.5, rehat:"none", zona:"tng", filter:2, bat:30.08, rumah:false, hujan:true, acara:true })));
+    const hujan = await hj.p.evaluate(() => ({ p:el("p-hujan").checked, pa:el("p-acara").checked, n:el("n-hujan").checked, na:el("n-acara").checked, t:el("p-hujan").dataset.touched || "", plan:PLAN.hujan }));
+    ok(hujan.p && hujan.pa && hujan.n && hujan.na && hujan.t === "" && hujan.plan === true,
+       "rencana hari ini dengan hujan & acara: dibuka ulang tetap tercentang di Rencanakan DAN Sedang narik", JSON.stringify(hujan));
+    /* tombol carter tidak mengunci Rencanakan untuk sisa hari */
+    await hj.p.click("#ke-carter");
+    await hj.p.reload({ waitUntil:"load" }); await hj.p.waitForFunction(() => document.querySelector("#n-steps .step"));
+    const setelahCarter = await keadaan(hj.p);
+    ok(setelahCarter.narik, "melihat tawaran carter tidak membuat aplikasi selalu terbuka di Rencanakan", JSON.stringify(setelahCarter));
+    await hj.c.close();
+    /* rencana hari ini masih berjalan 20:45 (tanpa Mulai hari): Sedang narik */
+    const jl = await bukaJam("2026-10-06T20:45:00+07:00", () => localStorage.setItem("buku-setoran-plan",
+      JSON.stringify({ date:"2026-10-06", keluar:15, pulang:22, rehat:"none", zona:"tng", filter:2, bat:30.08, rumah:false, hujan:false, acara:false })));
+    const jalan = await keadaan(jl.p);
+    ok(jalan.narik, "20:45 dengan rencana hari ini sampai 22:00: tetap Sedang narik (tidak disembunyikan)", JSON.stringify(jalan));
+    await jl.c.close();
+
     /* Mulai hari selesai -> Sedang narik, walau tadi memilih Rencanakan */
     const m = await bukaJam("2026-10-06T06:00:00+07:00", () => localStorage.setItem("mode-hari", JSON.stringify({ tgl:"2026-10-06", m:"rencana" })));
     await m.p.evaluate(() => { bukaCheckin(); el("ci-soc").value = 88; });
@@ -1594,8 +1634,9 @@ async function main(){
 
   console.log("22. Sapuan jam x posisi x keadaan: aturan yang harus selalu benar");
   {
-    const JAM = ["00:20", "03:10", "03:40", "05:00", "07:45", "09:40", "11:30", "14:20", "16:00", "17:30", "19:55", "20:40", "22:10", "23:20", "23:50"];
-    const HARI = [["2026-10-06", JAM], ["2026-10-10", ["06:30", "12:00", "21:00", "23:40"]], ["2026-12-25", ["08:00", "17:00", "23:10"]]];   /* Selasa, Sabtu, tanggal merah */
+    const JAM = ["00:20", "03:10", "03:40", "05:00", "07:45", "09:40", "11:30", "14:20", "16:00", "17:30", "19:55", "20:10", "20:40", "21:10", "21:25", "22:10", "23:20", "23:50"];
+    const HARI = [["2026-10-06", JAM], ["2026-10-10", ["06:30", "12:00", "21:00", "23:40"]], ["2026-10-11", ["18:00", "20:31", "20:45", "21:10"]],
+                  ["2026-12-25", ["08:00", "17:00", "21:05", "23:10"]]];   /* Selasa, Sabtu, Minggu (batas 20:30), tanggal merah */
     const POS = ["kota", "cbd", "bandara", "ciledug", "jakbar", "cikupa"];
     const langgar = []; let dicek = 0;
     for (const [tgl, jamList] of HARI) for (const j of jamList){
@@ -1631,6 +1672,22 @@ async function main(){
             const kerja = S.r.pieces.filter(pc => !pc.jeda && pc.jamJalan > 0.01), akhir = kerja.length ? Math.max(...kerja.map(pc => pc.e)) : null;
             if (!o.stay && akhir != null && akhir > jp + 0.02) masalah.push("narik sampai " + akhir.toFixed(2) + " padahal mulai pulang " + mm[0]);
           }
+          /* tidak ada narik tersisa -> kartu besar = pulang (atau ngecas dulu); urutan tempat kosong */
+          const adaKerja = S.r.pieces.some(pc => !pc.jeda && pc.w > 0.01), hV = (el("verdict").querySelector("h3") || {}).textContent || "";
+          const PULANG = /^(Waktunya pulang|Selesai untuk hari ini|Ngecas dulu, lalu pulang)$/;
+          if (!o.stay && !adaKerja && !PULANG.test(hV)) masalah.push("tanpa narik tersisa tapi kartu besar: " + hV);
+          if (!o.stay && !adaKerja && S.peluang && S.peluang.daftar && S.peluang.daftar.length) masalah.push("urutan tempat tetap ditawarkan setelah jam pulang");
+          /* kartu 'Keluar Jakarta sekarang': jam mulai pulangnya = langkah */
+          if (hV === "Keluar Jakarta sekarang" && mm){
+            const kk = el("verdict").textContent.match(/sampai jam mulai pulang (\d\d:\d\d)/);
+            if (!kk || kk[1] !== mm[0]) masalah.push("kartu Keluar Jakarta " + (kk && kk[1]) + " vs langkah " + mm[0]);
+          }
+          /* kartu saran tempat: kartu tiap tempat sesuai hitungan tempat itu sendiri */
+          (S.rek && S.rek.daftar || []).forEach(x => {
+            const kerjaX = x.r && x.r.pieces.some(pc => !pc.jeda && pc.w > 0.01), habisX = x.saran && /sudah lewat/.test(x.saran.kenapa || "") && x.saran.h === "Waktunya pulang";
+            if (!o.stay && x.r && !kerjaX && x.saran && !PULANG.test(x.saran.h)) masalah.push("saran " + x.n + ": tanpa narik tapi '" + x.saran.h + "'");
+            if (kerjaX && (habisX || (x.saran && x.saran.h === "Ngecas dulu, lalu pulang"))) masalah.push("saran " + x.n + ": masih ada narik tapi 'pulang'");
+          });
           /* kartu besar di Jakarta lewat 20:00 tidak menyuruh narik di Jakarta */
           if (!o.stay && S.L.z === "jkt" && o.keluar >= 20 && /Order terakhir|Bertahan di Jakarta|Antar orang pulang/.test(el("verdict").textContent)) masalah.push("kartu besar Jakarta lewat 20:00: " + el("verdict").textContent.slice(0, 60));
           /* saran tempat: selalu ada pembanding 'tetap di sini' bila posisi punya koordinat & tidak diam */
@@ -1656,7 +1713,7 @@ async function main(){
       err.forEach(e => langgar.push(tgl + " " + j + " galat halaman: " + e));
       await c.close();
     }
-    ok(langgar.length === 0, "sapuan " + dicek + " kombinasi (jam x posisi, Selasa/Sabtu/tanggal merah): tanpa NaN/kolom kosong/jam salah, pembanding & angka konsisten, tanpa Jakarta lewat 20:00",
+    ok(langgar.length === 0, "sapuan " + dicek + " kombinasi (jam x posisi, Selasa/Sabtu/Minggu/tanggal merah): tanpa NaN/kolom kosong/jam salah; kartu besar, langkah, saran, dan urutan tempat saling cocok; tanpa Jakarta lewat 20:00",
        langgar.slice(0, 12).join("\n       "));
   }
 
