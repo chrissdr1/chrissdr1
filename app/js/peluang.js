@@ -119,7 +119,7 @@ var Peluang = (function(){
       });
       /* hukum jarak pulang pada tahap terakhir supaya urutan yang berakhir jauh tidak menang semu */
       var terakhir = p === kerja[kerja.length - 1];
-      berikut.forEach(function(st){ if (terakhir && !o.stay) st.skor -= st.akhir.home / kmkwh * TARIF_KWH + jamTempuhRumah(st.akhir, o.pulang - 0.5) * 20000; });
+      berikut.forEach(function(st){ if (terakhir && !o.stay) st.skor -= st.akhir.home / kmkwh * TARIF_KWH + jamTempuhRumah(st.akhir, o.pulang - 0.5, undefined, tipeDari(ctx)) * 20000; });
       berikut.sort(function(a, b){ return b.skor - a.skor; });
       /* jaga keberagaman: paling banyak 3 urutan dengan tempat akhir yang sama */
       var hitungAkhir = {}, pilih = [];

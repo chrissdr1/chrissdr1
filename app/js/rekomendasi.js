@@ -48,13 +48,14 @@ var Rekomendasi = (function(){
       if (L && L.id && LOKMAP[L.id] && L.lat != null){
         kmPindah = jarakAntar(L, K); jamPindah = jamTempuhAntar(L, K, o.keluar, iso(o.ctx.d));
         if (typeof Lalulintas !== "undefined" && liveBerlaku(o.keluar, iso(o.ctx.d)) && Lalulintas.pengaliCache(L, K) != null) sumberMacet = "tomtom";
+        else if (typeof UkurMacet !== "undefined" && UkurMacet.menitRute(L.id, K.id, o.keluar, UkurMacet.tipeTgl(iso(o.ctx.d))) != null) sumberMacet = "terukur";
       }
-      else if (asal){ kmPindah = jarakDatar(asal.lat, asal.lon, K.lat, K.lon) * LIKU; jamPindah = kmPindah / CALIB.kecepatan * faktorMacet(o.keluar, K.z); }
-      else { kmPindah = Math.abs(((L && L.home) || 0) - K.home) + 3; jamPindah = kmPindah / CALIB.kecepatan * faktorMacet(o.keluar, K.z); }   /* tanpa koordinat: tebakan kasar */
+      else if (asal){ kmPindah = jarakDatar(asal.lat, asal.lon, K.lat, K.lon) * LIKU; jamPindah = kmPindah / CALIB.kecepatan * faktorMacet(o.keluar, K.z, tipeDari(o.ctx)); }
+      else { kmPindah = Math.abs(((L && L.home) || 0) - K.home) + 3; jamPindah = kmPindah / CALIB.kecepatan * faktorMacet(o.keluar, K.z, tipeDari(o.ctx)); }   /* tanpa koordinat: tebakan kasar */
     }
     jamPindah *= kaliMacet;
     /* macet = pengali lalu lintas jam itu (label kartu); waktunya sudah dihitung di atas. */
-    var macet = faktorLalin(o.keluar, K.z === "jkt" || (L && L.z === "jkt"));
+    var macet = faktorLalin(o.keluar, K.z === "jkt" || (L && L.z === "jkt"), tipeDari(o.ctx));
     var socPindah = (kmPindah / CALIB.kmkwh) / o.bat * 100;
     /* Tidak terjangkau: tiba di bawah 8% (lantai mutlak 5% + ragam taksiran).
        Dulu tetap ditawarkan dengan "baterai 1%" padahal perjalanannya butuh
@@ -161,6 +162,8 @@ var Rekomendasi = (function(){
     f.push("baterai " + soc + "%");
     if (o.filter === 0) f.push("filter habis");
     f.push("pulang " + hhmm(o.pulang));
+    var st = typeof UkurMacet !== "undefined" ? UkurMacet.status() : null;
+    f.push(st && st.terukur > 0 ? "pola macet TomTom terukur (" + st.terukur + " dari " + st.total + " rute-jam)" : "macet: perkiraan umum (belum ada pengukuran TomTom)");
     return f;
   }
 

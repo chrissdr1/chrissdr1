@@ -111,7 +111,7 @@ function recalibrate(){
     if (m >= 5 && k >= 3){
       var v = k / (m/60); if (v < 12 || v > 45) return;
       var jamB = (typeof r.pjam === "number") ? r.pjam : 21.5 - m / 60;
-      laju.push(v * faktorMacet(jamB, r.pz || "tng"));
+      laju.push(v * faktorMacet(jamB, r.pz || "tng", tipeDari(dayCtx(r.id))));
     }
   });
   laju.sort(function(x,y){ return x-y; });
@@ -228,7 +228,10 @@ function jamSibuk(jam){ return (jam >= 6 && jam < 9) || (jam >= 16.5 && jam < 20
    per jam. Tangerang: TomTom tidak punya angkanya -- 1,6x di jam sibuk
    (asumsi lama Rute 700K), 1,25x siang, 1,1x malam: ASUMSI. Angka TomTom
    langsung (Lalulintas) menggantikan semua ini bila ada dan berlaku. */
-function faktorLalin(jam, jkt){
+function faktorLalin(jam, jkt, tipe){
+  /* Pola TomTom yang sudah terukur untuk rute-rute Ibu (ukurmacet.js),
+     median wilayah -- mengganti angka di bawah bila sudah ada >= 3 rute. */
+  if (typeof UkurMacet !== "undefined"){ var fw = UkurMacet.faktorWilayah(jam, jkt, tipe); if (fw != null) return fw; }
   var pagi = jam >= 6 && jam < 9, sore = jam >= 16.5 && jam < 20, malam = jam >= 22 || jam < 6;
   if (jkt) return pagi ? 1.67 : sore ? 2.2 : malam ? 1.15 : 1.5;
   return (pagi || sore) ? 1.6 : malam ? 1.1 : 1.25;
@@ -237,17 +240,25 @@ function faktorLalin(jam, jkt){
    inti punya menit terukur (Rute 700K, lancar & jam sibuk); tempat lain
    memakai km / kecepatan kalibrasi x faktor macet. Kalau kecepatan sudah
    terkalibrasi dari catatan Ibu, menit terukur ikut diskalakan. */
-function jamTempuhRumah(L, jam, km){
+/* Jenis hari untuk pola lalu lintas: "lb" akhir pekan / tanggal merah, "hk" hari kerja. */
+function tipeDari(ctx){ return (ctx && (ctx.shapeDay === 0 || ctx.shapeDay === 6)) ? "lb" : "hk"; }
+function jamTempuhRumah(L, jam, km, tipe){
   var kmPakai = (typeof km === "number") ? km : (L ? L.home : 0);
+  /* Rute tempat itu -> rumah yang sudah diukur TomTom (pola historis jam itu):
+     dipakai apa adanya, tanpa skala kalibrasi -- itu waktu jalan sungguhan. */
+  if (L && L.id && LOKMAP[L.id] && L.home > 0 && typeof UkurMacet !== "undefined"){
+    var mu = UkurMacet.menitRute(L.id, "kota", jam, tipe);
+    if (mu != null){ var d0 = mu / 60; return (typeof km === "number") ? d0 * km / L.home : d0; }
+  }
   if (L && L.mnt){
-    var m = L.mnt.lancar * faktorLalin(jam, L.z === "jkt");
+    var m = L.mnt.lancar * faktorLalin(jam, L.z === "jkt", tipe);
     var skala = KEC_BAWAAN / Math.max(10, CALIB.kecepatan);   /* kalibrasi lambat -> lebih lama */
     var dasar = m / 60 * skala;
     /* km yang diminta beda dari km tempat (mis. protokol dari wilayah inti): proporsional */
     return (typeof km === "number" && L.home > 0) ? dasar * km / L.home : dasar;
   }
   var zona = L ? L.z : "tng";
-  return kmPakai / CALIB.kecepatan * faktorMacet(jam, zona);
+  return kmPakai / CALIB.kecepatan * faktorMacet(jam, zona, tipe);
 }
 /* Jarak jalan antar dua tempat (km): garis lurus x faktor kelokan. Faktor tiap
    tempat diturunkan dari jarak terukur ke rumah (km terukur / garis lurus),
@@ -286,19 +297,25 @@ function jamTempuhAntar(A, B, jam, tgl){
      berlaku untuk jam itu, pakai di kedua cabang di bawah -- kalau tidak,
      heuristik statis tetap jalan seperti sebelumnya. */
   var pengaliLive = (typeof Lalulintas !== "undefined" && liveBerlaku(jam, tgl)) ? Lalulintas.pengaliCache(A, B) : null;
+  var tipe = (typeof UkurMacet !== "undefined") ? UkurMacet.tipeTgl(tgl) : "hk";
+  /* Tanpa angka langsung: rute A->B yang sudah diukur TomTom (pola jam itu) */
+  if (pengaliLive == null && typeof UkurMacet !== "undefined"){
+    var mu = UkurMacet.menitRute(A.id, B.id, jam, tipe);
+    if (mu != null) return mu / 60;
+  }
   if (ru && ru.mnt){   /* menit lancar terukur; jam sibuk x1,6 (Tangerang) / x1,9 (arah Jakarta) */
     var arahJkt = (A.z === "jkt" || B.z === "jkt");
-    var pengaliMacet = (pengaliLive != null) ? pengaliLive : faktorLalin(jam, arahJkt);
+    var pengaliMacet = (pengaliLive != null) ? pengaliLive : faktorLalin(jam, arahJkt, tipe);
     return ru.mnt / 60 * pengaliMacet * (KEC_BAWAAN / Math.max(10, CALIB.kecepatan));
   }
   function v(L){
     if (L && L.mnt){
-      var m = L.mnt.lancar * ((pengaliLive != null) ? pengaliLive : faktorLalin(jam, L.z === "jkt"));
+      var m = L.mnt.lancar * ((pengaliLive != null) ? pengaliLive : faktorLalin(jam, L.z === "jkt", tipe));
       return (L.pergi || L.home) / (m / 60);
     }
     /* KEC_BAWAAN, bukan CALIB.kecepatan: kalibrasi dikalikan SEKALI di bawah.
        Dulu dua kali untuk tempat tanpa menit terukur (Ciledug dst.). */
-    return KEC_BAWAAN / faktorMacet(jam, L ? L.z : "tng");
+    return KEC_BAWAAN / faktorMacet(jam, L ? L.z : "tng", tipe);
   }
   /* dari/ke rumah: koridor tempat itu sendiri yang terukur, bukan rata-rata */
   var kec = (A.id === "kota" ? v(B) : B.id === "kota" ? v(A) : (v(A) + v(B)) / 2) * (CALIB.kecepatan / KEC_BAWAAN);
@@ -317,16 +334,17 @@ function jamMulaiPulang(o, tempat){
          : (typeof o.kmHome === "number") ? o.kmHome : ZONA[o.zona].pulang;
   if (!(km > 0)) return 0;
   var L = tempat || o.tempatPulang || null, j = o.pulang - 0.5;
-  var t = L ? jamTempuhRumah(L, j, km) : km / CALIB.kecepatan * faktorMacet(j, o.zona);
+  var tp = tipeDari(o.ctx);
+  var t = L ? jamTempuhRumah(L, j, km, tp) : km / CALIB.kecepatan * faktorMacet(j, o.zona, tp);
   t *= (o.kaliMacet || 1);   /* uji "macet parah" (rekomendasi.js) */
   return Math.max(0.5, t + 0.25);
 }
 /* Pengali waktu untuk km / CALIB.kecepatan. Kecepatan 26 km/jam itu kecepatan
    JAM SIBUK (1,6x Tangerang / 1,9x Jakarta di atas jalan kosong), jadi faktornya
    faktorLalin dibagi patokan itu. */
-function faktorMacet(jam, zona){
+function faktorMacet(jam, zona, tipe){
   var jkt = (zona === "jkt" || zona === "mix");
-  return faktorLalin(jam, jkt) / (jkt ? 1.9 : 1.6);
+  return faktorLalin(jam, jkt, tipe) / (jkt ? 1.9 : 1.6);
 }
 
 /* Potong blok jam menurut jam keluar-pulang dan jeda -> urutan potongan
@@ -697,7 +715,7 @@ function buildSteps(o, r, opts){
   var z = ZONA[o.zona], ctx = o.ctx;
   var noPagi = !!ctx.holi || ctx.dow === 6 || ctx.dow === 0;
   var pos = opts.L, jauh = pos && pos.jauh, diJkt = pos && pos.z === "jkt";
-  var jamPulang = jauh ? Math.max(0.75, jamTempuhRumah(pos, o.pulang - 0.5)) : 0;
+  var jamPulang = jauh ? Math.max(0.75, jamTempuhRumah(pos, o.pulang - 0.5, undefined, tipeDari(ctx))) : 0;
   var mulaiPulang = o.pulang - jamPulang;
   var sudahSampai = false;
   var out = [], cum = opts.cum || 0;
@@ -791,7 +809,7 @@ function buildSteps(o, r, opts){
        rumus yang sama dengan jamMulaiPulang -- supaya jam di kartu = jam
        berhenti narik di angka. */
     if (o.tempatAkhir && !opts.stay){ posPulang = o.tempatAkhir; kmHome = Math.max(o.tempatAkhir.home, 6); }
-    var jamTempuh = posPulang ? jamTempuhRumah(posPulang, o.pulang - 0.5, kmHome) : kmHome / CALIB.kecepatan * faktorMacet(o.pulang - 0.5, o.zona);
+    var jamTempuh = posPulang ? jamTempuhRumah(posPulang, o.pulang - 0.5, kmHome, tipeDari(ctx)) : kmHome / CALIB.kecepatan * faktorMacet(o.pulang - 0.5, o.zona, tipeDari(ctx));
     var mulai = o.pulang - Math.max(0.5, jamTempuh + 0.25);
     /* Batas keras 22:00 (Minggu 20:30): waktunya pulang tidak pernah dijadwalkan lewat batas itu. */
     var batas = (ctx.dow === 0 && !ctx.holi) ? 20.5 : 22;
@@ -848,7 +866,7 @@ function advise(blk, L, o){
     return { k:"good", h:sa.b, r:sa.s, p:sa.i, kenapa:sa.k || "" };
   }
   if (L.jauh){
-    var jamPulang = Math.max(0.75, jamTempuhRumah(L, o.pulang - 0.5));
+    var jamPulang = Math.max(0.75, jamTempuhRumah(L, o.pulang - 0.5, undefined, tipeDari(ctx)));
     var slack = (o.pulang - o.keluar) - jamPulang;
     var mulai = hhmm(o.pulang - jamPulang);
     var dasar = "Jarak pulang dari "+L.n+" <b>"+Math.round(L.home)+" km</b>, sekitar <b>"+

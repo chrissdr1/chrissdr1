@@ -2284,7 +2284,7 @@ function renderTujuan(){
   var mnt = Math.round(x.jamPindah * 60), mntParah = Math.round(x.jamPindah * Rekomendasi.KALI_PARAH * 60);
   var p = [];
   p.push("<b>Ke " + esc(K.n) + ":</b> &plusmn;" + Math.round(x.kmPindah) + " km, &plusmn;" + mnt + " menit" +
-         (x.sumberMacet === "tomtom" ? " (macet TomTom sekarang)" : " (" + labelLalin(x.macet) + ")") +
+         (x.sumberMacet === "tomtom" ? " (macet TomTom sekarang)" : x.sumberMacet === "terukur" ? " (pola macet TomTom terukur jam itu)" : " (" + labelLalin(x.macet) + ", perkiraan)") +
          " &rarr; tiba " + hhmm(x.tiba) + ", baterai tiba &plusmn;" + x.socTiba + "%.");
   p.push("Kalau macet parah: &plusmn;" + mntParah + " menit di jalan.");
   var biasa = Lalulintas.pulangBiasaCache(K, x.mulaiPulang, tgl);
@@ -2343,7 +2343,7 @@ function renderRekomendasi(o, L, soc, stay){
   var tampil = rekSemua ? h.daftar : h.daftar.slice(0, 3);
   el("rek-list").innerHTML = tampil.map(function(x, i){
     var sel = x.diSini ? "kalau tetap di sini" : (!h.basis ? "" : (x.selisih >= 0 ? "+" : "−") + rp(Math.abs(x.selisih)) + " dibanding tetap di sini");
-    var macetTeks = x.sumberMacet === "tomtom" ? ", macet: TomTom langsung" : ", " + labelLalin(x.macet);
+    var macetTeks = x.sumberMacet === "tomtom" ? ", macet: TomTom langsung" : x.sumberMacet === "terukur" ? ", macet: pola TomTom terukur" : ", " + labelLalin(x.macet);
     var gerak = x.diSini ? "Tetap di sini."
       : "Pindah " + Math.round(x.kmPindah) + " km (±" + Math.round(x.jamPindah * 60) + " menit" + macetTeks + "), sampai " + hhmm(x.tiba) +
         (x.socTiba < x.res ? ", baterai kurang untuk pulang — perlu ngecas" : "") + ".";
@@ -2675,7 +2675,32 @@ el("tt-save").addEventListener("click", function(){
   if (!k){ el("tt-status").textContent = "Tempel kuncinya dulu."; return; }
   Peta.setKunciTomTom(k); el("tt-key").value = ""; tandaiTomTom();
 });
-el("tt-clear").addEventListener("click", function(){ Peta.setKunciTomTom(""); tandaiTomTom(); });
+el("tt-clear").addEventListener("click", function(){ Peta.setKunciTomTom(""); tandaiTomTom(); tandaiUkur(); });
+
+/* ---- Ukur macet otomatis (ukurmacet.js) ---- */
+function tandaiUkur(teksLain){
+  var e = el("ukur-status"); if (!e) return;
+  if (!Lalulintas.aktif()){ e.textContent = "Pengukuran macet rute Ibu butuh kunci TomTom (produk Routing)."; return; }
+  var s = UkurMacet.status(), pct = Math.round(s.segar / s.total * 100);
+  e.innerHTML = (teksLain ? esc(teksLain) + " " : "") +
+    "Pola macet rute Ibu (TomTom): <b>" + s.segar + "/" + s.total + "</b> ukuran (" + pct + "%) &middot; hari ini " + s.hariIni + "/" + s.maksHarian +
+    " &middot; sisa jatah TomTom HP ini " + Lalulintas.sisaJatah() + "/" + Lalulintas.MAKS_HARIAN + "." +
+    (s.galat ? " <b>" + esc(s.galat) + ".</b>" : "") +
+    (s.berhenti ? " Pengukuran berhenti sendiri setelah 3 kali gagal &mdash; periksa produk Routing di kunci TomTom, lalu tekan tombol di bawah." : "");
+}
+function ukurMacet(paksa){
+  if (!Lalulintas.aktif()){ tandaiUkur(); return Promise.resolve(); }
+  if (paksa) tandaiUkur("Mengukur…");
+  return UkurMacet.jalankan({ paksa:!!paksa }).then(function(h){
+    tandaiUkur(paksa && h.alasan && h.alasan !== "selesai" ? "Berhenti: " + h.alasan + "." : "");
+    if (h.diukur > 0) runNow();
+  });
+}
+el("ukur-sekarang").addEventListener("click", function(){ ukurMacet(true); });
+el("tt-save").addEventListener("click", function(){ if (Lalulintas.aktif()) ukurMacet(true); });
+window.addEventListener("online", function(){ ukurMacet(false); });
+tandaiUkur();
+setTimeout(function(){ ukurMacet(false); }, 8000);
 tandaiTomTom();
 
 /* Buka halaman Mulai hari sekali sehari, di jam kerja, kecuali dilewati

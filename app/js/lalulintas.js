@@ -49,10 +49,39 @@ var Lalulintas = (function(){
     return c.poin || null;
   }
 
-  function urlRute(A, B, key){
+  function urlRute(A, B, key, opsi){
+    opsi = opsi || {};
     return "https://api.tomtom.com/routing/1/calculateRoute/" +
       A.lat.toFixed(5) + "," + A.lon.toFixed(5) + ":" + B.lat.toFixed(5) + "," + B.lon.toFixed(5) +
-      "/json?traffic=true&routeRepresentation=polyline&key=" + encodeURIComponent(key);
+      "/json?traffic=true" + (opsi.tanpaGaris ? "" : "&routeRepresentation=polyline") +
+      (opsi.departAt ? "&departAt=" + encodeURIComponent(opsi.departAt) + "&computeTravelTimeFor=all" : "") +
+      "&key=" + encodeURIComponent(key);
+  }
+
+  /* ---- Jatah harian bersama (semua permintaan non-ubin TomTom lewat sini) ----
+     Gratis TomTom: 2.500 permintaan non-ubin per hari PER KUNCI, dipakai
+     bersama Routing / macet langsung / pengukuran. Kunci yang sama bisa
+     dipakai di dua HP (Ibu dan anak), jadi tiap HP dibatasi 1.100 per hari.
+     Balasan 429 (jatah habis) menghentikan SEMUA permintaan sampai besok. */
+  var LS_JATAH = "tomtom-jatah", MAKS_HARIAN = 1100;
+  function jatah(){
+    var j = null; try { j = JSON.parse(localStorage.getItem(LS_JATAH) || "null"); } catch (e) {}
+    var hari = iso(new Date());
+    if (!j || j.tgl !== hari) j = { tgl:hari, n:0, stop:false };
+    return j;
+  }
+  function simpanJatah(j){ try { localStorage.setItem(LS_JATAH, JSON.stringify(j)); } catch (e) {} }
+  function bolehMinta(){ var j = jatah(); return !j.stop && j.n < MAKS_HARIAN; }
+  function sisaJatah(){ var j = jatah(); return j.stop ? 0 : Math.max(0, MAKS_HARIAN - j.n); }
+  /* Promise<Response>; menolak (tanpa menghubungi TomTom) kalau jatah habis. */
+  function minta(url){
+    var j = jatah();
+    if (j.stop || j.n >= MAKS_HARIAN) return Promise.reject(new Error("jatah"));
+    j.n++; simpanJatah(j);
+    return fetchTimeout(url, {}, 10000).then(function(r){
+      if (r.status === 429){ var jj = jatah(); jj.stop = true; simpanJatah(jj); }
+      return r;
+    });
   }
 
   function poinDari(route){
@@ -87,7 +116,7 @@ var Lalulintas = (function(){
     var key = (typeof Peta !== "undefined") ? Peta.kunciTomTom() : "";
     if (!key) return Promise.resolve();
     if (typeof navigator !== "undefined" && navigator.onLine === false) return Promise.resolve();
-    return fetchTimeout(urlRute(A, B, key), {}, 10000).then(function(r){
+    return minta(urlRute(A, B, key)).then(function(r){
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.json();
     }).then(function(j){
@@ -131,8 +160,8 @@ var Lalulintas = (function(){
     if (tgl < iso(kini) || (tgl === iso(kini) && jam < kini.getHours() + kini.getMinutes() / 60)) return Promise.resolve();
     if (typeof navigator !== "undefined" && navigator.onLine === false) return Promise.resolve();
     var jamB = Math.round(jam * 4) / 4;
-    var url = urlRute(A, RUMAH_TITIK, key) + "&departAt=" + encodeURIComponent(jamIso(tgl, jamB));
-    return fetchTimeout(url, {}, 10000).then(function(r){
+    var url = urlRute(A, RUMAH_TITIK, key, { departAt:jamIso(tgl, jamB), tanpaGaris:true });
+    return minta(url).then(function(r){
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.json();
     }).then(function(j){
@@ -142,5 +171,6 @@ var Lalulintas = (function(){
   }
 
   return { pengaliCache:pengaliCache, poinCache:poinCache, segarkan:segarkan, aktif:aktif,
-           pulangBiasa:pulangBiasa, pulangBiasaCache:pulangBiasaCache };
+           pulangBiasa:pulangBiasa, pulangBiasaCache:pulangBiasaCache,
+           urlRute:urlRute, minta:minta, bolehMinta:bolehMinta, sisaJatah:sisaJatah, MAKS_HARIAN:MAKS_HARIAN };
 })();
