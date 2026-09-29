@@ -79,7 +79,9 @@ var Lalulintas = (function(){
   /* cadangan: bagian jatah harian yang hanya boleh dipakai permintaan
      PRIORITAS (jalan pulang sekarang, tombol yang ditekan Ibu) -- macet
      latar belakang dan pengukuran berhenti sebelum menyentuhnya. */
-  var PRODUK = { rute:{ bulan:10000, cadangan:40, nama:"rute" }, insiden:{ bulan:1200, cadangan:6, nama:"kejadian jalan" } };
+  var PRODUK = { rute:{ bulan:10000, cadangan:40, nama:"rute" }, insiden:{ bulan:1200, cadangan:6, nama:"kejadian jalan" },
+                 /* Search API (daftar SPKLU): gratis 2.500/bulan; dipakai ~12-24 per 30 hari */
+                 cari:{ bulan:400, cadangan:0, nama:"cari SPKLU" } };
   function blnDari(t){ return t.slice(0, 7); }
   function hariDalamBulan(t){ var y = +t.slice(0, 4), m = +t.slice(5, 7); return new Date(y, m, 0).getDate(); }
   function jatah(){

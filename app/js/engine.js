@@ -1096,9 +1096,28 @@ function spkluUntuk(L){
   var l = LOKMAP[v];
   return (l && l.lat != null) ? spkluDekat(l.lat, l.lon, 3) : null;
 }
+/* Dengan data TomTom (spklu.js): jenis colokan dan kecocokan untuk Atto 1
+   di belakang tiap nama. Nama dan colokan dari TomTom di-escape. */
+function escT(s){ return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
 function spkluTeks(list){
   if (!list || !list.length) return "";
-  return list.map(function(x){ return "<b>" + x.nama + "</b> " + x.km + " km"; }).join(" &middot; ");
+  return list.map(function(x){
+    var s = (typeof SpkluTT !== "undefined") ? SpkluTT.untukNama(x.nama) : null;
+    return "<b>" + x.nama + "</b> " + x.km + " km" + (s ? " (" + escT(SpkluTT.ringkasColokan(s)) + "; " + SpkluTT.teksCocok(s) + ")" : "");
+  }).join(" &middot; ");
+}
+/* SPKLU cepat (CCS2) terdekat menurut TomTom, bila tidak satu pun dari
+   SPKLU di daftar aplikasi yang diketahui cocok-cepat. "" bila tak perlu. */
+function spkluCepatTeks(L, list){
+  if (typeof SpkluTT === "undefined" || !L || L.lat == null) return "";
+  var adaCepat = (list || []).some(function(x){ var s = SpkluTT.untukNama(x.nama), c = s && SpkluTT.cocok(s); return c && c.jenis === "cepat"; });
+  if (adaCepat) return "";
+  var t = SpkluTT.terdekatCocok(L.lat, L.lon, 2);
+  if (!t.length) return "";
+  return "SPKLU CCS2 (cocok Atto 1) terdekat menurut TomTom: " + t.map(function(x){
+    var c = SpkluTT.cocok(x.s);
+    return "<b>" + escT(x.s.n) + "</b> &plusmn;" + String(x.km).replace(".", ",") + " km" + (c.kw ? " (" + Math.round(c.kw) + " kW)" : "");
+  }).join(" &middot; ") + " (jarak kira-kira).";
 }
 
 /* Watak untuk lokasi yang sedang dipilih. Tiga jalur, karena posisi bisa

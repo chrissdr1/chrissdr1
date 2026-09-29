@@ -678,7 +678,8 @@ function runNow(){
     bw.hidden = false; bw.className = "batwarn";
     bw.innerHTML = '<span class="tag">Baterai kritis</span><span><b>Ngecas sekarang.</b> Baterai '+soc+
       "%, untuk pulang dari "+L.n+" butuh minimal <b>"+resMin+"%</b>." +
-      (spkluTeks(spkluUntuk(L)) ? " SPKLU terdekat: " + spkluTeks(spkluUntuk(L)) + "." : "") + "</span>";
+      (spkluTeks(spkluUntuk(L)) ? " SPKLU terdekat: " + spkluTeks(spkluUntuk(L)) + "." : "") +
+      (spkluCepatTeks(L, spkluUntuk(L)) ? " " + spkluCepatTeks(L, spkluUntuk(L)) : "") + "</span>";
   } else if (r.sessions > 0){
     var s1 = r.sesi[0];
     bw.hidden = false; bw.className = "batwarn mild";
@@ -686,7 +687,9 @@ function runNow(){
       Math.round(s1.dari*100)+"&rarr;"+Math.round(s1.ke*100)+"%, &plusmn;"+Math.round(s1.durasi*60)+" menit</b>"+
       (s1.diJeda ? " (saat istirahat)" : (s1.peak ? " &mdash; <b>terpaksa di jam peak</b>" : ""))+
       ". Baterai cukup "+Math.round(usableKm)+" km, sampai pulang perlu "+Math.round(butuh)+" km." +
-      (spkluTeks(spkluUntuk(L)) ? '<details class="kenapa"><summary>SPKLU terdekat</summary><div>' + spkluTeks(spkluUntuk(L)) + " (jarak jalan; jenis colokan belum dicek).</div></details>" : "") + "</span>";
+      (spkluTeks(spkluUntuk(L)) ? '<details class="kenapa"><summary>SPKLU terdekat</summary><div>' + spkluTeks(spkluUntuk(L)) +
+        (typeof SpkluTT !== "undefined" && SpkluTT.status() ? " (jarak jalan; colokan dari TomTom)." : " (jarak jalan; jenis colokan belum dicek &mdash; isi kunci TomTom untuk melihatnya).") +
+        (spkluCepatTeks(L, spkluUntuk(L)) ? "<br>" + spkluCepatTeks(L, spkluUntuk(L)) : "") + "</div></details>" : "") + "</span>";
   } else { bw.hidden = true; }
 
   /* Tandai centang mana yang terisi sendiri, mana yang Ibu ubah. */
@@ -1159,9 +1162,20 @@ function konteksTanya(){
   var spT = SEKARANG ? spkluUntuk(SEKARANG.L) : null;
   if (spT && spT.length){
     baris.push("", "=== SPKLU TERDEKAT DARI POSISI IBU (jarak jalan terukur) ===");
-    spT.forEach(function(x){ baris.push("  " + x.nama + ": " + x.km + " km"); });
-    baris.push("  Jenis colokan dan dayanya TIDAK diketahui -- belum tercatat di sumber " +
-               "terbuka mana pun. Jangan menjanjikan bahwa salah satunya cocok untuk Atto 1.");
+    var adaTT = typeof SpkluTT !== "undefined" && SpkluTT.status();
+    spT.forEach(function(x){
+      var s = adaTT ? SpkluTT.untukNama(x.nama) : null;
+      baris.push("  " + x.nama + ": " + x.km + " km" + (s ? " -- colokan (TomTom): " + SpkluTT.ringkasColokan(s) + "; " +
+        SpkluTT.teksCocok(s).replace(/&plusmn;/g, "+-").replace(/&rarr;/g, "->") : " -- colokan tidak diketahui"));
+    });
+    baris.push(adaTT ? "  Colokan dari data statis TomTom (bukan status kosong/terisi -- itu tidak tersedia untuk Indonesia). " +
+               "Atto 1 Dynamic: DC CCS2 maks 30 kW, AC Type 2 maks 6,6 kW (brosur BYD). SPKLU tanpa CCS2 bukan tempat ngecas saat narik."
+             : "  Jenis colokan dan dayanya TIDAK diketahui (belum ada data TomTom di HP ini). Jangan menjanjikan bahwa salah satunya cocok untuk Atto 1.");
+    if (adaTT && SEKARANG.L && SEKARANG.L.lat != null){
+      var tc = SpkluTT.terdekatCocok(SEKARANG.L.lat, SEKARANG.L.lon, 3);
+      if (tc.length) baris.push("  SPKLU CCS2 terdekat menurut TomTom (jarak kira-kira = garis lurus x 1,35): " +
+        tc.map(function(x){ return String(x.s.n).replace(/[<>]/g, "") + " +-" + x.km + " km"; }).join("; "));
+    }
   }
 
   /* Rekam jejak proyeksi halaman ini sendiri. */
@@ -2789,9 +2803,31 @@ el("tt-save").addEventListener("click", function(){
   if (!k){ el("tt-status").textContent = "Tempel kuncinya dulu."; return; }
   Peta.setKunciTomTom(k); el("tt-key").value = ""; tandaiTomTom();
   /* kunci baru: mulai ukur (paksa = hapus tanda "berhenti" dari kunci lama) */
-  if (Lalulintas.aktif()) ukurMacet(true);
+  if (Lalulintas.aktif()){ ukurMacet(true); segarSpklu(false); }
 });
-el("tt-clear").addEventListener("click", function(){ Peta.setKunciTomTom(""); tandaiTomTom(); tandaiUkur(); });
+el("tt-clear").addEventListener("click", function(){ Peta.setKunciTomTom(""); tandaiTomTom(); tandaiUkur(); tandaiSpklu(); });
+
+/* ---- Colokan SPKLU dari TomTom (spklu.js): sekali per 30 hari ---- */
+function tandaiSpklu(teks){
+  var e = el("spklu-status"); if (!e) return;
+  if (!Lalulintas.aktif()){ e.textContent = "Colokan SPKLU (cocok untuk Atto 1 atau tidak) butuh kunci TomTom."; return; }
+  var s = SpkluTT.status();
+  e.innerHTML = (teks ? esc(teks) + " " : "") + (s
+    ? "SPKLU dari TomTom: <b>" + s.jumlah + "</b> stasiun &middot; <b>" + s.cepat + "</b> punya CCS2 (cocok cepat untuk Atto 1, maks 30 kW), " +
+      s.lambat + " hanya AC, " + s.tidak + " tidak cocok &middot; diperbarui " + iso(new Date(s.at)) + ". Status kosong/terisi tidak tersedia untuk Indonesia."
+    : "Colokan SPKLU belum diambil dari TomTom.");
+}
+function segarSpklu(paksa){
+  if (!Lalulintas.aktif()){ tandaiSpklu(); return Promise.resolve(); }
+  if (paksa) tandaiSpklu("Mengambil daftar SPKLU…");
+  return SpkluTT.segarkan(paksa).then(function(h){
+    tandaiSpklu(h.alasan === "selesai" || h.alasan === "masih segar" ? "" : "Pembaruan: " + h.alasan + ".");
+    if (h.alasan !== "masih segar" && h.jumlah > 0){ if (Peta.gambarSpkluTT) Peta.gambarSpkluTT(); runNow(); }
+  });
+}
+el("spklu-segar").addEventListener("click", function(){ segarSpklu(true); });
+tandaiSpklu();
+setTimeout(function(){ if (!document.hidden && Lalulintas.aktif() && SpkluTT.perluSegar()) segarSpklu(false); }, 15000);
 
 /* ---- Ukur macet otomatis (ukurmacet.js) ---- */
 function jatahTeks(p){

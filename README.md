@@ -130,7 +130,17 @@ dilihat; kejadian disegarkan tiap 20 menit menjelang pulang, tiap 60 menit di lu
 tidak diambil ulang selama Ibu masih di kotak yang sama; gagal dicoba lagi setelah 3, 6, 12, 24,
 lalu 30 menit. Ketersediaan SPKLU langsung dari TomTom
 **tidak** ada untuk Indonesia (dokumen cakupan EV TomTom: Indonesia hanya data statis),
-jadi daftar SPKLU tetap dari data aplikasi.
+jadi status kosong/terisi tidak ada.
+
+**Colokan SPKLU** (`js/spklu.js`): sekali per 30 hari (atau tombol di Pengaturan anak)
+aplikasi mengambil SPKLU di Tangerang–Jakarta dari TomTom Nearby Search (12 lingkaran
+9,5 km, `connectorSet` = semua jenis colokan; kode kategori tidak dipakai karena belum
+terverifikasi di dokumen resmi). Tiap SPKLU diberi jenis colokan, daya, dan kecocokan untuk
+**BYD Atto 1 Dynamic** (brosur BYD: DC **CCS2 maks 30 kW**, AC Type 2 maks 6,6 kW):
+"cocok, cepat ±30 kW" / "hanya AC (±3,4 jam 15→90%)" / "tidak cocok" (mis. hanya CHAdeMO
+atau GB/T). Tampil di SPKLU terdekat, peringatan baterai (plus SPKLU CCS2 terdekat bila tak
+satu pun di daftar cocok), popup peta, SPKLU tambahan di peta (hijau/kuning/abu), dan
+konteks Tanya. Jatah: Search 2.500/bulan gratis, aplikasi maks 400/bulan per HP.
 
 **Ukur macet rute Ibu** (`js/ukurmacet.js`): kalau kunci ada, aplikasi sendiri mengukur
 waktu tempuh "biasanya" (pola historis TomTom, `departAt`) untuk 72 rute Ibu — rumah ↔
@@ -229,6 +239,7 @@ app/
   js/rekomendasi.js   "ke mana sekarang", uji macet parah, tujuan pilihan Ibu
   js/lalulintas.js    macet langsung TomTom (pengali, garis rute, jalan pulang sekarang), jatah bulanan per layanan
   js/kejadian.js      kejadian di jalan TomTom (kecelakaan, jalan ditutup, banjir) di sekitar Ibu
+  js/spklu.js         colokan SPKLU dari TomTom dan kecocokan untuk Atto 1
   js/ukurmacet.js     ukur pola macet historis rute Ibu (TomTom departAt), dipakai mesin
   js/jejak.js         zona per blok jam dari GPS
   js/belajar.js       belajar pola jam / hari / tempat dari catatan order per jam
@@ -247,6 +258,6 @@ tools/                sdk-entry.mjs, make-icons.py
 ```
 npm install
 npx playwright install chromium
-npm test                                      # 199 pemeriksaan
+npm test                                      # 208 pemeriksaan
 ORIG_HTML=/path/artifact-asli.html npm test   # + uji emas terhadap artifact satu-berkas
 ```

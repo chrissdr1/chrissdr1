@@ -1381,6 +1381,102 @@ async function main(){
     await pj.close(); await ctx18.close();
   }
 
+  console.log("19. SPKLU dari TomTom: jenis colokan dan kecocokan untuk Atto 1");
+  {
+    const ctx19 = await browser.newContext({ locale:"id-ID", timezoneId:"Asia/Jakarta", serviceWorkers:"block" });
+    const ps = await ctx19.newPage();
+    const err19 = []; ps.on("pageerror", e => err19.push(e.message));
+    await ps.route(/^https?:\/\/(?!127\.0\.0\.1)(?!api\.tomtom\.com\/search)/, r => r.abort());
+    let nCari = 0, modeCari = "ok", urlCari = [];
+    const S = { tangcity:[-6.1933, 106.6342], carzo:[-6.2209, 106.6538], pagedangan:[-6.2811, 106.637] };
+    const stasiun = [
+      { id:"tt-tangcity", poi:{ name:"SPKLU PLN Tangcity Mall" }, position:{ lat:S.tangcity[0] + 0.0004, lon:S.tangcity[1] }, address:{ freeformAddress:"Tangcity Mall, Tangerang" },
+        chargingPark:{ connectors:[{ connectorType:"IEC62196Type2CCS", ratedPowerKW:50, currentType:"DC" }, { connectorType:"IEC62196Type2CableAttached", ratedPowerKW:22, currentType:"AC3" }] } },
+      { id:"tt-carzo", poi:{ name:"Carzo" }, position:{ lat:S.carzo[0], lon:S.carzo[1] + 0.0005 },
+        chargingPark:{ connectors:[{ connectorType:"IEC62196Type2Outlet", ratedPowerKW:7.4, currentType:"AC1" }] } },
+      { id:"tt-pagedangan", poi:{ name:"BYD Pagedangan" }, position:{ lat:S.pagedangan[0], lon:S.pagedangan[1] },
+        chargingPark:{ connectors:[{ connectorType:"Chademo", ratedPowerKW:50, currentType:"DC" }] } },
+      { id:"tt-baru-ccs", poi:{ name:"SPKLU <img src=x onerror=window.__xss=1> Cikokol" }, position:{ lat:-6.2050, lon:106.6300 },
+        chargingPark:{ connectors:[{ connectorType:"IEC62196Type2CCS", ratedPowerKW:200, currentType:"DC" }] } },
+      { id:"tt-baru-gbt", poi:{ name:"Stasiun GB/T" }, position:{ lat:-6.2500, lon:106.6000 },
+        chargingPark:{ connectors:[{ connectorType:"GBT20234Part3", ratedPowerKW:60, currentType:"DC" }] } },
+      { id:"tt-tanpa", poi:{ name:"Tanpa colokan" }, position:{ lat:-6.21, lon:106.61 } }
+    ];
+    await ps.route("**/api.tomtom.com/search/2/nearbySearch/**", r => {
+      nCari++; const u = new URL(r.request().url()); urlCari.push(u);
+      if (modeCari === "403") return r.fulfill({ status:403, body:"" });
+      const la = +u.searchParams.get("lat"), lo = +u.searchParams.get("lon"), ofs = +(u.searchParams.get("ofs") || 0);
+      /* satu lingkaran "penuh": 100 hasil + halaman kedua */
+      if (la === -6.38 && lo === 106.87){
+        const isi = Array.from({ length:ofs ? 20 : 100 }, (_, i) => ({ id:"isi-" + (ofs + i), poi:{ name:"Isi " + (ofs + i) }, position:{ lat:-6.30 + i * 0.0001, lon:106.70 + ofs * 0.00001 },
+          chargingPark:{ connectors:[{ connectorType:"IEC62196Type2CableAttached", ratedPowerKW:11 }] } }));
+        return r.fulfill({ status:200, contentType:"application/json", body:JSON.stringify({ summary:{ numResults:isi.length, totalResults:120 }, results:isi }) });
+      }
+      const dekat = stasiun.filter(s => Math.hypot((s.position.lat - la) * 111, (s.position.lon - lo) * 110) <= 9.5);
+      r.fulfill({ status:200, contentType:"application/json", body:JSON.stringify({ summary:{ numResults:dekat.length, totalResults:dekat.length }, results:dekat }) });
+    });
+    await ps.goto(url + "index.html?tanpa-mulai", { waitUntil:"load" });
+    await ps.waitForFunction(() => document.querySelector("#n-steps .step"));
+    await ps.evaluate(() => { window.ukurMacet = () => Promise.resolve(); window.lalulintasOtomatis = () => {}; localStorage.removeItem("tomtom-jatah"); SpkluTT.hapus(); });
+
+    const tanpa = await ps.evaluate(async () => { Peta.setKunciTomTom(""); return (await SpkluTT.segarkan(true)).alasan; });
+    ok(tanpa === "tanpa kunci" && nCari === 0, "tanpa kunci TomTom: SPKLU tidak diminta", JSON.stringify({ tanpa, nCari }));
+
+    const h1 = await ps.evaluate(async () => { Peta.setKunciTomTom("kunci-uji"); const h = await SpkluTT.segarkan(false);
+      return { h, st:SpkluTT.status(), cari:Lalulintas.statusJatah("cari"), rute:Lalulintas.statusJatah("rute") }; });
+    const u0 = urlCari[0];
+    ok(nCari === 13 && h1.cari.hari === 13 && h1.rute.hari === 0 && h1.h.alasan === "selesai",
+       "12 titik + 1 halaman kedua (lingkaran berisi >100), semua memakai jatah 'cari', bukan jatah rute", JSON.stringify({ nCari, h1 }));
+    ok(u0.searchParams.get("radius") === "9500" && u0.searchParams.get("limit") === "100" && u0.searchParams.get("countrySet") === "ID" &&
+       /IEC62196Type2CCS/.test(u0.searchParams.get("connectorSet")) && /Chademo/.test(u0.searchParams.get("connectorSet")) && !u0.searchParams.has("categorySet") &&
+       urlCari.some(u => u.searchParams.get("ofs") === "100"),
+       "permintaan sesuai dokumentasi Nearby Search: radius, limit 100, countrySet, connectorSet (tanpa kode kategori yang belum terverifikasi), ofs untuk halaman 2", u0.href);
+    ok(h1.st.jumlah === 125 && h1.st.cepat === 2 && h1.st.tidak === 2 && h1.st.lambat === 121,
+       "stasiun tanpa colokan dibuang; hitungan cocok cepat / hanya AC / tidak cocok benar", JSON.stringify(h1.st));
+
+    const cek = await ps.evaluate(() => ({
+      tang:SpkluTT.teksCocok(SpkluTT.untukNama("PLN TANGCITY")), tangCol:SpkluTT.ringkasColokan(SpkluTT.untukNama("PLN TANGCITY")),
+      carzo:SpkluTT.teksCocok(SpkluTT.untukNama("Carzo")), byd:SpkluTT.teksCocok(SpkluTT.untukNama("BYD Pagedangan")),
+      tanpaData:SpkluTT.untukNama("BPPT"),
+      teks:spkluTeks([{ nama:"PLN TANGCITY", km:3.1 }, { nama:"Carzo", km:4 }]),
+      cepat:spkluCepatTeks({ lat:-6.2209, lon:106.6538 }, [{ nama:"Carzo", km:1 }, { nama:"BYD Pagedangan", km:7 }]),
+      cepatTidakPerlu:spkluCepatTeks({ lat:-6.2209, lon:106.6538 }, [{ nama:"PLN TANGCITY", km:3 }]) }));
+    ok(/cocok Atto 1, cepat ±30 kW/.test(cek.tang.replace(/&plusmn;/g, "±")) && cek.tangCol === "CCS2 50 kW, Type 2 (kabel) 22 kW" &&
+       /hanya AC \(±6,6 kW, 15&rarr;90% ±3,4 jam\), perlu kabel Type 2 sendiri/.test(cek.carzo.replace(/&plusmn;/g, "±")) && /tidak cocok untuk Atto 1/.test(cek.byd) && cek.tanpaData === null,
+       "kecocokan Atto 1: CCS2 50 kW -> cepat 30 kW; Type 2 soket 7,4 kW -> AC 6,6 kW ±3,4 jam + kabel sendiri; CHAdeMO -> tidak cocok", JSON.stringify(cek));
+    ok(/PLN TANGCITY<\/b> 3.1 km \(CCS2 50 kW/.test(cek.teks) && /&lt;img/.test(cek.cepat) && !/<img/.test(cek.cepat) && /SPKLU CCS2 \(cocok Atto 1\) terdekat menurut TomTom/.test(cek.cepat) && cek.cepatTidakPerlu === "",
+       "teks SPKLU terdekat memuat colokan; bila tak satu pun cocok-cepat, SPKLU CCS2 terdekat dari TomTom disebut (nama di-escape)", JSON.stringify(cek));
+
+    /* 30 hari: tidak diminta ulang; data lama tidak ditimpa kosong bila gagal */
+    const n1 = nCari;
+    await ps.evaluate(() => SpkluTT.segarkan(false));
+    modeCari = "403";
+    const gagal = await ps.evaluate(async () => { const h = await SpkluTT.segarkan(true); return { h, st:SpkluTT.status() }; });
+    ok(nCari - n1 === 12 && /gagal/.test(gagal.h.alasan) && gagal.st.jumlah === 125,
+       "dalam 30 hari tidak diminta ulang; pembaruan yang gagal semua tidak menghapus data lama", JSON.stringify({ n:nCari - n1, gagal }));
+    modeCari = "ok";
+
+    /* konteks Tanya dan Pengaturan anak */
+    const ui = await ps.evaluate(() => { const s = document.getElementById("n-lok"); s.value = "kota"; s.dispatchEvent(new Event("change", { bubbles:true })); runNow();
+      tandaiSpklu(); return { k:konteksTanya(), st:document.getElementById("spklu-status").textContent }; });
+    ok(/colokan \(TomTom\)/.test(ui.k) && /Atto 1 Dynamic: DC CCS2 maks 30 kW/.test(ui.k) && /125 stasiun · 2 punya CCS2/.test(ui.st),
+       "konteks Tanya menyebut colokan dari TomTom dan batas 30 kW; Pengaturan anak menampilkan jumlah stasiun", JSON.stringify({ st:ui.st, k:ui.k.split("\n").filter(x => /SPKLU|colokan|CCS2/.test(x)).slice(0, 6) }));
+
+    /* peta: SPKLU tambahan TomTom berwarna menurut kecocokan, popup aman */
+    await ps.click("#peta-toggle"); await ps.waitForTimeout(500);
+    const peta = await ps.evaluate(async () => {
+      const hijau = [...document.querySelectorAll('#peta path[fill="#00713C"]')];
+      const abu = document.querySelectorAll('#peta path[fill="#8A8F8C"]').length;
+      hijau[0] && hijau[0].dispatchEvent(new MouseEvent("click", { bubbles:true, clientX:1, clientY:1 }));
+      await new Promise(r => setTimeout(r, 150));
+      const pop = document.querySelector("#peta .leaflet-popup-content");
+      return { hijau:hijau.length, abu, pop:pop && pop.textContent, img:!!document.querySelector("#peta .leaflet-popup img"), xss:!!window.__xss };
+    });
+    ok(peta.hijau === 1 && peta.abu === 1 && /CCS2 200 kW/.test(peta.pop) && /cocok Atto 1, cepat ±30 kW/.test(peta.pop) && !peta.img && !peta.xss && err19.length === 0,
+       "peta: SPKLU baru dari TomTom (hijau = CCS2, abu = tidak cocok), yang sudah ada di daftar tidak digandakan; popup tanpa XSS", JSON.stringify({ peta, err19 }));
+    await ps.close(); await ctx19.close();
+  }
+
   console.log("15. Logika saran tempat (regresi temuan audit)");
   {
     const pr = await ctx.newPage();

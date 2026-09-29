@@ -77,9 +77,15 @@ var Peta = (function(){
                    '<button type="button" class="linkbtn" data-lok="' + esc(l.id) + '">Saya di sini</button>');
     });
     SPKLU.forEach(function(s){
+      /* isi popup dibuat saat dibuka: colokan dari TomTom bisa datang belakangan */
       L.circleMarker([s[2], s[1]], { radius:5, color:"#9C6206", fillColor:"#E5B160", fillOpacity:.95, weight:1.5 })
-        .addTo(map).bindPopup("<b>SPKLU</b> " + esc(s[0]) + '<br><span style="opacity:.75">jenis colokan belum tercatat</span>');
+        .addTo(map).bindPopup(function(){
+          var t = (typeof SpkluTT !== "undefined") ? SpkluTT.untukNama(s[0]) : null;
+          return "<b>SPKLU</b> " + esc(s[0]) + (t ? "<br>" + esc(SpkluTT.ringkasColokan(t)) + "<br><b>" + SpkluTT.teksCocok(t) + "</b>"
+            : '<br><span style="opacity:.75">jenis colokan belum tercatat' + (kunciTomTom() ? "" : " (perlu kunci TomTom)") + "</span>");
+        });
     });
+    gambarSpkluTT();
     pasangTomTom();
     map.on("popupopen", function(e){
       var b = e.popup.getElement() && e.popup.getElement().querySelector("[data-lok]");
@@ -139,6 +145,26 @@ var Peta = (function(){
           .bindPopup("<b>Macet +" + Math.round(m.tunda) + " menit</b>" + (m.kmj ? "<br>&plusmn;" + Math.round(m.kmj) + " km/jam" : ""));
     });
   }
+  /* SPKLU tambahan dari TomTom (yang tidak ada di daftar aplikasi):
+     hijau = CCS2 (cocok cepat untuk Atto 1), kuning = hanya AC, abu =
+     tidak cocok. Digambar ulang setelah daftar TomTom diperbarui. */
+  var lapisanSpkluTT = null;
+  function gambarSpkluTT(){
+    if (!map || typeof SpkluTT === "undefined") return;
+    if (lapisanSpkluTT){ map.removeLayer(lapisanSpkluTT); lapisanSpkluTT = null; }
+    var daftar = SpkluTT.semua(); if (!daftar.length) return;
+    var dekatDaftar = function(t){ return SPKLU.some(function(s){ var dLat = (s[2] - t.lat) * 111.2, dLon = (s[1] - t.lon) * 110.6; return dLat * dLat + dLon * dLon <= 0.04; }); };
+    lapisanSpkluTT = L.layerGroup().addTo(map);
+    daftar.forEach(function(t){
+      if (dekatDaftar(t)) return;
+      var c = SpkluTT.cocok(t), warna = c.jenis === "cepat" ? "#00713C" : c.jenis === "lambat" ? "#C9A227" : "#8A8F8C";
+      L.circleMarker([t.lat, t.lon], { radius:4, color:"#fff", weight:1, fillColor:warna, fillOpacity:.95 }).addTo(lapisanSpkluTT)
+        .bindPopup("<b>" + esc(t.n) + "</b>" + (t.alamat ? '<br><span style="opacity:.75">' + esc(t.alamat) + "</span>" : "") +
+                   "<br>" + esc(SpkluTT.ringkasColokan(t)) + "<br><b>" + SpkluTT.teksCocok(t) + "</b><br>" +
+                   '<span style="opacity:.75">dari TomTom &middot; status kosong/terisi tidak tersedia</span>');
+    });
+  }
+
   /* Penanda kejadian di jalan (Kejadian.relevan). */
   function gambarKejadian(daftar){
     if (!map) return;
@@ -158,7 +184,7 @@ var Peta = (function(){
     });
   }
 
-  return { init:init, gambarPulang:gambarPulang, gambarKejadian:gambarKejadian, urlInsiden:urlInsiden, posisi:posisi, fokus:fokus, refresh:refresh, tautanMacet:tautanMacet,
+  return { init:init, gambarSpkluTT:gambarSpkluTT, gambarPulang:gambarPulang, gambarKejadian:gambarKejadian, urlInsiden:urlInsiden, posisi:posisi, fokus:fokus, refresh:refresh, tautanMacet:tautanMacet,
            kunciTomTom:kunciTomTom, setKunciTomTom:setKunciTomTom, urlTomTom:urlTomTom,
            adaTomTom:function(){ return !!lapisanTT; },
            statusTomTom:function(){ return statusTT; },
