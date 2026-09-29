@@ -749,6 +749,9 @@ function runNow(){
     "Sebelum berhenti, lihat sisa target insentif di aplikasi Grab; kalau tinggal 1\u20132 order, selesaikan dulu.",
     "Insentif di sini dihitung rata menurut jam ("+rp(insentifHarian)+"). Kalau insentif Grab bertingkat, order terakhir menjelang target jauh lebih berharga.");
   if (gap>100000 && (ctx.dow===2||ctx.dow===3)) tambah("","Selasa/Rabu memang sepi","Kejar kekurangannya hari Jumat, jangan narik lewat 12 jam.");
+  if (ctx.dow===5 && blk.n==="Siang") tambah("","Jumat siang: taksiran, bukan angka pasti",
+    "Perkiraan diturunkan sedikit sekitar jam ini untuk sholat Jumat &mdash; ini dugaan kasar, belum dari catatan Ibu sendiri.",
+    "Rute 700K tidak memisahkan jam sholat Jumat dari siang biasa, jadi angkanya ditaksir turun ~17% untuk blok 11:00&ndash;14:00 di hari Jumat. Kalau kenyataannya beda, catatan harian Jumat Ibu lama-lama akan menunjukkan itu.");
   if (o.filter===0 && L.z==="jkt") tambah("bad","Filter habis di Jakarta","Ambil order apa pun ke arah barat, jangan pulang kosong "+Math.round(kmHome)+" km.");
   if (o.hujan){
     var dh = dampak(o, {hujan:false});

@@ -18,7 +18,15 @@ var SHAPE = {
   6: {"Subuh":26000,"Peak pagi":26000,"Pagi akhir":30000,"Siang":32000,"Jam mati":28000,
       "Pra-peak":34000,"Peak sore":42000,"Malam":45000,"Larut":38000},
   0: {"Subuh":26000,"Peak pagi":28000,"Pagi akhir":30000,"Siang":32000,"Jam mati":28000,
-      "Pra-peak":34000,"Peak sore":44000,"Malam":40000,"Larut":26000}
+      "Pra-peak":34000,"Peak sore":44000,"Malam":40000,"Larut":26000},
+  /* Jumat, blok "Siang" (11:00-14:00): ASUMSI, BUKAN angka terukur -- Rute 700K
+     tidak memisahkan jam sholat Jumat dari siang biasa. Turun ~17% dari r:24000
+     dasarnya, menaksir sebagian jam kerja hilang untuk sholat Jumat (kantor
+     istirahat lebih panjang, jalan sekitar masjid padat berhenti-jalan bukan
+     order). Blok ini 3 jam, jam sholatnya cuma sekitar 1-1,5 jam di tengahnya,
+     jadi turunnya tidak sebesar itu -- ini taksiran kasar, akan lebih akurat
+     kalau nanti dibandingkan ke catatan Jumat Ibu sendiri. */
+  5: {"Siang":20000}
 };
 /* Pengali hari: ASUMSI (Rute 700K hanya kualitatif: Jumat terbaik, Selasa/Rabu
    terlemah, "libur Minggu Rp100 ribu lebih mahal daripada libur Rabu" -> Minggu
@@ -185,7 +193,7 @@ var CUACA = {tanggal:"2026-09-23", hujan:true, jam:"12:00-17:00", ringkas:"Hujan
    worker saat dibuka dengan internet. Yang tetap perlu dikatakan halaman:
    sampai kapan tiap kalendernya terisi. Perbarui TERBIT tiap kali
    menerbitkan (samakan dengan VERSION di sw.js; tes memeriksanya). */
-var TERBIT = "2026-09-28";
+var TERBIT = "2026-09-29";
 var EVENTS_SAMPAI = "2026-12-27";
 var HOLI_SAMPAI = "2026-12-25";
 

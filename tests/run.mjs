@@ -700,6 +700,17 @@ async function main(){
        pemeriksaan "waktu pindah Modernland -> CBD ..." dan "waktu tempuh ..." di atas,
        yang berjalan SEBELUM Lalulintas punya cache apa pun. */
 
+    /* Jumat siang (taksiran jam sholat Jumat): blok "Siang" (11:00-14:00) turun
+       di hari Jumat (shapeDay 5) dibanding hari kerja lain, hari libur/Minggu
+       (shapeDay 0) tidak ikut turun karena bukan Jumat. */
+    const jumat = await ci.evaluate(() => ({
+      jumat: blockRate(BASE.find(b => b.n === "Siang"), 5),
+      biasa: blockRate(BASE.find(b => b.n === "Siang"), 1),
+      minggu: SHAPE[0].Siang
+    }));
+    ok(jumat.jumat < jumat.biasa && jumat.minggu === 32000,
+       "Jumat siang (taksiran sholat Jumat) turun dari hari kerja biasa; Minggu tidak ikut berubah", JSON.stringify(jumat));
+
     /* Garis rute di peta: dari titik legs[].points respons routing yang SAMA
        dengan yang dipakai untuk pengali macet -- tidak ada permintaan TomTom
        terpisah untuk garisnya. */
