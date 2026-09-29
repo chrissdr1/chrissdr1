@@ -1017,6 +1017,17 @@ async function main(){
        "pulang lebih malam tidak pernah lebih rugi; kerja berhenti di jam mulai pulang; tidak narik di Jakarta setelah 20:00",
        JSON.stringify(mono.map(x => ({ p:x.pulang, net:Math.round(x.net), selesai:hhmmTes(x.selesai), mulai:hhmmTes(x.mulai) }))));
 
+    /* Double check #4: kalibrasi kecepatan pulang memakai jam berangkat */
+    const kal = await pr.evaluate(() => {
+      const simpan = rows;
+      rows = ["2026-09-21", "2026-09-22", "2026-09-23"].map(id => ({ id, mnt:22, pkm:9, pz:"tng", pjam:21.5 - 22 / 60, dpt:300000, kmt:200, kmp:130, jam:10, kwh:28, trip:15 }));
+      recalibrate();
+      const ramal = jamTempuhRumah({ home:9, z:"tng" }, 21.5 - 22 / 60, 9) * 60;
+      rows = simpan; recalibrate();
+      return { ramal, kecSibuk:null };
+    });
+    ok(Math.abs(kal.ramal - 22) < 1, "perjalanan pulang 9 km yang tercatat 22 menit diramalkan ±22 menit (bukan 17)", JSON.stringify(kal));
+
     /* Macet: uji "macet parah" dan tujuan pilihan Ibu. */
     const m = await pr.evaluate(() => {
       const ctx = dayCtx("2026-10-06");

@@ -630,7 +630,7 @@ function runNow(){
   var listrikSejak = kmSejak / CALIB.kmkwh * TARIF_KWH;
   var proyeksi = dpt - listrikSejak + r.net;
   renderPlanCheck(o.keluar, dpt, L.z);
-  AKTUAL = { jam:o.keluar, dpt:dpt, lok:L.n, home:Math.round(kmHome*10)/10,
+  AKTUAL = { jam:o.keluar, dpt:dpt, lok:L.n, home:Math.round(kmHome*10)/10, z:L.z,
              tanggal:iso(new Date()) };
   try { localStorage.setItem("sekarang-terakhir", JSON.stringify(AKTUAL)); } catch (e) {}
 
@@ -1614,7 +1614,12 @@ el("save").addEventListener("click", function(){
   /* Menit pulang tidak ada artinya tanpa tahu berapa km yang ditempuh. Km-nya
      diambil dari posisi terakhir yang tercatat di tab Sekarang hari itu, jadi
      Ibu cukup mengetik satu angka. */
-  if (rec.mnt > 0 && AKTUAL && AKTUAL.tanggal === tgl && AKTUAL.home > 0) rec.pkm = AKTUAL.home;
+  if (rec.mnt > 0 && AKTUAL && AKTUAL.tanggal === tgl && AKTUAL.home > 0){
+    rec.pkm = AKTUAL.home; rec.pz = AKTUAL.z || "tng";
+    /* jam berangkat pulang = rencana tiba dikurangi menitnya -- untuk kalibrasi
+       kecepatan menurut jam (lalu lintas 21:00 bukan lalu lintas 18:00) */
+    if (PLAN && PLAN.date === tgl && PLAN.pulang > 0) rec.pjam = Math.round((PLAN.pulang - rec.mnt / 60) * 100) / 100;
+  }
   var carter = bacaCarter();
   if (carter) rec.carter = carter;
   if (!rec.dpt && !rec.kmt && !carter){ el("status").textContent="Isi minimal pendapatan, km, atau carter."; el("status").className="status err"; return; }

@@ -99,10 +99,20 @@ function recalibrate(){
   /* Kecepatan pulang dari hari-hari yang menit pulangnya dicatat. Median,
      bukan rata-rata: satu hari dengan banjir tidak boleh menggeser semuanya.
      Dijepit 12-45 km/jam supaya salah ketik tidak merusak seluruh rencana. */
+  /* Kecepatan yang disimpan = kecepatan JAM SIBUK (mesin membaginya dengan
+     faktorMacet jam itu). Perjalanan pulang tercatat biasanya malam, saat
+     lalu lintas lebih ringan, jadi diubah dulu ke padanan jam sibuk: dikali
+     faktorMacet(jam berangkat, wilayah). Dulu dipakai apa adanya, sehingga
+     perjalanan 9 km 22 menit diramalkan 17 menit -- "Waktunya pulang" telat.
+     Jam berangkat dari rencana hari itu (pjam) atau 21:00-an bila tidak ada. */
   var laju = [];
   rows.slice(0, 20).forEach(function(r){
     var m = num(r.mnt), k = num(r.pkm);
-    if (m >= 5 && k >= 3){ var v = k / (m/60); if (v >= 12 && v <= 45) laju.push(v); }
+    if (m >= 5 && k >= 3){
+      var v = k / (m/60); if (v < 12 || v > 45) return;
+      var jamB = (typeof r.pjam === "number") ? r.pjam : 21.5 - m / 60;
+      laju.push(v * faktorMacet(jamB, r.pz || "tng"));
+    }
   });
   laju.sort(function(x,y){ return x-y; });
   /* Jumlah genap: ambil yang LEBIH LAMBAT, bukan rata-ratanya. Kecepatan yang
