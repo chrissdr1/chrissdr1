@@ -720,7 +720,7 @@ function runNow(){
        menyuruh kerja dan menabrak rencananya. */
     v = { k:"warn", h:"Menurut rencana, jam ini istirahat",
           r:"Pulang, makan, tidur sebentar &middot; sampai "+hhmm(jedaPlan[1]),
-          p:"Jam paling sepi. Kalau mau lanjut, ubah dulu di tab Rencana." };
+          p:"Jam paling sepi. Kalau mau lanjut, ubah dulu di Rencanakan." };
   } else {
     v = advise(blk, L, o);
   }
@@ -1544,7 +1544,7 @@ function renderCarter(){
 
 /* Kalkulator tawaran carter (paling atas tab Rencana; pintasan dari tab Sekarang). */
 el("ke-carter").addEventListener("click", function(){
-  tab("plan"); el("tf-wrap").open = true;
+  setMode("rencana", true); el("tf-wrap").open = true;
   el("tf-wrap").scrollIntoView({ behavior:"smooth", block:"start" });
 });
 fillTimes(el("tf-mulai"), 3.5, 20, 8);
@@ -1598,7 +1598,7 @@ function renderCal(){
   if (a){
     var dl=Math.round(((a.v-BASE_RPKM)/BASE_RPKM)*100);
     el("calnote").innerHTML = "Rp per km Ibu <b>"+(dl>=0?dl+"% di atas":Math.abs(dl)+"% di bawah")+
-      "</b> asumsi rencana"+(CALIB.live?" &mdash; dan sudah dipakai aplikasi di tab Sekarang dan Rencana.":".");
+      "</b> asumsi rencana"+(CALIB.live?" &mdash; dan sudah dipakai aplikasi di tab Hari ini.":".");
   }
 }
 function renderBelajar(){
@@ -1661,7 +1661,7 @@ function petunjukMenit(){
   if (AKTUAL && AKTUAL.tanggal === tgl && AKTUAL.home > 0){
     e.innerHTML = "Dari <b>" + esc(AKTUAL.lok) + "</b>, " + Math.round(AKTUAL.home) + " km";
   } else {
-    e.textContent = "Isi hanya kalau tab Sekarang dipakai hari itu — km-nya diambil dari sana.";
+    e.textContent = "Isi hanya kalau Sedang narik dipakai hari itu — km-nya diambil dari sana.";
   }
 }
 function renderAll(){ recalibrate(); renderCal(); weekMonth(); renderHist(); runNow(); runPlan(); petunjukMenit(); }
@@ -1770,8 +1770,11 @@ el("p-save").addEventListener("click", function(){
     el("n-pulang").value = String(PLAN.pulang); el("n-bat").value = String(PLAN.bat);
     el("n-filter").value = String(PLAN.filter); el("n-rumah").checked = !!PLAN.rumah;
   }
-  el("p-status").textContent = "Tersimpan. Tab Sekarang ikut rencana ini.";
+  el("p-status").innerHTML = PLAN.date === iso(new Date())
+    ? 'Tersimpan. &ldquo;Sedang narik&rdquo; ikut rencana ini. <button type="button" class="linkbtn" id="p-ke-narik">Lihat &rsaquo;</button>'
+    : "Tersimpan untuk " + esc(PLAN.date) + ".";
   el("p-status").className = "status ok";
+  var kn = el("p-ke-narik"); if (kn) kn.addEventListener("click", function(){ setMode("narik", true); window.scrollTo(0, 0); });
   runNow();
 });
 
@@ -1882,14 +1885,73 @@ el("p-tgl").addEventListener("change", function(){
   runPlan();
 });
 
+/* Tab: "now" = Hari ini (dua keadaan: Sedang narik / Rencanakan), "log",
+   "tanya". tab("plan") tetap diterima = Hari ini + Rencanakan. */
+var MODE = "narik", TAB = "now";
 function tab(which){
-  ["now","log","plan","tanya"].forEach(function(k){
-    el("t-"+k).className = "tab" + (which===k ? " on" : "");
-    el("v-"+k).hidden = which!==k;
-  });
+  if (which === "plan"){ MODE = "rencana"; which = "now"; }
+  TAB = which;
+  ["now","log","tanya"].forEach(function(k){ el("t-"+k).className = "tab" + (which===k ? " on" : ""); });
+  el("v-log").hidden = which !== "log"; el("v-tanya").hidden = which !== "tanya";
+  el("modehari").hidden = which !== "now";
+  el("v-now").hidden = !(which === "now" && MODE === "narik");
+  el("v-plan").hidden = !(which === "now" && MODE === "rencana");
+  el("mode-narik").className = "mode" + (MODE === "narik" ? " on" : ""); el("mode-narik").setAttribute("aria-selected", MODE === "narik");
+  el("mode-rencana").className = "mode" + (MODE === "rencana" ? " on" : ""); el("mode-rencana").setAttribute("aria-selected", MODE === "rencana");
+  if (which === "now" && MODE === "narik" && typeof Peta !== "undefined") Peta.refresh();
 }
-["now","log","plan","tanya"].forEach(function(k){
+/* simpan: pilihan Ibu sendiri, diingat untuk hari itu (tidak ditimpa aturan otomatis). */
+function setMode(m, simpan){
+  MODE = m === "rencana" ? "rencana" : "narik";
+  if (simpan){ try { localStorage.setItem("mode-hari", JSON.stringify({ tgl:iso(new Date()), m:MODE })); } catch (e) {} }
+  tab("now");
+}
+/* Keadaan bawaan kalau Ibu belum memilih hari ini: sudah isi Mulai hari ->
+   Sedang narik; malam (>= 20:30) atau dini hari (< 03:30) -> Rencanakan
+   (untuk besok / sebelum berangkat); selain itu Sedang narik. */
+function modeBawaan(){
+  try { var s = JSON.parse(localStorage.getItem("mode-hari") || "null"); if (s && s.tgl === iso(new Date()) && (s.m === "narik" || s.m === "rencana")) return s.m; } catch (e) {}
+  if (MULAI_HARI) return "narik";
+  var t = jamSekarangTepat();
+  return (t >= 20.5 || t < 3.5) ? "rencana" : "narik";
+}
+["now","log","tanya"].forEach(function(k){
   el("t-"+k).addEventListener("click", function(){ tab(k); });
+});
+el("mode-narik").addEventListener("click", function(){ setMode("narik", true); });
+el("mode-rencana").addEventListener("click", function(){ setMode("rencana", true); });
+
+/* Isian yang sama di "Sedang narik" dan "Rencanakan" cukup diubah sekali.
+   Tipe mobil dan colokan rumah selalu sama; filter, jam pulang, hujan, dan
+   acara hanya kalau rencananya untuk HARI INI (rencana besok boleh beda). */
+var KEMBAR = [["n-bat", "p-bat", true], ["n-rumah", "p-rumah", true], ["n-filter", "p-filter", false],
+              ["n-pulang", "p-pulang", false], ["n-hujan", "p-hujan", false], ["n-acara", "p-acara", false]];
+function rencanaHariIni(){ return (el("p-tgl").value || iso(new Date())) === iso(new Date()); }
+/* Salin satu pasangan; true bila ada yang berubah. */
+function salinKembar(dari, ke, selalu){
+  if (!selalu && !rencanaHariIni()) return false;
+  var a = el(dari), b = el(ke);
+  if (a.type === "checkbox"){
+    if (b.checked === a.checked) return false;
+    b.checked = a.checked;
+    if (ke === "n-hujan" || ke === "n-acara" || ke === "p-hujan") b.dataset.touched = "1";   /* pilihan Ibu, jangan ditimpa cuaca/kalender */
+    return true;
+  }
+  if (b.value === a.value) return false;
+  var lama = b.value; b.value = a.value;
+  if (b.value !== a.value){ b.value = lama; return false; }   /* nilai tidak ada di pilihan: jangan kosongkan */
+  return true;
+}
+KEMBAR.forEach(function(k){
+  el(k[0]).addEventListener("change", function(){ if (salinKembar(k[0], k[1], k[2])) runPlan(); });
+  el(k[1]).addEventListener("change", function(){ if (salinKembar(k[1], k[0], k[2])) runNow(); });
+});
+/* Rencana dipindah ke hari ini: ambil keadaan hari ini dari Sedang narik. */
+el("p-tgl").addEventListener("change", function(){
+  if (!rencanaHariIni()) return;
+  var ubah = false;
+  KEMBAR.forEach(function(k){ if (salinKembar(k[0], k[1], k[2])) ubah = true; });
+  if (ubah) runPlan();
 });
 el("chatsend").addEventListener("click", kirimChat);
 el("chatinput").addEventListener("keydown", function(e){
@@ -2799,6 +2861,7 @@ el("ci-mulai").addEventListener("click", function(){
   setJedaUI(PLAN.rehat); el("p-rumah").checked = m.rumah; el("p-tgl").value = m.date;
   sinkronNanti();
   tutupCheckin();
+  setMode("narik", true);   /* hari sudah dimulai: tampilkan Sedang narik */
   if (mulaiOk){ el("hari-status").textContent = "Mulai jam " + hhmm(jam) + ", baterai " + soc + "%."; el("hari-status").className = "status ok"; }
   else { el("hari-status").textContent = "Mulai jam " + hhmm(jam) + ", baterai " + soc + "% — tapi GAGAL disimpan di HP ini (penyimpanan penuh?), bisa hilang kalau aplikasi ditutup."; el("hari-status").className = "status err"; }
   if (el("ci-gps").checked) deteksiLokasi(false);
@@ -2827,7 +2890,7 @@ function tandaiTomTom(){
        lapisan -- tanpa baris ini layar terlihat diam padahal kuncinya
        sudah tersimpan (dan akan dipasang begitu peta dibuka). */
     teks = Peta.ada() ? tomtomStatusTeks(Peta.statusTomTom())
-                       : "Kunci tersimpan. Buka tab Sekarang, lalu tekan \"Tampilkan peta\" untuk melihat lapisan macetnya.";
+                       : "Kunci tersimpan. Buka tab Hari ini (Sedang narik), lalu tekan \"Tampilkan peta\" untuk melihat lapisan macetnya.";
   }
   el("tt-status").textContent = teks;
 }
@@ -2904,6 +2967,13 @@ muatMulaiHari();
   bukaCheckin();
 })();
 if (MULAI_HARI) renderSocEstSaja();
+/* Satu tab "Hari ini": keadaan bawaan + isian kembar diselaraskan sekali. */
+(function(){
+  var ubah = false;
+  KEMBAR.forEach(function(k){ if (salinKembar(k[0], k[1], k[2])) ubah = true; });
+  if (ubah) runPlan();
+  setMode(modeBawaan(), false);
+})();
 
 
 /* ---------------- peluang rute ----------------

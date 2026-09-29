@@ -555,10 +555,13 @@ function simulate(o){
   var oKerja = {}; Object.keys(o).forEach(function(k){ oKerja[k] = o[k]; });
   for (var ulang = 0; ulang < 4; ulang++){
     var jp = jamMulaiPulang(o, akhir);
-    var pk = Math.max(o.keluar + 0.25, Math.min(o.pulang - jp, batasPulang));
+    /* Jam mulai pulang sudah lewat: TIDAK ada lagi narik (dulu selalu
+       disisakan 15 menit -- mis. CBD 20:40 masih "narik 20:40-20:55" padahal
+       langkahnya bilang mulai pulang 20:40, dan itu melanggar aturan 20:00). */
+    var pk = Math.max(o.keluar, Math.min(o.pulang - jp, batasPulang));
     if (pk >= o.pulang) break;
     oKerja.pulang = pk;
-    pieces = potongBlok(oKerja);
+    pieces = pk - o.keluar < 0.01 ? [] : potongBlok(oKerja);
     if (!adaUrutan) break;
     var akhirBaru = pasangTempat(pieces);
     var stabil = akhirBaru === akhir;
@@ -856,8 +859,32 @@ function blockAt(t, shapeDay){
 /* Nasihat kartu utama: k = kelas warna (bad/warn/good, dipakai app.js),
    h = perintah <= 6 kata, r = tempat/rute, p = satu kalimat,
    kenapa = penjelasan panjang untuk "Kenapa?" (buildSteps menyalinnya ke k langkah). */
+/* Jam tempuh pulang (+15 menit) untuk kartu besar: dari isian runNow bila
+   lengkap (sama persis dengan langkah "Waktunya pulang"), selain itu dari
+   tempat L sendiri (pemanggil lain: kartu bandara, saran tempat). */
+function jpAdvise(o, L){
+  var lengkap = typeof o.kmProtokol === "number" || typeof o.kmHome === "number" || (o.zona && ZONA[o.zona]);
+  return lengkap ? jamMulaiPulang(o, null) : (L ? jamMulaiPulang(o, L) : 0);
+}
 function advise(blk, L, o){
   var ctx=o.ctx, noPagi = !!ctx.holi||ctx.dow===6||ctx.dow===0;
+  /* Jam mulai pulang sudah lewat (rumus yang sama dengan langkah "Waktunya
+     pulang"): kartu besar tidak boleh menyuruh narik lagi. Dulu CBD 20:40
+     mendapat "Order terakhir malam ini, ambil posisi sebelum mal tutup". */
+  if (!o.stay && typeof o.pulang === "number" && L && L.home > 1 && o.keluar >= o.pulang - jpAdvise(o, L) - 0.01){
+    var jp0 = jpAdvise(o, L);
+    return { k:"bad", h:"Waktunya pulang",
+      r:"Filter tujuan &rarr; Modernland" + (L.z === "jkt" ? " &middot; keluar Jakarta sekarang" : ""),
+      p:"Perjalanan pulang &plusmn;" + Math.round((jp0 - 0.25) * 60) + " menit; untuk tiba " + hhmm(o.pulang) + " berangkat sekarang. Terima hanya order yang searah pulang.",
+      kenapa:"Jam mulai pulang (jam pulang dikurangi waktu tempuh + 15 menit) sudah lewat" +
+        (L.z === "jkt" && o.keluar >= 20 ? ", dan mulai 20:00 aplikasi menghitung Ibu sudah keluar dari Jakarta" : "") + ". Narik di sini lagi berarti pulang telat." };
+  }
+  /* Jakarta mulai 20:00: arah rumah (aturan yang sama dengan urutan tempat). */
+  if (!o.stay && L && L.z === "jkt" && o.keluar >= 20)
+    return { k:"warn", h:"Keluar Jakarta sekarang",
+      r:"Filter tujuan &rarr; Modernland &middot; order searah pulang",
+      p:"Mulai 20:00 aplikasi menghitung Ibu sudah di arah rumah; lanjut narik di sekitar Tangerang sampai jam mulai pulang " + hhmm(o.pulang - jpAdvise(o, L)) + ".",
+      kenapa:"Rute 700K: jam 20:00 seharusnya sudah tidak di Jakarta. Order malam di Jakarta sering ke timur, dan pulang dari sana panjang tanpa penumpang." };
   /* Bandara punya teks per blok sendiri (STEP_APT, sama dengan daftar langkah).
      Dulu cabang di bawah memperlakukannya seperti Jakarta ("Bertahan di
      Jakarta sampai peak sore" di kartu Bandara). */

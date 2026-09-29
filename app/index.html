@@ -29,7 +29,7 @@
   <div class="checkin-card">
     <div class="eyebrow">Mulai hari &middot; <span id="ci-tgl"></span></div>
     <h2 id="ci-judul">Selamat pagi, Bu. Isi dulu keadaan sekarang.</h2>
-    <p class="checkin-sub">Setelah ini baterai dihitung sendiri. Kalau habis ngecas, catat angkanya di tab Sekarang.</p>
+    <p class="checkin-sub">Setelah ini baterai dihitung sendiri. Kalau habis ngecas, catat angkanya di tab Hari ini.</p>
     <div class="grid">
       <div class="f"><label for="ci-soc">Baterai sekarang (%)</label><input id="ci-soc" type="number" inputmode="numeric" min="1" max="100" value="90"></div>
       <div class="f"><label for="ci-bat">Tipe mobil</label><select id="ci-bat"><option value="30.08" selected>Dynamic 30,08 kWh</option><option value="38.88">Premium 38,88 kWh</option></select></div>
@@ -72,7 +72,7 @@
   <div class="p-head"><h2>Cara pakai</h2><button type="button" id="panduan-tutup">Tutup</button></div>
   <ol class="p-tiga">
     <li><b>Pagi:</b> isi halaman <b>Mulai hari</b> (baterai, jam mulai, rencana pulang, daerah).</li>
-    <li><b>Di jalan:</b> lihat kartu besar di tab <b>Sekarang</b> &mdash; itu langkah berikutnya. Habis ngecas, catat %-nya.</li>
+    <li><b>Di jalan:</b> tab <b>Hari ini</b> &rarr; <b>Sedang narik</b>: kartu besar itu langkah berikutnya. Habis ngecas, catat %-nya. Mau mengatur jam kerja atau ada tawaran carter: pilih <b>Rencanakan</b>.</li>
     <li><b>Malam:</b> isi angka dari aplikasi Grab di tab <b>Catatan</b>, tekan <b>Simpan</b>.</li>
   </ol>
   <p class="p-note"><i class="w-ok"></i> Biru = jalan terus &middot; <i class="w-warn"></i> Oranye = siap-siap (ngecas / waktu) &middot; <i class="w-bad"></i> Merah = berhenti, kerjakan itu dulu.</p>
@@ -84,10 +84,16 @@
 <div class="flag" id="cuaca" hidden></div>
 
 <div class="tabs">
-  <button type="button" class="tab on" id="t-now">Sekarang</button>
+  <button type="button" class="tab on" id="t-now">Hari ini</button>
   <button type="button" class="tab" id="t-log">Catatan</button>
-  <button type="button" class="tab" id="t-plan">Rencana</button>
   <button type="button" class="tab" id="t-tanya">Tanya</button>
+</div>
+
+<!-- Satu tab "Hari ini" dengan dua keadaan (dulu dua tab Sekarang dan
+     Rencana yang isinya mirip dan membingungkan). -->
+<div class="modehari" id="modehari" role="tablist" aria-label="Keadaan Ibu">
+  <button type="button" class="mode on" id="mode-narik" role="tab" aria-selected="true"><b>Sedang narik</b><span>ke mana sekarang, kapan pulang</span></button>
+  <button type="button" class="mode" id="mode-rencana" role="tab" aria-selected="false"><b>Rencanakan</b><span>sebelum berangkat, hari ini / besok</span></button>
 </div>
 
 <!-- ============ SEKARANG ============ -->
@@ -205,7 +211,7 @@
 <section>
   <div class="sec-head"><h2>Angka Ibu</h2><span class="eyebrow" id="calbasis">Belum ada data</span></div>
   <div class="cal" id="caltiles"></div>
-  <p style="font-size:12.5px;color:var(--muted);margin-top:10px" id="calnote">Setelah 3 hari, angka ini dipakai otomatis di tab Sekarang dan Rencana.</p>
+  <p style="font-size:12.5px;color:var(--muted);margin-top:10px" id="calnote">Setelah 3 hari, angka ini dipakai otomatis di tab Hari ini (Sedang narik dan Rencanakan).</p>
   <p style="font-size:12.5px;color:var(--ink-2);margin-top:8px" id="belajar-info"></p>
   <p style="font-size:12.5px;color:var(--ink-2);margin-top:8px" id="carter-info" hidden></p>
 </section>
@@ -463,7 +469,7 @@
       <span class="status" id="ai-status"></span>
     </div>
     <div class="toggles">
-      <label class="chk"><input type="checkbox" id="ai-briefing" checked> Saran singkat otomatis di tab Sekarang</label>
+      <label class="chk"><input type="checkbox" id="ai-briefing" checked> Saran singkat otomatis di tab Hari ini</label>
     </div>
   </div>
 </section>
