@@ -106,5 +106,38 @@ var Lalulintas = (function(){
 
   function aktif(){ return !!(typeof Peta !== "undefined" && Peta.kunciTomTom()); }
 
-  return { pengaliCache:pengaliCache, poinCache:poinCache, segarkan:segarkan, aktif:aktif };
+  /* Pola macet BIASA untuk perjalanan pulang yang berangkat nanti: TomTom
+     Routing dengan departAt (waktu berangkat di masa depan -> TomTom memakai
+     pola lalu lintas historis jam itu). Hanya untuk ditampilkan; mesin tetap
+     memakai menit terukur Rute 700K. Format departAt ditulis dari dokumentasi
+     (yyyy-MM-ddTHH:mm:ss dengan zona waktu, di sini +07:00 WIB) -- PERLU
+     VERIFIKASI saat kunci dipakai; gagal/format ditolak = diam, tanpa angka. */
+  var cachePulang = {};   /* "lat,lon|tgl|HH:MM" -> { menit, at } */
+  var RUMAH_TITIK = (typeof RUMAH !== "undefined") ? { lat:RUMAH.lat, lon:RUMAH.lon } : null;
+  function jamIso(tgl, jam){ return tgl + "T" + hhmm(jam) + ":00+07:00"; }
+  function kunciPulang(A, jam, tgl){
+    if (!A || A.lat == null) return null;
+    return bulat(A.lat) + "," + bulat(A.lon) + "|" + tgl + "|" + hhmm(Math.round(jam * 4) / 4);
+  }
+  function pulangBiasaCache(A, jam, tgl){
+    var k = kunciPulang(A, jam, tgl), c = k && cachePulang[k];
+    return c ? c.menit : null;
+  }
+  function pulangBiasa(A, jam, tgl){
+    var k = kunciPulang(A, jam, tgl), key = aktif() ? Peta.kunciTomTom() : "";
+    if (!k || !key || !RUMAH_TITIK || cachePulang[k]) return Promise.resolve();
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return Promise.resolve();
+    var jamB = Math.round(jam * 4) / 4;
+    var url = urlRute(A, RUMAH_TITIK, key) + "&departAt=" + encodeURIComponent(jamIso(tgl, jamB));
+    return fetchTimeout(url, {}, 10000).then(function(r){
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }).then(function(j){
+      var s = j && j.routes && j.routes[0] && j.routes[0].summary;
+      if (s && typeof s.travelTimeInSeconds === "number") cachePulang[k] = { menit:Math.round(s.travelTimeInSeconds / 60), at:Date.now() };
+    })["catch"](function(){ /* diam-diam gagal */ });
+  }
+
+  return { pengaliCache:pengaliCache, poinCache:poinCache, segarkan:segarkan, aktif:aktif,
+           pulangBiasa:pulangBiasa, pulangBiasaCache:pulangBiasaCache };
 })();

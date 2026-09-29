@@ -651,15 +651,16 @@ async function main(){
       const y = h2.daftar.find(z => z.id === "cbd");
       return x ? { macet:x.macet, menit:Math.round(x.jamPindah*60), km:Math.round(x.kmPindah), menitLancar:y ? Math.round(y.jamPindah*60) : null, macetLancar:y && y.macet } : null;
     });
-    ok(rek && rek.macet === 1.9 && rek.menit === 46 && rek.macetLancar === 1 && rek.menitLancar === 24,
-       "waktu pindah Modernland -> CBD memakai menit terukur: 46 di jam sibuk, 24 di luar jam sibuk", JSON.stringify(rek));
+    /* 24 menit = jalan kosong (OSRM). TomTom Traffic Index 2025 Jakarta: sore 2,2x -> 53; siang biasa 1,5x -> 36. */
+    ok(rek && rek.macet === 2.2 && rek.menit === 53 && rek.macetLancar === 1.5 && rek.menitLancar === 36,
+       "waktu pindah Modernland -> CBD: 53 menit jam pulang kantor, 36 menit siang (bukan 24 menit jalan kosong)", JSON.stringify(rek));
     /* Waktu tempuh dari tabel Koridor kerja Rute 700K, bukan km/26: CBD 46 mnt sibuk, 24 lancar; antar tempat masuk akal & simetris */
     const tempuh = await ci.evaluate(() => ({
       cbdSibuk: Math.round(jamTempuhRumah(LOKMAP.cbd, 18) * 60), cbdLancar: Math.round(jamTempuhRumah(LOKMAP.cbd, 14) * 60),
       bsdSibuk: Math.round(jamTempuhRumah(LOKMAP.bsd, 17) * 60),
       kmKarSer: Math.round(jarakAntar(LOKMAP.karawaci, LOKMAP.serpong) * 10) / 10, kmSerKar: Math.round(jarakAntar(LOKMAP.serpong, LOKMAP.karawaci) * 10) / 10,
       mntKotaCbd: Math.round(jamTempuhAntar(LOKMAP.kota, LOKMAP.cbd, 18) * 60), kmKotaBsd: jarakAntar(LOKMAP.kota, LOKMAP.bsd) }));
-    ok(tempuh.cbdSibuk === 46 && tempuh.cbdLancar === 24 && tempuh.bsdSibuk === 34 && tempuh.mntKotaCbd === 46 && tempuh.kmKotaBsd === 16.7 &&
+    ok(tempuh.cbdSibuk === 53 && tempuh.cbdLancar === 36 && tempuh.bsdSibuk === 34 && tempuh.mntKotaCbd === 53 && tempuh.kmKotaBsd === 16.7 &&
        tempuh.kmKarSer === tempuh.kmSerKar && tempuh.kmKarSer > 4 && tempuh.kmKarSer < 9,
        "waktu tempuh memakai menit terukur Rute 700K; jarak antar tempat simetris dan masuk akal", JSON.stringify(tempuh));
 
@@ -695,7 +696,8 @@ async function main(){
       await Lalulintas.segarkan([[LOKMAP.jakbar, LOKMAP.cbd]]);
       return { pengali:Lalulintas.pengaliCache(LOKMAP.jakbar, LOKMAP.cbd), menit:jamTempuhAntar(LOKMAP.jakbar, LOKMAP.cbd, 14) * 60 };
     });
-    ok(live.pengali && Math.abs(live.pengali - 1.3) < 0.01 && Math.abs(live.menit - base * 1.3) < 0.05,
+    /* base = jalan kosong x faktor siang Jakarta (1,5); live = jalan kosong x 1,3 */
+    ok(live.pengali && Math.abs(live.pengali - 1.3) < 0.01 && Math.abs(live.menit - base * 1.3 / 1.5) < 0.05,
        "Lalulintas: pengali TomTom (1,3x) menggantikan heuristik statis untuk pasangan koridor terukur", JSON.stringify({ ...live, base }));
     /* Kota (pangkalan/posisi bawaan) -> tempat inti lewat cabang v() (menit per
        tempat, bukan RUAS_TERUKUR) -- pasangan paling sering dipakai di aplikasi
@@ -706,7 +708,7 @@ async function main(){
       await Lalulintas.segarkan([[LOKMAP.kota, LOKMAP.cbd]]);
       return { pengali:Lalulintas.pengaliCache(LOKMAP.kota, LOKMAP.cbd), menit:jamTempuhAntar(LOKMAP.kota, LOKMAP.cbd, 14) * 60 };
     });
-    ok(liveKota.pengali && Math.abs(liveKota.menit - baseKota * 1.3) < 0.05,
+    ok(liveKota.pengali && Math.abs(liveKota.menit - baseKota * 1.3 / 1.5) < 0.05,
        "Lalulintas: kota (posisi bawaan) -> CBD lewat cabang v() juga memakai angka TomTom", JSON.stringify({ ...liveKota, baseKota }));
     await setField(ci, "n-lok", "jakbar"); await setField(ci, "n-jam", 14);
     await ci.waitForFunction(() => /TomTom langsung/.test(document.getElementById("rek-list").innerText), null, { timeout:5000 });
@@ -963,6 +965,38 @@ async function main(){
     ok(a.minTiba >= 8 && a.terlewat.length > 0, "baterai 10%: tempat yang tidak terjangkau disaring dan disebutkan", JSON.stringify({ minTiba:a.minTiba, terlewat:a.terlewat }));
     ok(a.rekBasis === a.pelBasis, "\"tetap di sini\": angka sama di kartu ke-mana-sekarang dan urutan tempat", `${a.rekBasis} vs ${a.pelBasis}`);
     ok(Math.abs(a.ins[0] - a.ins[1]) < 1, "insentif Grab sama di Selasa dan Jumat (tidak ikut pengali hari)", JSON.stringify(a.ins));
+
+    /* Macet: uji "macet parah" dan tujuan pilihan Ibu. */
+    const m = await pr.evaluate(() => {
+      const ctx = dayCtx("2026-10-06");
+      const o = { ctx, keluar:16, pulang:21.5, rehat:"none", zona:"tng", filter:2, bat:30.08, rumah:false, hujan:false, acara:false, soc:80 };
+      const h = Rekomendasi.hitung(o, LOKMAP.kota, 80, false);
+      const pindah = h.daftar.filter(x => !x.diSini).slice(0, 3);
+      const konsisten = pindah.every(x => x.selisihParah === undefined || x.sisaParah == null || (x.sisaParah <= x.sisa + 1 &&
+        x.rapuh === (x.selisih > 0 && (x.selisihParah == null || x.selisihParah <= 0))));
+      const t = Rekomendasi.tujuan(o, LOKMAP.kota, 80, false, "cbd");
+      const lemah = Rekomendasi.tujuan(Object.assign({}, o, { soc:5 }), LOKMAP.kota, 5, false, "bekasi");
+      return { konsisten, diuji:pindah.filter(x => x.selisihParah !== undefined).length,
+               cbd:{ jam:t.x.jamPindah, sel:t.x.selisih, parah:t.x.sisaParah, sisa:t.x.sisa, mulaiPulang:t.x.mulaiPulang }, lemah:!!(lemah.x && lemah.x.terlewat) };
+    });
+    ok(m.konsisten && m.diuji >= 1, "uji macet parah: tidak pernah lebih untung dari jalan biasa; tanda 'berisiko' konsisten", JSON.stringify(m));
+    ok(m.cbd.jam > 0.3 && m.cbd.parah <= m.cbd.sisa + 1 && m.cbd.mulaiPulang < 21.5 && m.lemah,
+       "tujuan pilihan (CBD jam 16): waktu tempuh, hasil macet parah, jam mulai pulang; baterai 5% ke Bekasi: tidak terjangkau", JSON.stringify(m));
+    await pr.evaluate(() => { document.getElementById("t-now").click(); document.getElementById("tujuan-wrap").open = true; });
+    await setField(pr, "tj-pilih", "cbd");
+    const teksTj = await pr.evaluate(() => document.getElementById("tj-hasil").innerText);
+    ok(/Ke Jakarta CBD/.test(teksTj) && /macet parah/.test(teksTj) && /(Mulai pulang|Keluar Jakarta jam 20:00)/.test(teksTj), "kotak 'Mau ke tempat lain?' menampilkan waktu, uji macet, dan jam pulang/keluar Jakarta", teksTj.slice(0, 400));
+    /* departAt: pola macet TomTom untuk jam pulang (URL dan cache) */
+    let urlDepart = null;
+    await pr.route("**/api.tomtom.com/routing/**", r => { const u = r.request().url(); if (/departAt=/.test(u)) urlDepart = u;
+      r.fulfill({ status:200, contentType:"application/json", body:JSON.stringify({ routes:[{ summary:{ travelTimeInSeconds:3300, noTrafficTravelTimeInSeconds:1800 } }] }) }); });
+    const dep = await pr.evaluate(async () => {
+      Peta.setKunciTomTom("kunci-uji");
+      await Lalulintas.pulangBiasa(LOKMAP.cbd, 19.75, "2026-10-06");
+      return Lalulintas.pulangBiasaCache(LOKMAP.cbd, 19.75, "2026-10-06");
+    });
+    ok(dep === 55 && /departAt=2026-10-06T19%3A45%3A00%2B07%3A00/.test(urlDepart || ""), "pola macet jam pulang: departAt 2026-10-06T19:45:00+07:00, hasil 55 menit", `${dep} | ${urlDepart}`);
+    await pr.evaluate(() => Peta.setKunciTomTom(""));
     await pr.close();
   }
 

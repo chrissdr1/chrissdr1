@@ -207,6 +207,22 @@ function tripLen(namaBlok, zona){
    lebih lancar 1,6x (Tangerang) / 1,9x (arah Jakarta), bukan sebaliknya.
    Dulu 26 km/jam dikalikan 1,6/1,9 LAGI sehingga CBD jadi 129 menit. */
 function jamSibuk(jam){ return (jam >= 6 && jam < 9) || (jam >= 16.5 && jam < 20); }
+/* Lalu lintas sebagai pengali terhadap JALAN KOSONG. Menit "lancar" di Rute
+   700K adalah waktu tempuh OSRM tanpa lalu lintas sama sekali (dokumen itu
+   sendiri bilang begitu); dulu di luar jam sibuk dipakai apa adanya, jadi
+   siang hari 26 km ke CBD dihitung 24 menit (65 km/jam) -- Jakarta selalu
+   tampak lebih dekat dari kenyataannya.
+   Jakarta: TomTom Traffic Index 2025 (rilis Januari 2026): sibuk pagi +66,9%
+   (1,67x), sibuk sore +120,5% (2,2x, 15,5 km/jam), rata-rata seharian +59,8%.
+   Siang biasa 1,5x dan malam 1,15x TURUNAN dari rata-rata itu, bukan ukuran
+   per jam. Tangerang: TomTom tidak punya angkanya -- 1,6x di jam sibuk
+   (asumsi lama Rute 700K), 1,25x siang, 1,1x malam: ASUMSI. Angka TomTom
+   langsung (Lalulintas) menggantikan semua ini bila ada dan berlaku. */
+function faktorLalin(jam, jkt){
+  var pagi = jam >= 6 && jam < 9, sore = jam >= 16.5 && jam < 20, malam = jam >= 22 || jam < 6;
+  if (jkt) return pagi ? 1.67 : sore ? 2.2 : malam ? 1.15 : 1.5;
+  return (pagi || sore) ? 1.6 : malam ? 1.1 : 1.25;
+}
 /* Waktu tempuh (jam) ke/dari rumah untuk tempat L pada jam tertentu. Tempat
    inti punya menit terukur (Rute 700K, lancar & jam sibuk); tempat lain
    memakai km / kecepatan kalibrasi x faktor macet. Kalau kecepatan sudah
@@ -214,7 +230,7 @@ function jamSibuk(jam){ return (jam >= 6 && jam < 9) || (jam >= 16.5 && jam < 20
 function jamTempuhRumah(L, jam, km){
   var kmPakai = (typeof km === "number") ? km : (L ? L.home : 0);
   if (L && L.mnt){
-    var m = jamSibuk(jam) ? L.mnt.sibuk : L.mnt.lancar;
+    var m = L.mnt.lancar * faktorLalin(jam, L.z === "jkt");
     var skala = KEC_BAWAAN / Math.max(10, CALIB.kecepatan);   /* kalibrasi lambat -> lebih lama */
     var dasar = m / 60 * skala;
     /* km yang diminta beda dari km tempat (mis. protokol dari wilayah inti): proporsional */
@@ -262,12 +278,12 @@ function jamTempuhAntar(A, B, jam, tgl){
   var pengaliLive = (typeof Lalulintas !== "undefined" && liveBerlaku(jam, tgl)) ? Lalulintas.pengaliCache(A, B) : null;
   if (ru && ru.mnt){   /* menit lancar terukur; jam sibuk x1,6 (Tangerang) / x1,9 (arah Jakarta) */
     var arahJkt = (A.z === "jkt" || B.z === "jkt");
-    var pengaliMacet = (pengaliLive != null) ? pengaliLive : (jamSibuk(jam) ? (arahJkt ? 1.9 : 1.6) : 1);
+    var pengaliMacet = (pengaliLive != null) ? pengaliLive : faktorLalin(jam, arahJkt);
     return ru.mnt / 60 * pengaliMacet * (KEC_BAWAAN / Math.max(10, CALIB.kecepatan));
   }
   function v(L){
     if (L && L.mnt){
-      var m = (pengaliLive != null) ? (L.mnt.lancar * pengaliLive) : (jamSibuk(jam) ? L.mnt.sibuk : L.mnt.lancar);
+      var m = L.mnt.lancar * ((pengaliLive != null) ? pengaliLive : faktorLalin(jam, L.z === "jkt"));
       return (L.pergi || L.home) / (m / 60);
     }
     /* KEC_BAWAAN, bukan CALIB.kecepatan: kalibrasi dikalikan SEKALI di bawah.
@@ -292,11 +308,15 @@ function jamMulaiPulang(o, tempat){
   if (!(km > 0)) return 0;
   var L = tempat || o.tempatPulang || null, j = o.pulang - 0.5;
   var t = L ? jamTempuhRumah(L, j, km) : km / CALIB.kecepatan * faktorMacet(j, o.zona);
+  t *= (o.kaliMacet || 1);   /* uji "macet parah" (rekomendasi.js) */
   return Math.max(0.5, t + 0.25);
 }
+/* Pengali waktu untuk km / CALIB.kecepatan. Kecepatan 26 km/jam itu kecepatan
+   JAM SIBUK (1,6x Tangerang / 1,9x Jakarta di atas jalan kosong), jadi faktornya
+   faktorLalin dibagi patokan itu. */
 function faktorMacet(jam, zona){
-  if (jamSibuk(jam)) return 1;
-  return 1 / ((zona === "jkt" || zona === "mix") ? 1.9 : 1.6);
+  var jkt = (zona === "jkt" || zona === "mix");
+  return faktorLalin(jam, jkt) / (jkt ? 1.9 : 1.6);
 }
 
 /* Potong blok jam menurut jam keluar-pulang dan jeda -> urutan potongan
@@ -484,7 +504,7 @@ function simulate(o){
       var T = LOKMAP[o.urutan[kk++]] || sebelum || LOKMAP.kota;
       p.tempat = T; p.zonaT = ZONA[T.z] || z;
       p.pindahKm = sebelum ? jarakAntar(sebelum, T) : 0;
-      p.pindahJam = sebelum ? jamTempuhAntar(sebelum, T, p.s, iso(ctx.d)) : 0;
+      p.pindahJam = sebelum ? jamTempuhAntar(sebelum, T, p.s, iso(ctx.d)) * (o.kaliMacet || 1) : 0;
       sebelum = T;
     });
     return sebelum;

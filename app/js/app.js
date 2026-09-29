@@ -719,6 +719,7 @@ function runNow(){
   briefingOtomatis();
   lalulintasOtomatis(o, L);
   perbaruiRute();
+  renderTujuan();
 
   var nn=[];
   var URUTAN_NOTE = { bad:0, warn:1, good:3 };   /* default (netral "") = 2 */
@@ -2248,6 +2249,67 @@ tandaiSinkron();
 if (Sinkron.siap()) jalankanSinkron();
 else if (Sinkron.aktif()) verifikasiLaluSinkron();
 
+/* ---------------- "Mau ke tempat lain?" (tujuan pilihan Ibu) ---------------- */
+function isiTujuan(){
+  var s = el("tj-pilih"); if (!s) return;
+  s.innerHTML = '<option value="">Pilih tujuan&hellip;</option>' + LOK.filter(function(l){ return l.lat != null; }).map(function(l){
+    return '<option value="' + esc(l.id) + '">' + esc(l.n) + " &middot; " + Math.round(l.home) + " km dari rumah</option>";
+  }).join("");
+}
+function renderTujuan(){
+  var id = el("tj-pilih").value, out = el("tj-hasil");
+  if (!id || !SEKARANG){ out.innerHTML = ""; return; }
+  var S = SEKARANG, tgl = iso(S.o.ctx.d);
+  var h = Rekomendasi.tujuan(S.o, S.L, S.soc, S.stay, id); if (!h) { out.innerHTML = ""; return; }
+  var K = h.K, x = h.x;
+  if (S.L && S.L.id === id){ out.innerHTML = "<p>Ibu sudah di " + esc(K.n) + ".</p>"; return; }
+  if (x && x.terlewat){ out.innerHTML = '<p><b class="dn">Baterai tidak cukup untuk sampai ke ' + esc(K.n) + "</b> (butuh &plusmn;" + Math.round(x.socPindah) + "%, sisa " + S.soc + "%). Ngecas dulu.</p>"; return; }
+  if (!x){ out.innerHTML = '<p><b class="dn">Tidak sempat:</b> sampai di ' + esc(K.n) + " sudah terlalu dekat jam pulang.</p>"; return; }
+  var mnt = Math.round(x.jamPindah * 60), mntParah = Math.round(x.jamPindah * Rekomendasi.KALI_PARAH * 60);
+  var p = [];
+  p.push("<b>Ke " + esc(K.n) + ":</b> &plusmn;" + Math.round(x.kmPindah) + " km, &plusmn;" + mnt + " menit" +
+         (x.sumberMacet === "tomtom" ? " (macet TomTom sekarang)" : " (" + labelLalin(x.macet) + ")") +
+         " &rarr; tiba " + hhmm(x.tiba) + ", baterai tiba &plusmn;" + x.socTiba + "%.");
+  p.push("Kalau macet parah: &plusmn;" + mntParah + " menit di jalan.");
+  var biasa = Lalulintas.pulangBiasaCache(K, x.mulaiPulang, tgl);
+  if (x.keluarJkt != null)
+    p.push("Keluar Jakarta jam " + hhmm(x.keluarJkt) + " (aturan 20:00), &plusmn;" + Math.round(x.keluarJktJam * 60) + " menit ke arah rumah, lalu narik dekat rumah sampai &plusmn;" + hhmm(x.mulaiPulang) + ".");
+  else
+    p.push("Mulai pulang dari sana &plusmn;" + hhmm(x.mulaiPulang) + (biasa != null ? " &middot; pola macet TomTom jam itu: &plusmn;" + biasa + " menit ke rumah" : "") + ".");
+  if (h.basis){
+    p.push("Hasil sampai pulang &plusmn;" + rp(x.sisa) + ", " + (x.selisih >= 0 ? "+" : "−") + rp(Math.abs(x.selisih)) + " dibanding tetap di " + esc(h.tinggal.n) + ".");
+    if (!(x.selisih > 0)) p.push('<b class="dn">Tidak sepadan</b> &mdash; waktu di jalan tidak tertutup hasilnya di sana.');
+    else if (x.rapuh) p.push('<b class="dn">Berisiko</b> &mdash; untung hanya kalau jalan lancar; kalau macet parah hasilnya ' +
+                             (x.selisihParah == null ? "tidak sempat kerja di sana" : (x.selisihParah >= 0 ? "+" : "−") + rp(Math.abs(x.selisihParah)) + " dibanding tetap") + ".");
+    else p.push('<b class="up">Sepadan</b> &mdash; tetap lebih untung walau macet parah (+' + rp(x.selisihParah) + ").");
+  }
+  p.push('<span style="color:var(--muted);font-size:12.5px">Macet parah = uji perjalanan 1,5&times; lebih lama, bukan ramalan.</span>');
+  out.innerHTML = p.map(function(t){ return "<p>" + t + "</p>"; }).join("");
+}
+isiTujuan();
+el("tj-pilih").addEventListener("change", renderTujuan);
+el("tj-hitung").addEventListener("click", function(){
+  renderTujuan();
+  var id = el("tj-pilih").value, K = LOKMAP[id], S = SEKARANG;
+  if (!K || !S || typeof Lalulintas === "undefined" || !Lalulintas.aktif()) return;
+  var janji = [];
+  if (S.L && LOKMAP[S.L.id] && S.L.id !== id) janji.push(Lalulintas.segarkan([[S.L, K]]));
+  var h = Rekomendasi.tujuan(S.o, S.L, S.soc, S.stay, id);
+  if (h && h.x && !h.x.terlewat) janji.push(Lalulintas.pulangBiasa(K, h.x.mulaiPulang, iso(S.o.ctx.d)));
+  Promise.all(janji).then(function(){ runNow(); });
+});
+
+/* Label pengali lalu lintas (faktorLalin) untuk kartu. */
+function labelLalin(f){
+  return f >= 2 ? "jam pulang kantor, sangat padat" : f >= 1.6 ? "jam sibuk" : f >= 1.4 ? "lalu lintas siang biasa" : f >= 1.2 ? "agak ramai" : "relatif lancar";
+}
+/* Hasil uji "macet parah" (Rekomendasi.ujiMacet) sebagai satu baris kartu. */
+function risikoMacet(x){
+  if (x.diSini || !(x.selisih > 0)) return "";
+  if (x.rapuh) return '<span class="rek-risiko">Berisiko: kalau macet parah (perjalanan 1,5&times; lebih lama), hasilnya tidak lebih baik dari tetap di sini.</span>';
+  if (x.selisihParah != null) return '<span class="rek-aman">Tetap lebih untung walau macet parah (+' + rp(x.selisihParah) + ").</span>";
+  return "";
+}
 /* ---------------- rekomendasi rute otomatis ---------------- */
 var rekSemua = false;
 var notesSemua = false;
@@ -2263,7 +2325,7 @@ function renderRekomendasi(o, L, soc, stay){
   var tampil = rekSemua ? h.daftar : h.daftar.slice(0, 3);
   el("rek-list").innerHTML = tampil.map(function(x, i){
     var sel = x.diSini ? "kalau tetap di sini" : (x.selisih >= 0 ? "+" : "−") + rp(Math.abs(x.selisih)) + " dibanding tetap di sini";
-    var macetTeks = x.sumberMacet === "tomtom" ? ", macet: TomTom langsung" : (x.macet > 1 ? ", macet: perkiraan jam sibuk" : "");
+    var macetTeks = x.sumberMacet === "tomtom" ? ", macet: TomTom langsung" : ", " + labelLalin(x.macet);
     var gerak = x.diSini ? "Tetap di sini."
       : "Pindah " + Math.round(x.kmPindah) + " km (±" + Math.round(x.jamPindah * 60) + " menit" + macetTeks + "), sampai " + hhmm(x.tiba) +
         (x.socTiba < x.res ? ", baterai kurang untuk pulang — perlu ngecas" : "") + ".";
@@ -2273,6 +2335,7 @@ function renderRekomendasi(o, L, soc, stay){
       '<span class="rek-num">±' + rp(x.sisa) + " <em>sampai pulang</em></span>" +
       "<i>" + gerak + " " + rapi(x.saran.h) + "." + (x.sesi ? " " + x.sesi + "× ngecas." : "") + " Pulang " + Math.round(x.kmHome) + " km.</i>" +
       '<span class="rek-delta ' + (x.selisih > 0 ? "up" : x.selisih < 0 ? "dn" : "") + '">' + sel + "</span>" +
+      risikoMacet(x) +
       (x.diSini ? "" : '<a class="linkbtn" target="_blank" rel="noopener" href="' + Rekomendasi.tautanArah(x.lat, x.lon) + '">Arahkan (Google Maps)</a>') +
       "</div></div>";
   }).join("") + (h.daftar.length > 3
