@@ -2207,6 +2207,198 @@ async function main(){
     await pr.close();
   }
 
+
+  console.log("25. Regresi tinjauan kelima (catatan, angka, TomTom, baterai & Mulai hari, tampilan, kalender)");
+  {
+    const buka25 = async (waktu, opsi) => {
+      opsi = opsi || {};
+      const c = await browser.newContext({ locale:"id-ID", timezoneId:"Asia/Jakarta", serviceWorkers:"block", viewport:{ width:opsi.lebar || 1280, height:800 } });
+      const p = await c.newPage(); const err = []; p.on("pageerror", e => err.push(e.message));
+      await p.clock.setFixedTime(new Date(waktu));
+      await p.route(/^https?:\/\/(?!127\.0\.0\.1)/, r => r.abort());
+      const q = opsi.mulai ? "index.html" : "index.html?tanpa-mulai";
+      if (opsi.siapkan){ await p.goto(url + q, { waitUntil:"load" }); await p.evaluate(opsi.siapkan); }
+      await p.goto(url + q, { waitUntil:"load" });
+      await p.waitForFunction(() => document.querySelector("#n-steps .step"));
+      return { c, p, err };
+    };
+    const maju = async (p, waktu) => { await p.clock.setFixedTime(new Date(waktu)); await p.evaluate(() => { cekGantiHari(); ikutJam(false); }); };
+    const mulai = (p, v) => p.evaluate(v => { if (el("checkin").hidden) bukaCheckin();
+      for (const k in v){ const e = el(k); e.value = v[k]; e.dispatchEvent(new Event("change")); } el("ci-mulai").click(); }, v);
+    const soc = p => p.evaluate(() => parseFloat(el("n-soc").value));
+
+    /* angka & catatan (fungsi murni) */
+    const murni = await (async () => {
+      const b = await buka25("2026-10-06T10:00:00+07:00");
+      const x = await b.p.evaluate(() => {
+        const pr = typeof parseRp === "function" ? [parseRp("150.000"), parseRp("1.250.000"), parseRp("150,000"), parseRp("150000")] : null;
+        const jg = typeof nilaiJanggal === "function" ? nilaiJanggal(derive({ id:"2026-09-01", jam:10, kmt:200, kmp:13, dpt:400000, kwh:28, trip:15 })).length : -1;
+        /* satu salah ketik (kmp 13 bukan 130) tidak menggeser tarif kalibrasi */
+        const simpan = rows;
+        rows = ["2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24"].map(id => ({ id, jam:10, kmt:200, kmp:130, dpt:390000, kwh:28, trip:15, ins:0 }));
+        recalibrate(); const rpkm4 = CALIB.rpkm;
+        rows = rows.concat([{ id:"2026-09-25", jam:10, kmt:200, kmp:13, dpt:390000, kwh:28, trip:15, ins:0 }]);
+        recalibrate(); const rpkm5 = CALIB.rpkm;
+        rows = simpan; recalibrate();
+        /* tambahan jam tidak melewati batas Minggu 20:30 + perjalanan pulang */
+        const o = { ctx:dayCtx("2026-10-04"), keluar:17, pulang:20, rehat:"none", zona:"tng", filter:2, bat:30.08, rumah:false, hujan:false, acara:false, soc:80, deadKm:0 };
+        const tj = tambahanJam(o, simulate(o), 1.5);
+        return { pr, jg, rpkm4, rpkm5, sampai:tj.sampai, batas:20.5 + jamMulaiPulang(o, null) };
+      });
+      await b.c.close(); return x;
+    })();
+    ok(murni.pr && murni.pr.join() === "150000,1250000,150000,150000", "'Sudah dapat' 150.000 / 1.250.000 / 150,000 dibaca Rp 150 ribu dst (dulu Rp 150)", JSON.stringify(murni.pr));
+    ok(murni.jg > 0 && Math.abs(murni.rpkm5 - murni.rpkm4) < 1, "satu salah ketik km berpenumpang ditandai janggal dan tidak menggeser tarif kalibrasi", JSON.stringify(murni));
+    ok(murni.sampai <= murni.batas + 0.01, "'Kalau lanjut' hari Minggu tidak melewati 20:30 + perjalanan pulang", JSON.stringify(murni));
+
+    /* baterai: diam sebelum jam mulai rencana, berhenti di jam pulang, 0% tidak jadi 95% */
+    {
+      const b = await buka25("2026-09-30T04:30:00+07:00", { mulai:true });
+      await mulai(b.p, { "ci-soc":95, "ci-keluar":"5.25", "ci-pulang":"21.5", "ci-zona":"tng" });
+      /* rencana hari ini digeser ke 08:00 lewat Rencanakan (Mulai hari tetap 05:15) */
+      await b.p.evaluate(() => { setMode("rencana", true); el("p-keluar").value = "8"; el("p-save").click(); setMode("narik", true); });
+      await maju(b.p, "2026-09-30T07:30:00+07:00"); const s0730 = await soc(b.p);
+      await maju(b.p, "2026-09-30T19:00:00+07:00"); await b.p.evaluate(() => { el("cas-ke").value = 80; el("cas-selesai").click(); });
+      await maju(b.p, "2026-09-30T21:30:00+07:00"); const s2130 = await soc(b.p);
+      await maju(b.p, "2026-09-30T23:00:00+07:00"); const s2300 = await soc(b.p);
+      ok(s0730 === 95 && s2130 > 30 && s2130 === s2300, "perkiraan baterai: tidak turun sebelum jam mulai rencana (08:00), berhenti di jam pulang 21:30 walau kolom pulang ikut jam", JSON.stringify({ s0730, s2130, s2300 }));
+      await b.c.close();
+    }
+    {
+      const b = await buka25("2026-09-30T04:30:00+07:00", { mulai:true });
+      await mulai(b.p, { "ci-soc":95, "ci-keluar":"5.25", "ci-pulang":"21.5", "ci-zona":"tng" });
+      await maju(b.p, "2026-09-30T16:30:00+07:00");
+      const x = await b.p.evaluate(() => { bukaCheckin(); const ci = el("ci-soc").value; el("ci-pulang").value = "20"; el("ci-mulai").click();
+        return { ci, soc:el("n-soc").value, st:el("hari-status").textContent, mh:[MULAI_HARI.jam, MULAI_HARI.soc], bar:el("statusbar").textContent }; });
+      ok(+x.ci <= 1 && +x.soc <= 1 && /Diubah/.test(x.st) && x.mh[0] === 4.5 && x.mh[1] === 95 && /Baterai 1%/.test(x.bar),
+         "Ubah Mulai hari saat perkiraan 0%: terisi 1% (bukan 95% pagi), jam & baterai mulai tetap, 'Diubah jam ...', satu angka baterai", JSON.stringify(x));
+      await b.c.close();
+    }
+    {
+      const b = await buka25("2026-09-30T04:30:00+07:00", { mulai:true });
+      await mulai(b.p, { "ci-soc":95, "ci-keluar":"5.25", "ci-pulang":"21.5", "ci-zona":"jkt" });
+      const urut = [];
+      for (const [w, lok] of [["09:30", "jakbar"], ["10:00", "karawaci"], ["10:30", "kota"]]){
+        await maju(b.p, `2026-09-30T${w}:00+07:00`);
+        await b.p.evaluate(l => { const s = el("n-lok"); s.value = l; s.dispatchEvent(new Event("change", { bubbles:true })); }, lok);
+        urut.push(await soc(b.p));
+      }
+      ok(urut[1] <= urut[0] && urut[2] <= urut[1], "pindah posisi (Jakbar -> Karawaci -> Kota) tidak menaikkan baterai tanpa ngecas", JSON.stringify(urut));
+      await b.c.close();
+    }
+    {
+      const b = await buka25("2026-09-30T06:00:00+07:00", { mulai:true });
+      await b.p.evaluate(() => { el("ci-lewati").click(); const s = el("n-soc"); s.value = "80"; s.dispatchEvent(new Event("input")); s.dispatchEvent(new Event("change")); });
+      await maju(b.p, "2026-09-30T12:00:00+07:00");
+      const x = await b.p.evaluate(() => ({ soc:parseFloat(el("n-soc").value), t:el("n-soc").dataset.touched }));
+      ok(x.soc < 60 && x.t !== "1", "baterai diketik tanpa Mulai hari jadi jangkar dan ikut turun (dulu membeku 80% seharian)", JSON.stringify(x));
+      await b.c.close();
+    }
+    {
+      /* terbuka sejak semalam: pagi berikutnya Mulai hari muncul, baterai kemarin tidak dipakai */
+      const b = await buka25("2026-09-30T17:00:00+07:00", { mulai:true });
+      await mulai(b.p, { "ci-soc":60, "ci-keluar":"17", "ci-pulang":"21.5", "ci-zona":"tng" });
+      await maju(b.p, "2026-09-30T21:15:00+07:00"); const malam = await soc(b.p);
+      await maju(b.p, "2026-10-01T04:30:00+07:00");
+      const x = await b.p.evaluate(() => ({ buka:!el("checkin").hidden, ci:el("ci-soc").value, soc:el("n-soc").value }));
+      ok(x.buka && +x.ci !== malam && +x.soc !== malam, "halaman terbuka semalam: 04:30 Mulai hari terbuka sendiri, baterai kemarin malam tidak dipakai", JSON.stringify({ malam, ...x }));
+      await b.c.close();
+    }
+    {
+      const sore = await buka25("2026-09-30T20:45:00+07:00", { mulai:true });
+      const x = await sore.p.evaluate(() => ({ buka:!el("checkin").hidden }));
+      await sore.c.close();
+      const b = await buka25("2026-09-30T04:00:00+07:00", { mulai:true });
+      const y = await b.p.evaluate(() => { bukaCheckin(); el("ci-keluar").value = "22"; el("ci-pulang").value = "21.5"; el("ci-mulai").click();
+        return { mh:MULAI_HARI, buka:!el("checkin").hidden, st:(el("ci-status") || {}).textContent || "" }; });
+      ok(!x.buka && y.mh === null && y.buka && /sesudah jam mulai/.test(y.st), "Mulai hari tidak terbuka sendiri 20:45; jam pulang sebelum jam mulai ditolak dengan pesan", JSON.stringify({ x, y }));
+      await b.c.close();
+    }
+    {
+      const b = await buka25("2026-09-30T11:00:00+07:00");
+      const g = await b.p.evaluate(() => {
+        Baterai.mulai(11, 80, "uji"); const t0 = Date.now();
+        for (let i = 0; i < 720; i++){ const a = i % 2 ? 0.00063 : 0; Baterai.catatFix(-6.2 + a, 106.6, t0 + i * 5000, 20); }
+        const d = Baterai.muat(); return { km:d.gpsKm, gps:Baterai.perkiraan(12, { bat:30.08, zona:"tng", rehat:"none", keluar:0, pulang:24 }).gps };
+      });
+      ok(g.km < 3 && !g.gps, "GPS bergoyang bolak-balik 70 m saat parkir sejam: tidak jadi puluhan km", JSON.stringify(g));
+      await b.c.close();
+    }
+
+    /* tampilan */
+    {
+      const b = await buka25("2026-10-06T07:00:00+07:00", { lebar:360 });
+      const x = await b.p.evaluate(() => {
+        const h = ["ciledug", "bintaro", "cikupa"].map(id => advise(BASE.find(z => z.n === "Peak pagi"), LOKMAP[id], { ctx:dayCtx("2026-10-06"), keluar:7, pulang:21.5, filter:2, zona:"tng" }).h);
+        REGISTRI["uji-xss"] = { nama:'Ruko <img src=x onerror="window.__xss=1"> Golden', km:12, anchor:"ciledug", terukur:false };
+        renderLok("custom:uji-xss"); runNow();
+        const n = currentLok().n;
+        const asli = Storage.prototype.setItem; Storage.prototype.setItem = function(){ throw new Error("QuotaExceededError"); };
+        const tema = []; for (let i = 0; i < 3; i++){ el("tema-btn").click(); tema.push(document.documentElement.dataset.theme || ""); }
+        el("p-save").click(); const ps = el("p-status").textContent;
+        Storage.prototype.setItem = asli;
+        return { h, n, xss:!!window.__xss, tema, ps, sw:document.documentElement.scrollWidth };
+      });
+      await b.p.waitForTimeout(50);
+      ok(x.h.every(h => !/bandara/i.test(h)), "Peak pagi di Ciledug/Bintaro/Cikupa: bukan 'Antre bandara'", JSON.stringify(x.h));
+      ok(!/[<>]/.test(x.n) && !x.xss, "nama tempat ketikan tanpa tanda HTML, tidak ada skrip jalan", JSON.stringify({ n:x.n, xss:x.xss }));
+      ok(new Set(x.tema).size === 3 && /GAGAL/.test(x.ps), "penyimpanan penuh: tema tetap berganti, 'Pakai rencana ini' melapor GAGAL", JSON.stringify({ tema:x.tema, ps:x.ps }));
+      ok(x.sw <= 361, "layar 360px dengan nama tempat panjang: halaman tidak bergeser ke samping", String(x.sw));
+      await b.c.close();
+    }
+    {
+      const b = await buka25("2026-10-06T19:00:00+07:00");
+      const x = await b.p.evaluate(() => { el("n-tujuan").value = "stay"; el("n-pulang").value = "23"; runNow();
+        const t = el("v-now").textContent;
+        setMode("rencana", true); el("p-tgl").value = "2026-10-12"; el("p-tgl").dispatchEvent(new Event("change", { bubbles:true }));
+        el("p-keluar").value = "5.25"; el("p-pulang").value = "22.25"; runPlan(); const n1 = el("p-notes").textContent;
+        el("p-pulang").value = "23.5"; runPlan(); const n2 = el("p-notes").textContent;
+        return { sampaiPulang:/sampai pulang/.test(t), n1:/lewat batas 22/.test(n1), n2:/lewat batas 22/.test(n2) };
+      });
+      ok(!x.sampaiPulang, "'Tidak pulang': tidak ada judul 'sampai pulang'", JSON.stringify(x));
+      ok(!x.n1 && x.n2, "Rencanakan: tiba 22:15 (mulai pulang sebelum 22:00) tidak 'lewat batas'; tiba 23:30 lewat batas", JSON.stringify(x));
+      await b.c.close();
+    }
+
+    /* kalender */
+    {
+      const b = await buka25("2026-10-06T10:00:00+07:00");
+      const k = await b.p.evaluate(() => {
+        const c = t => dayCtx(t), bm = t => typeof batasMalam === "function" ? batasMalam(dayCtx(t)) : ((dayCtx(t).dow === 0 && !dayCtx(t).holi) ? 20.5 : 22);
+        const pra = BASE.find(z => z.n === "Pra-peak"), sore = BASE.find(z => z.n === "Peak sore");
+        return { jumatLebaran:c("2027-03-05").eve, lebaranPanjang:[c("2027-03-12").runLen, c("2027-03-12").hariKe],
+                 batas:[bm("2027-08-15"), bm("2027-03-07"), bm("2026-10-04")],
+                 natal:[advise(pra, LOKMAP.kota, { ctx:c("2026-12-25"), keluar:15.75, pulang:21.5, filter:2, zona:"tng" }).h, advise(sore, LOKMAP.kota, { ctx:c("2026-10-04"), keluar:17, pulang:20.5, filter:2, zona:"tng" }).h],
+                 mulaiNatal:typeof jamMulaiBawaan === "function" ? jamMulaiBawaan("2026-12-25") : null, tahunBaru:!!HOLI["2028-01-01"] };
+      });
+      ok(k.jumatLebaran && k.lebaranPanjang[0] === 10 && k.lebaranPanjang[1] === 7, "Jumat sebelum libur Lebaran = malam sebelum libur; 12-3-2027 'libur 10 hari, hari ke-7'", JSON.stringify(k));
+      ok(k.batas.join() === "20.5,22,20.5", "batas 20:30 bila besok Senin kerja (Minggu Maulid 20:30, Minggu sebelum Nyepi 22:00)", JSON.stringify(k.batas));
+      ok(k.natal.every(h => /Mal, kuliner/.test(h)) && k.mulaiNatal === 10 && k.tahunBaru, "sore Natal/Minggu: kartu mal-kuliner (sama dengan langkah); Mulai hari Natal 10:00; 1-1-2028 tanggal merah", JSON.stringify(k));
+      await b.c.close();
+    }
+    {
+      const b = await buka25("2026-10-17T12:00:00+07:00");
+      const f = await b.p.evaluate(() => el("dayflag").textContent);
+      ok(/Akhir pekan/i.test(f) && /Synchronize/.test(f), "hari acara di akhir pekan: bendera akhir pekan tetap ada, acara ditambahkan", f.slice(0, 200));
+      await b.c.close();
+    }
+
+    /* butir 2 & 3: colokan rumah di baterai sangat rendah; Jakarta siang */
+    {
+      const b = await buka25("2026-10-06T10:00:00+07:00");
+      const x = await b.p.evaluate(() => {
+        const o = { ctx:dayCtx("2026-10-06"), keluar:4, pulang:21.5, rehat:"none", zona:"tng", filter:2, bat:30.08, rumah:true, hujan:false, acara:false, soc:3, deadKm:0, diRumahAwal:true };
+        const r = simulate(o), s0 = r.sesi && r.sesi[0];
+        const oj = { ctx:dayCtx("2026-10-06"), keluar:11, pulang:21.5, rehat:"none", zona:"jkt", filter:2, bat:30.08, rumah:false, hujan:false, acara:false, soc:80, deadKm:0 };
+        const u = Peluang.urutanTinggal(LOKMAP.jakbar, oj);
+        return { ac:!!(s0 && s0.ac), jam:s0 && s0.jam, siang:(u || []).map(id => LOKMAP[id] ? LOKMAP[id].z : String(id)) };
+      });
+      ok(x.ac && x.jam <= 4.01, "di rumah 3% dengan colokan: sesi pertama colok di rumah sejak awal", JSON.stringify(x));
+      ok(x.siang.length > 0 && x.siang[0] !== "jkt", "Jakarta Barat jam 11 (tarif Jakarta sudah turun): urutan tempat bergeser ke Tangerang, sama dengan langkah", JSON.stringify(x.siang));
+      await b.c.close();
+    }
+  }
+
   await browser.close(); srv.close();
   console.log(`\n${passed} lolos, ${failed} gagal`);
   process.exit(failed ? 1 : 0);

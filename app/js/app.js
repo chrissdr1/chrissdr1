@@ -835,7 +835,7 @@ function runNow(){
     ["Sisa hari (belum insentif)", rp(sisa)], ["Insentif hari ini", rp(insentifHarian)],
     ["Order sisa", "&asymp;"+Math.round(r.trips)+" &middot; "+Math.round(r.paidKm)+" km berpenumpang"]
   ].concat(dpt > 0 ? [["Listrik terpakai sejak "+hhmm(mulaiHari), "&minus;"+rp(listrikSejak)+" &middot; &asymp;"+Math.round(kmSejak)+" km"]] : []).concat([
-    ["Km sampai pulang", Math.round(butuh)+" km"],
+    [stay ? "Km sampai "+hhmm(o.pulang) : "Km sampai pulang", Math.round(butuh)+" km"],
     ["Baterai cukup untuk", Math.round(usableKm)+" km"]
   ]).concat(stay ? [["Baterai akhir hari", "&asymp;"+pctB(r.socAkhir)+"%"+(r.sessions ? " &middot; "+r.sessions+"&times; ngecas" : "")]] : [
     ["Pulang dari sini", Math.round(kmHome)+" km"],
