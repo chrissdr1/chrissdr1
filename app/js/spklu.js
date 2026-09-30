@@ -52,7 +52,7 @@ var SpkluTT = (function(){
       return { id:String(r.id || (p.lat.toFixed(5) + "," + p.lon.toFixed(5))), n:String((r.poi && r.poi.name) || "SPKLU"),
                lat:p.lat, lon:p.lon, alamat:String((r.address && r.address.freeformAddress) || ""),
                col:cs.filter(function(c){ return c && typeof c.connectorType === "string"; })
-                     .map(function(c){ return { t:c.connectorType, kw:typeof c.ratedPowerKW === "number" ? c.ratedPowerKW : null,
+                     .map(function(c){ return { t:c.connectorType, kw:(typeof c.ratedPowerKW === "number" && c.ratedPowerKW > 0) ? c.ratedPowerKW : null,
                                                  arus:typeof c.currentType === "string" ? c.currentType : "" }; }) };
     }).filter(function(s){ return s && s.col.length; });
   }
@@ -86,7 +86,15 @@ var SpkluTT = (function(){
       var daftar = Object.keys(semua).map(function(k){ return semua[k]; });
       /* semua gagal: data lama tetap dipakai, tidak ditimpa kosong */
       if (!daftar.length && gagal) return { jumlah:0, alasan:"gagal (" + gagal + " dari " + diminta + " permintaan)" };
-      simpan({ v:1, at:Date.now(), stasiun:daftar });
+      /* sebagian gagal (429/jatah): gabung dengan daftar lama dan jangan tandai
+         segar 30 hari (dulu daftar lengkap diganti daftar separuh) */
+      if (gagal){
+        var lama = muat(), gab = {};
+        ((lama && lama.stasiun) || []).forEach(function(s){ gab[s.id] = s; });
+        daftar.forEach(function(s){ gab[s.id] = s; });
+        daftar = Object.keys(gab).map(function(k){ return gab[k]; });
+        simpan({ v:1, at:(lama && lama.at) || 0, stasiun:daftar });
+      } else simpan({ v:1, at:Date.now(), stasiun:daftar });
       return { jumlah:daftar.length, alasan:gagal ? "sebagian gagal (" + gagal + " dari " + diminta + ")" : "selesai" };
     });
     return jalan;
@@ -98,7 +106,7 @@ var SpkluTT = (function(){
     if (!s || !s.col) return null;
     var dc = s.col.filter(function(c){ return MOBIL.dc.indexOf(c.t) >= 0; }),
         ac = s.col.filter(function(c){ return MOBIL.ac.indexOf(c.t) >= 0; });
-    function maks(l){ var m = null; l.forEach(function(c){ if (c.kw != null && (m == null || c.kw > m)) m = c.kw; }); return m; }
+    function maks(l){ var m = null; l.forEach(function(c){ if (c.kw != null && c.kw > 0 && (m == null || c.kw > m)) m = c.kw; }); return m; }
     if (dc.length){ var k = maks(dc); return { jenis:"cepat", kw:k, kwEfektif:k == null ? MOBIL.dcKW : Math.min(k, MOBIL.dcKW) }; }
     if (ac.length){ var a = maks(ac); return { jenis:"lambat", kw:a, kwEfektif:a == null ? MOBIL.acKW : Math.min(a, MOBIL.acKW),
                                                soketSaja:ac.every(function(c){ return c.t === "IEC62196Type2Outlet"; }) }; }

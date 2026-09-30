@@ -107,7 +107,9 @@ var Lalulintas = (function(){
     p = produkDari(p); j = j || jatah();
     var x = j.p[p], hari = iso(new Date()), n = hariDalamBulan(hari), sisaHari = n - (+hari.slice(8, 10)) + 1;
     var sisaBulan = Math.max(0, PRODUK[p].bulan - (x.bulan - x.hari));
-    return Math.max(0, Math.min(Math.floor(2 * PRODUK[p].bulan / n), Math.floor(sisaBulan / sisaHari)));
+    var jh = Math.max(0, Math.min(Math.floor(2 * PRODUK[p].bulan / n), Math.floor(sisaBulan / sisaHari)));
+    /* daftar SPKLU butuh +-24 permintaan sekali segar (12 titik x 2 halaman) */
+    return p === "cari" ? Math.min(sisaBulan, Math.max(24, jh)) : jh;
   }
   /* null = boleh; selain itu: "stop" (3x 429, sampai besok), "penuh" (jatah
      hari ini habis), "jeda" (menunggu setelah 429). */

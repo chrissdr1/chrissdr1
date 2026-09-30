@@ -1312,8 +1312,9 @@ async function main(){
     ok(!kartu.hidden && /±60 menit ke rumah/.test(kartu.p) && /biasanya jam ini ±45/.test(kartu.p) && /lancar ±30/.test(kartu.p) && /21,4 km/.test(kartu.p) &&
        /Lebih lama/.test(kartu.p) === lebihLama,
        "kartu jalan pulang: 60 menit sekarang, biasanya 45, lancar 30, 21,4 km; peringatan 'lebih lama' hanya bila >= 10 menit di atas hitungan aplikasi", JSON.stringify(kartu));
-    ok(/mulai jalan paling lambat ±20:15/.test(kartu.p) && /\+9 menit/.test(kartu.p) && /Jl\. Daan Mogot/.test(kartu.p),
-       "jalan pulang: mulai paling lambat 20:15 (21:30 - 60 mnt - 15 mnt), macet terparah +9 menit diberi nama jalan dari kejadian di dekatnya", JSON.stringify(kartu.p));
+    /* CBD = Jakarta: batasnya aturan keluar Jakarta 20:00 dari langkah, bukan 21:30 - 60 mnt - 15 mnt (20:15) — kartu dan langkah sama */
+    ok(/Keluar Jakarta paling lambat ±20:00/.test(kartu.p) && /sama dengan langkah/.test(kartu.p) && !/20:15/.test(kartu.p) && /\+9 menit/.test(kartu.p) && /Jl\. Daan Mogot/.test(kartu.p),
+       "jalan pulang di Jakarta: keluar paling lambat 20:00 (sama dengan langkah, bukan 20:15), macet terparah +9 menit diberi nama jalan dari kejadian di dekatnya", JSON.stringify(kartu.p));
     ok(kartu.k.length === 2 && /Jalan ditutup/.test(kartu.k[0]) && /di rute pulang/.test(kartu.k[0]) && /tertahan ±12 menit/.test(kartu.k[0]) && /Kecelakaan/.test(kartu.k[1]) && !/di rute pulang/.test(kartu.k[1]),
        "kejadian: jalan ditutup di rute pulang paling atas, kecelakaan di dekat; perbaikan jalan kecil dan banjir 40 km tidak ditampilkan", JSON.stringify(kartu.k));
     const uK = new URL(urlKej), bb = uK.searchParams.get("bbox").split(",").map(Number);
@@ -1398,7 +1399,8 @@ async function main(){
       runNow(); const t = document.getElementById("jalan-kejadian").textContent;
       localStorage.removeItem("tomtom-jatah"); return t;
     });
-    ok(/jatah TomTom hari ini habis/.test(habisK), "jatah kejadian habis: kartu menyebutnya", habisK);
+    /* bulan:1200 = jatah bulanan kejadian penuh → pesannya "bulan ini ... tanggal 1", bukan "hari ini" */
+    ok(/jatah TomTom bulan ini habis/.test(habisK) && /tanggal 1/.test(habisK), "jatah kejadian bulanan habis: kartu menyebutnya dan kapan mulai lagi", habisK);
 
     /* aplikasi tidak sedang dilihat: tidak ada permintaan sama sekali */
     const nSemua = nPulang + nKej + nLain;

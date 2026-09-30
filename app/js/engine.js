@@ -9,6 +9,14 @@ function addDays(d, n){ var x = new Date(d.getTime()); x.setDate(x.getDate() + n
 function isOff(d){ return HOLI[iso(d)] || d.getDay() === 0 || d.getDay() === 6; }
 
 /* ---------------- helpers ---------------- */
+/* Rupiah yang diketik gaya Indonesia: "150.000" / "1.250.000" / "150,000" =
+   150000 (dulu "150.000" terbaca Rp 150). */
+function parseRp(v){
+  var s = String(v == null ? "" : v).replace(/\s|rp/gi, "");
+  if (/^\d{1,3}([.,]\d{3})+$/.test(s)) s = s.replace(/[.,]/g, "");
+  else s = s.replace(",", ".");
+  var n = parseFloat(s); return isFinite(n) ? n : 0;
+}
 function num(v){ var n = parseFloat(v); return isFinite(n) && n >= 0 ? n : 0; }
 function rp(v){ return "Rp " + Math.round(v).toLocaleString("id-ID"); }
 function rpT(v){ return v < 0 ? "&minus;" + rp(-v) : rp(v); }   /* negatif: "−Rp 144.239", bukan "Rp -144.239" */
@@ -341,6 +349,9 @@ function jamTempuhAntar(A, B, jam, tgl){
     }
     /* KEC_BAWAAN, bukan CALIB.kecepatan: kalibrasi dikalikan SEKALI di bawah.
        Dulu dua kali untuk tempat tanpa menit terukur (Ciledug dst.). */
+    /* tanpa menit terukur: angka TomTom langsung juga dipakai (dulu dilabel
+       "TomTom langsung" tapi tidak dipakai untuk Ciledug, Bintaro, Cikupa) */
+    if (pengaliLive != null) return KEC_BAWAAN / (pengaliLive / ((L && L.z === "jkt") ? 1.9 : 1.6));
     return KEC_BAWAAN / faktorMacet(jam, L ? L.z : "tng", tipe);
   }
   /* dari/ke rumah: koridor tempat itu sendiri yang terukur, bukan rata-rata */
@@ -899,14 +910,16 @@ function buildSteps(o, r, opts){
   out.meta = { avail: Math.max(0, r.soc0 - r.floor) * r.kmPerFrac - r.deadKm,
                km0: (pertama && !pertama.jeda) ? pertama.kmH * pertama.w : 0,
                sessions:r.sessions, sesi:r.sesi, socMin:r.socMin, socMinKerja:r.socMinKerja, socTiba:r.socTiba, floor:r.floor,
-               rehat:rehatDipilih, effHours:r.effHours, chargeHours:r.chargeHours, deadJam:r.deadJam, jedaJam:r.jedaJam, keluar:o.keluar, pulang:o.pulang };
+               rehat:rehatDipilih, effHours:r.effHours, chargeHours:r.chargeHours, deadJam:r.deadJam, jedaJam:r.jedaJam, keluar:o.keluar, pulang:o.pulang,
+               /* jam "Waktunya pulang" dan jam meninggalkan posisi (Jakarta 20:00) -- dipakai kartu Jalan pulang */
+               mulaiPulang:tidakPulang ? null : HP.mulai, tinggalSampai:(!tidakPulang && o.tinggalSampai != null && o.tinggalSampai < HP.mulai - 0.01) ? Math.max(o.keluar, o.tinggalSampai) : null };
 
   var tampil = 0;   /* langkah yang benar-benar ditampilkan (idx asli bisa dilewati) */
   r.pieces.forEach(function(L){
     /* Potongan < 3 menit tidak jadi langkah sendiri (dulu "19:58-20:00 · 0.0
        jam"); nilainya tetap masuk kumulatif supaya rekap = angka bersih. */
     if (L.w < 0.05 && !L.sesi){
-      if (!L.jeda) cum += L.grossH * L.jamJalan - (L.kmH * L.jamJalan / CALIB.kmkwh) * TARIF_KWH;
+      if (!L.jeda) cum += L.grossH * L.jamJalan - ((L.kmH * L.jamJalan + (L.pindahKm || 0)) / CALIB.kmkwh) * TARIF_KWH;
       return;
     }
     /* "narik" yang seluruhnya habis untuk pindah / ngecas: langkahnya bilang
@@ -1008,7 +1021,8 @@ function buildSteps(o, r, opts){
     var charge = !!L.sesi;
     var val = 0, order = 0, kmBayar = 0, detail = "";
     if (!L.jeda){
-      val = L.grossH * L.jamJalan - (L.kmH * L.jamJalan / CALIB.kmkwh) * TARIF_KWH;
+      /* listrik km pindah ikut (dulu rekap langkah Rp 11-15 rb di atas angka besar) */
+      val = L.grossH * L.jamJalan - ((L.kmH * L.jamJalan + (L.pindahKm || 0)) / CALIB.kmkwh) * TARIF_KWH;
       kmBayar = L.paidKmH * L.jamJalan; order = kmBayar / L.tripKm;
       detail = tanpaNarik ? "baterai " + pctB(L.socMulai) + "%&rarr;" + pctB(L.socAkhir) + "%" + (L.pindahKm > 0.5 ? " &middot; pindah &plusmn;" + Math.round(L.pindahKm) + " km" : "") :
                "&asymp; " + (order < 0.5 ? "0" : order < 1 ? "1" : Math.round(order)) + " order &middot; " + Math.round(kmBayar) + " km berpenumpang" +
@@ -1336,7 +1350,9 @@ var WEATHER = null, REGISTRI = {}, lastLok = "kota";
    sif itu selalu dianggap berangkat baterai penuh dan tidak pernah
    menanggung sesi ngecas yang justru dipicu km perpanjangan itu sendiri. */
 function tambahanJam(o, r, jam){
-  var sampai = Math.min(23, o.pulang + jam);
+  /* tidak pernah melewati batas pulang 22:00 (Minggu 20:30) plus perjalanan pulang */
+  var batasT = (o.ctx.dow === 0 && !o.ctx.holi) ? 20.5 : 22;
+  var sampai = Math.min(23, o.pulang + jam, batasT + (o.stay ? 0 : jamMulaiPulang(o, o.tempatAkhir || null)));
   if (sampai <= o.pulang) return { sampai:sampai, tambah:0 };
   var p = {}; Object.keys(o).forEach(function(k){ p[k] = o[k]; });
   p.pulang = sampai;

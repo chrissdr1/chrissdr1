@@ -38,7 +38,7 @@
       <div class="f"><label for="ci-zona">Daerah narik</label><select id="ci-zona">
         <option value="tng" selected>Tangerang</option><option value="mix">Tangerang, Jakarta saat peak</option><option value="jkt">Kebanyakan Jakarta</option><option value="apt">Bandara</option></select></div>
       <div class="f"><label for="ci-filter">Sisa filter tujuan</label><select id="ci-filter"><option value="0">0</option><option value="1">1</option><option value="2" selected>2</option></select></div>
-      <div class="f"><label for="ci-dpt">Sudah dapat hari ini (Rp)</label><input id="ci-dpt" type="number" inputmode="numeric" value="0"></div>
+      <div class="f"><label for="ci-dpt">Sudah dapat hari ini (Rp)</label><input id="ci-dpt" type="text" inputmode="numeric" value="0"></div>
       <div class="f" style="grid-column:1/-1"><label for="ci-rehat">Istirahat</label>
         <div class="jedarow"><select id="ci-rehat"><option value="none" selected>Tidak</option><option value="custom">Ya, jam&hellip;</option></select>
           <select id="ci-rehat-dari" aria-label="Istirahat mulai" hidden></select><span id="ci-rehat-panah" hidden>&rarr;</span><select id="ci-rehat-sampai" aria-label="Istirahat selesai" hidden></select></div></div>
@@ -116,7 +116,7 @@
       </div>
       <div class="f"><label for="n-soc">Sisa baterai (%) <em id="src-soc"></em></label><input id="n-soc" type="number" inputmode="numeric" min="1" max="100" value="65">
         <div class="hint" id="socest"></div></div>
-      <div class="f"><label for="n-dpt">Sudah dapat (Rp)</label><input id="n-dpt" type="number" inputmode="numeric" value="0"></div>
+      <div class="f"><label for="n-dpt">Sudah dapat (Rp)</label><input id="n-dpt" type="text" inputmode="numeric" value="0"></div>
       <div class="f"><label for="n-pulang">Rencana pulang</label><select id="n-pulang"></select></div>
       <div class="f"><label for="n-tujuan">Malam ini</label><select id="n-tujuan">
         <option value="rumah" selected>Pulang ke rumah</option>
