@@ -100,9 +100,10 @@ var Peluang = (function(){
     kerja.forEach(function(p){
       var berikut = [];
       /* istirahat panjang sebelum potongan ini: Ibu berangkat lagi dari rumah */
-      var idx = pieces.indexOf(p), jedaSebelum = idx > 0 && pieces[idx - 1].jeda && pieces[idx - 1].w >= 1.5 && !o.stay;
+      /* (aturan yang sama dengan simulate: hanya kalau bolak-baliknya masuk jam istirahat) */
+      var idx = pieces.indexOf(p), jedaP = idx > 0 && pieces[idx - 1].jeda ? pieces[idx - 1] : null;
       beam.forEach(function(st){
-        var S = jedaSebelum ? LOKMAP.kota : st.akhir;
+        var S = (jedaP && istirahatDiRumah(st.akhir, jedaP, o)) ? LOKMAP.kota : st.akhir;
         KANDIDAT.forEach(function(id){
           var T = LOKMAP[id];
           if (!bolehKe(S, T, p)) return;
@@ -148,7 +149,7 @@ var Peluang = (function(){
       r.pieces.forEach(function(p){
         if (p.jeda){ seg.push({ jeda:true, s:p.s, e:p.e, sesi:p.sesi || null }); return; }
         var last = seg[seg.length - 1];
-        if (last && !last.jeda && last.tempat.id === p.tempat.id){ last.e = p.e; last.gross += p.grossH * p.jamJalan; last.order += p.paidKmH * p.jamJalan / p.tripKm; last.km += p.kmH * p.jamJalan; if (p.sesi) last.sesi = p.sesi; }
+        if (last && !last.jeda && last.tempat.id === p.tempat.id){ last.e = p.e; last.gross += p.grossH * p.jamJalan; last.order += p.paidKmH * p.jamJalan / p.tripKm; last.km += p.kmH * p.jamJalan; if (p.sesi){ last.sesiSemua = (last.sesiSemua || (last.sesi ? [last.sesi] : [])).concat([p.sesi]); last.sesi = last.sesi || p.sesi; } }
         else seg.push({ tempat:p.tempat, s:p.s, e:p.e, gross:p.grossH * p.jamJalan, order:p.paidKmH * p.jamJalan / p.tripKm, km:p.kmH * p.jamJalan, pindahKm:p.pindahKm || 0, pindahJam:p.pindahJam || 0, blok:p.b.n, sesi:p.sesi || null });
       });
       var pindahN = 0; r.pieces.forEach(function(p){ if (p.pindahKm > 0.5) pindahN++; });
@@ -159,9 +160,15 @@ var Peluang = (function(){
     /* Sama dengan kartu "ke mana sekarang": rencana yang tiba di suatu tempat
        dengan baterai < 8% tidak ditawarkan -- kecuali pulang ke Kota dan ada
        charger di rumah. "Tetap di sini" selalu ada sebagai pembanding. */
+    /* Juga dibuang: rencana tanpa jam narik sama sekali (hasil pangkas jadi
+       "pulang sekarang" -- dulu "Pindah 0 kali (0 km)" di urutan #1) dan rencana
+       yang tiba di rumah < 8% tanpa ngecas. */
     function terjangkau(h){
-      return h.diam || !h.r.pieces.some(function(p){
-        return p.pindahKm > 0.5 && p.socMulai < 0.08 && !(p.tempat && p.tempat.id === "kota" && o.rumah);
+      if (h.diam) return true;
+      if (!h.r.pieces.some(adaJamNarik)) return false;
+      if (!o.stay && h.r.socTiba < 0.08 && !(o.rumah && h.r.socTiba >= 0.03)) return false;
+      return !h.r.pieces.some(function(p){
+        return p.pindahKm > 0.5 && p.socMulai < 0.08 && !(p.tempat && p.tempat.id === "kota" && o.rumah && p.socMulai >= 0.03);
       });
     }
     var hasil = kandidat.map(nilai).filter(terjangkau);

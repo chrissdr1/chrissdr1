@@ -60,7 +60,7 @@ var Rekomendasi = (function(){
     /* Tidak terjangkau: tiba di bawah 8% (lantai mutlak 5% + ragam taksiran).
        Dulu tetap ditawarkan dengan "baterai 1%" padahal perjalanannya butuh
        lebih dari sisa baterai. */
-    if (!diSini && soc - socPindah < 8 && !(K.id === "kota" && o.rumah)) return { terlewat:true, n:K.n, socPindah:socPindah };
+    if (!diSini && soc - socPindah < 8 && !(K.id === "kota" && o.rumah && soc - socPindah >= 3)) return { terlewat:true, n:K.n, socPindah:socPindah };
     var keluar = o.keluar + jamPindah;
     if (o.pulang - keluar < 0.5) return null;   /* tidak sempat kerja di sana */
     var o2 = salin(o);
@@ -84,7 +84,7 @@ var Rekomendasi = (function(){
     return { id:K.id, n:K.n, z:K.z, lat:K.lat, lon:K.lon, diSini:diSini, tempat:K,
              kmPindah:kmPindah, jamPindah:jamPindah, macet:macet, sumberMacet:sumberMacet, tiba:keluar, socTiba:Math.round(o2.soc),
              sisa:sisa, sesi:r.sessions, kmHome:stay ? 0 : K.home, res:K.res, pulangMalam:!!o2.urutan.pindahMalam,
-             mulaiPulang:o.pulang - jamPulang, jamPulang:jamPulang,
+             mulaiPulang:stay ? null : o.pulang - jamPulang, jamPulang:jamPulang,
              keluarJkt:pm ? pm.s : null, keluarJktJam:pm ? pm.pindahJam : null,
              saran:advise(blkTiba, K, o2), r:r };
   }

@@ -82,7 +82,7 @@ async function kerja(job){
       }
       POS.forEach((pos, pi) => {
         const k = ti * 7 + pi;
-        const soc = SOC[k % SOC.length], rumah = (k % 3) === 0, filter = (k % 4) === 0 ? 0 : 2, stay = (k % 11) === 5;
+        const soc = SOC[k % SOC.length], rumah = (k % 3) === 0, filter = (k % 4) === 0 ? 0 : 2, stay = (k % 7) === 3;
         const pulangPilih = [null, 22, 20.5, 23.75][k % 4];
         pilih(pos);
         el("n-soc").value = soc; el("n-soc").dataset.touched = "1";
@@ -125,6 +125,20 @@ async function kerja(job){
         const ls = S.langkah.map(x => (x.i || "") + " " + (x.s || "")).join(" ").match(/Mulai pulang jam (?:<b>)?(\d\d:\d\d)/g) || [];
         const beda = [...new Set(ls.map(x => x.slice(-5)))].filter(x => !mt || x !== mt[0]);
         if (beda.length && !o.stay) M.push("langkah 'Mulai pulang jam " + beda.join("/") + "' vs langkah pulang " + (mt ? mt[0] : "-"));
+        /* baterai negatif di teks mana pun; rute kosong di "Mau ke tempat lain?" */
+        const neg = tn.match(/±-\d|[^\d\w]-\d+ ?(%|→|&rarr;)|\s-\d+\s?→/);
+        if (neg) M.push("baterai negatif: " + tn.slice(Math.max(0, neg.index - 60), neg.index + 20));
+        if (!el("peluang").hidden && /Pindah 0 kali/.test(txt("peluang"))) M.push("rute kosong 'Pindah 0 kali'");
+        if (S.peluang && S.peluang.daftar) S.peluang.daftar.forEach(x => { if (!x.diam && !o.stay && x.r.socTiba < 0.03) M.push("rute tiba rumah " + Math.round(x.r.socTiba * 100) + "%"); });
+        /* Tidak pulang: tidak ada kalimat pulang di kartu, langkah, dan daftar tempat;
+           baris "Tidak pulang" sesudah narik terakhir */
+        if (o.stay){
+          const tks = [vt, txt("rek-list"), el("peluang").hidden ? "" : txt("peluang"), ...S.langkah.filter(x => x.dur !== "pulang").map(x => (x.b || "") + " " + (x.s || "") + " " + (x.i || ""))].join(" ");
+          const mp = tks.match(TEKS_PULANG) || tks.match(/sampai pulang|Pulang \d+ km|sampai rumah|Mulai pulang dari sana/);
+          if (mp) M.push("tidak pulang tapi '" + mp[0] + "'");
+          const akhirKerja = Math.max(0, ...S.r.pieces.filter(q => !q.jeda).map(q => q.e));
+          if (jp != null && jp < akhirKerja - 0.02) M.push("baris Tidak pulang " + mt[0] + " sebelum narik selesai " + hhmm(akhirKerja));
+        }
         /* Jakarta lewat 20:00 */
         if (!o.stay && S.r.pieces.some(q => !q.jeda && q.jamJalan > 0.05 && q.e > 20.05 && (q.tempat ? q.tempat.z === "jkt" : (q.zonaT ? q.zonaT === ZONA.jkt : o.zona === "jkt")))) M.push("narik Jakarta lewat 20:00 (" + (S.r.pieces.find(q => !q.jeda && q.e > 20.05 && !q.tempat) ? "tanpa urutan" : "urutan") + ")");
         if (!o.stay && L.z === "jkt" && o.keluar >= 20 && /Order terakhir|Bertahan di Jakarta|Antar orang pulang|Narik dulu di sini/.test(vt)) M.push("kartu Jakarta lewat 20:00: " + hV);

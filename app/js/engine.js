@@ -410,7 +410,7 @@ function pilihSesi(pieces, socAwal, floor, ambang, fullSesi, kmPerFrac, deadJam,
   deadJam = deadJam || 0;
   var n = pieces.length;
   var kum = [0]; for (var i = 0; i < n; i++) kum.push(kum[i] + pieces[i].pakai);
-  function jalan(idxs, simpan){
+  function jalan(idxs, simpan, tanpaAC){
     /* socMinKerja: terendah di AKHIR potongan kerja (bukan saat berangkat:
        berangkat tipis lalu langsung ngecas di langkah pertama itu sah). */
     /* lanjut = jam yang terbawa ke potongan berikutnya: km kosong menuju
@@ -423,7 +423,18 @@ function pilihSesi(pieces, socAwal, floor, ambang, fullSesi, kmPerFrac, deadJam,
       if (simpan){ p.socMulai = soc; p.sesi = null; }
       /* pindah tempat di awal potongan: waktu ikut "mati", km ikut menguras baterai */
       if (p.pindahJam){ bawaMati += p.pindahJam; }
-      if (p.pindahKm){ soc -= p.pindahKm / kmPerFrac; if (simpan) p.socMulai = soc; }
+      /* Ada sesi di potongan yang diawali pindah: ngecas DULU di tempat asal
+         (potongan kerja; istirahat hanya bila sampai tujuan baterai di bawah
+         lantai), baru jalan. Dulu pindah dulu -- "ngecas -8→26%". */
+      var adaSesi = si < idxs.length && idxs[si] === i;
+      var casDulu = !!(adaSesi && p.pindahKm && (!p.jeda || soc - p.pindahKm / kmPerFrac < floor));
+      var pindahkan = function(){
+        soc -= p.pindahKm / kmPerFrac;
+        if (soc < socMin) socMin = soc;
+        if (soc < floor){ var dd = floor - soc; viol += dd; cost += Math.min(dd, 0.05) * 1.2e6; if (dd > 0.05) cost += (dd - 0.05) * 1e8; }
+        if (soc < 0.05) cost += 1e8;   /* tiba nyaris kosong: tidak pernah */
+      };
+      if (p.pindahKm && !casDulu){ pindahkan(); if (simpan) p.socMulai = soc; }
       var lanjutMasuk = bawaMati + bawaCas;
       if (!p.jeda) cost += Math.min(lanjutMasuk, p.w) * p.rateH;   /* jam terbawa memakan jam kerja potongan ini */
       if (si < idxs.length && idxs[si] === i){
@@ -432,7 +443,11 @@ function pilihSesi(pieces, socAwal, floor, ambang, fullSesi, kmPerFrac, deadJam,
         /* DC cepat (SPKLU) berhenti di 90%. Sampai 100% hanya di jeda panjang
            (>= 2,5 jam) DAN ada charger di rumah: colok AC 7 kW, lambat tapi
            gratis waktu; durasinya kWh / 7 kW + 15 menit pulang. */
-        var bolehAC = !!(p.jeda && p.w >= 2.5 && rumah);
+        var bolehAC = !!(p.jeda && p.w >= 2.5 && rumah && p.diRumah !== false && !casDulu && !tanpaAC);
+        /* AC 7 kW hanya kalau isi penuhnya muat di jam istirahat; kalau tidak,
+           SPKLU cepat sampai 90% (dulu dipaksa AC 4 jam, colokan rumah malah
+           membuat rencana lebih buruk) */
+        if (bolehAC && (Math.min(1, kum[(si + 1 < idxs.length) ? idxs[si+1] : n] - kum[i] + floor + 0.02) - soc) * cap / 7 + 0.25 > p.w) bolehAC = false;
         var maks = bolehAC ? 1.00 : 0.90;
         var dari = soc, ke = Math.min(maks, dasar), durasi = 0, hilang = 0, luber = 0, ac = false;
         var kmNext = (pieces[i+1] && !pieces[i+1].jeda) ? pieces[i+1].kmH : 0;
@@ -452,9 +467,10 @@ function pilihSesi(pieces, socAwal, floor, ambang, fullSesi, kmPerFrac, deadJam,
         if (!p.jeda && p.w < 0.5) cost += 3e5;
         s = { idx:i, jam:p.s, blok:(p.jeda ? "Istirahat" : p.b.n), dari:dari, ke:ke, durasi:durasi,
               jamHilang:hilang, luber:luber, ac:ac, diJeda:!!p.jeda, biaya:SESSION_FEE, tarifBlok:tarif,
-              peak:!p.jeda && !!PEAKS[p.b.n], terpaksa:false };
+              peak:!p.jeda && !!PEAKS[p.b.n], terpaksa:false, sebelumPindah:casDulu };
         sesi.push(s); soc = ke; si++;
       }
+      if (casDulu) pindahkan();
       var jamJalan, matiIni = 0, casIni = 0;
       if (p.jeda){
         jamJalan = 0;
@@ -490,7 +506,11 @@ function pilihSesi(pieces, socAwal, floor, ambang, fullSesi, kmPerFrac, deadJam,
   var calon = []; for (var c = 0; c < n; c++) if (pieces[c].jeda || pieces[c].w >= 0.25) calon.push(c);
   var best = jalan([], false), bestTanpaPeak = best;
   function coba(idxs){
-    var r = jalan(idxs, false); if (!r) return;
+    /* dengan colokan rumah, tiap kombinasi dicoba dua cara (AC di rumah dan
+       SPKLU cepat): colokan rumah tidak pernah membuat rencana lebih buruk */
+    var r = jalan(idxs, false, false);
+    if (rumah){ var r2 = jalan(idxs, false, true); if (r2 && (!r || r2.cost < r.cost)){ r = r2; r.tanpaAC = true; } }
+    if (!r) return;
     if (r.cost < best.cost) best = r;
     if (!r.sesi.some(function(x){ return x.peak; }) && r.cost < bestTanpaPeak.cost) bestTanpaPeak = r;
   }
@@ -508,7 +528,7 @@ function pilihSesi(pieces, socAwal, floor, ambang, fullSesi, kmPerFrac, deadJam,
     var cobaLama = coba; coba = function(idxs){ if (idxs.some(function(i){ return jedaKosong.indexOf(i) >= 0; })) cobaLama(idxs); };
     kombinasi(4, 0, []); coba = cobaLama;
   }
-  var out = jalan(best.idxs, true);
+  var out = jalan(best.idxs, true, !!best.tanpaAC);
   out.sesi.forEach(function(x){ if (x.peak) x.terpaksa = bestTanpaPeak.viol > 0.03 || bestTanpaPeak === best; });
   return out;
 }
@@ -527,6 +547,16 @@ function bobotTempat(id, namaBlok){
    -- dipakai pembangkit peluang rute. Dengan itu tiap potongan memakai wilayah
    tarif tempatnya, bobot permintaan tempat itu, km/jam wilayahnya, dan waktu +
    km pindah dari tempat sebelumnya (o.tempatAwal untuk potongan pertama). */
+/* Istirahat >= 1,5 jam dihitung pulang ke rumah hanya kalau bolak-baliknya
+   masih menyisakan >= 45 menit istirahat di rumah. Dulu dari Cikarang (76 km)
+   istirahat 10:30-15:00 = pulang 138 menit lalu balik lagi, baterai minus. */
+function istirahatDiRumah(dari, p, o){
+  if (o.stay || !p || p.w < 1.5) return false;
+  if (!dari || dari.home <= 1) return true;
+  var LR = (typeof LOKMAP !== "undefined" && LOKMAP.kota) || null;
+  var jt = (LR && dari.lat != null && LR.lat != null) ? jamTempuhAntar(dari, LR, p.s, iso(o.ctx.d)) : jamTempuhRumah(dari, p.s, undefined, tipeDari(o.ctx));
+  return 2 * jt <= p.w - 0.75;
+}
 function simulate(o){
   var z = ZONA[o.zona], ctx = o.ctx, hari = ctx.shapeDay;
   var adaUrutan = !!(o.urutan && o.urutan.length);
@@ -539,8 +569,9 @@ function simulate(o){
       if (p.jeda){
         /* istirahat >= 1,5 jam dianggap pulang ke rumah (km & baterai pindah
            dihitung, waktunya diserap istirahat); istirahat pendek di tempat */
-        var R = (p.w >= 1.5 && !o.stay) ? LOKMAP.kota : sebelum;
+        var R = istirahatDiRumah(sebelum, p, o) ? LOKMAP.kota : sebelum;
         if (R && sebelum && R.id !== sebelum.id){ p.pindahKm = jarakAntar(sebelum, R); p.tempat = R; }
+        p.diRumah = !!(R && R.home <= 1);
         if (R) sebelum = R;
         return;
       }
@@ -630,7 +661,9 @@ function simulate(o){
   }
 
   var cap = o.bat, kmkwh = CALIB.kmkwh, kmPerFrac = cap * kmkwh;   /* km untuk 100% */
-  var soc0 = (typeof o.soc === "number" && o.soc > 0) ? Math.min(1, o.soc/100) : (o.rumah ? 1.00 : 0.90);
+  /* 0% (atau negatif dari perhitungan pindah) tetap 0%, bukan "tidak diisi" --
+     dulu baterai habis disimulasikan sebagai 100% */
+  var soc0 = (typeof o.soc === "number" && isFinite(o.soc)) ? Math.max(0, Math.min(1, o.soc/100)) : (o.rumah ? 1.00 : 0.90);
   var deadKm = adaUrutan ? 0 : ((typeof o.deadKm === "number") ? o.deadKm : z.dead);
   var kmHome = o.stay ? 0 : (adaUrutan && o.tempatAkhir ? o.tempatAkhir.home : ((typeof o.kmHome === "number") ? o.kmHome : z.pulang));
   var adaJkt = adaUrutan ? kerja.some(function(p){ return p.tempat && p.tempat.z === "jkt"; }) : (o.zona === "jkt" || o.zona === "mix");
@@ -654,7 +687,7 @@ function simulate(o){
   var socAwal = soc0 - deadKm / kmPerFrac;
   /* Km kosong menuju pangkalan memakan WAKTU juga, bukan hanya baterai. */
   var deadJam = deadKm / CALIB.kecepatan;
-  var tl = pilihSesi(pieces, socAwal, floor, ambangPulang, fullSesi, kmPerFrac, deadJam, !!o.rumah, cap);
+  var tl = pilihSesi(pieces, socAwal, floor, ambangPulang, fullSesi, kmPerFrac, deadJam, !!o.rumah && !o.stay, cap);   /* tidak pulang = tidak ada colokan rumah */
   var sesi = tl.sesi;
 
   var gross = 0, effHours = 0, chargeHours = 0, hilangRp = 0, trips = 0, paidKm = 0, kmKerja = 0, perBlok = [];
@@ -695,6 +728,12 @@ function simulate(o){
      (socTiba < 8%); dipasang per objek, jadi salinan Rekomendasi punya
      nilainya sendiri. */
   o.perluCasPulang = !o.stay && (tl.socAkhir - kmHome / kmPerFrac) < 0.08;
+  /* Langkah pertama diawali ngecas karena baterai sekarang tidak cukup
+     (di bawah lantai / tidak cukup pulang dari tempat awal): kartu besar =
+     "Ngecas dulu", sama dengan spanduk dan langkah. */
+  var p0 = pieces.filter(function(p){ return p.w >= 0.05 || p.sesi; })[0];
+  var kmAwal = o.tempatAwal ? o.tempatAwal.home : (typeof o.kmHome === "number" ? o.kmHome : kmHome);
+  o.casSekarang = !o.stay && !!(p0 && !p0.jeda && p0.sesi && p0.sesi.jam <= o.keluar + 0.01 && p0.sesi.dari < Math.max(floor, 0.15 + kmAwal / kmPerFrac));
   /* Tidak ada lagi JAM NARIK (jam mulai pulang / batas 22:00 sudah lewat, atau
      sisa potongan habis untuk pindah): kartu besar (advise) membaca tanda ini
      supaya tidak menyuruh narik lagi -- keputusan yang SAMA dengan hitungan
@@ -783,6 +822,9 @@ function buildSteps(o, r, opts){
     var bt = (ctx.dow === 0 && !ctx.holi) ? 20.5 : 22;
     var m = Math.min(o.pulang - Math.max(0.5, jt + 0.25), bt);
     if (!tidakPulang && !r.pieces.some(adaJamNarik)) m = o.keluar;
+    /* Tidak pulang: tidak ada batas 22:00, baris "Tidak pulang" = jam narik
+       selesai (dulu "mulai 22:00 Tidak pulang" sesudah narik sampai 23:00) */
+    if (tidakPulang){ bt = 24; m = o.pulang; }
     return { km:km, jamTempuh:jt, batas:bt, mulai:Math.max(o.keluar, m) };
   })();
   var mulaiPulang = jauh ? HP.mulai : o.pulang - jamPulang;
@@ -829,15 +871,18 @@ function buildSteps(o, r, opts){
     } else if (idx === 0 && opts.verdict && !L.jeda){
       def = { b:opts.verdict.h, s:opts.verdict.r, i:opts.verdict.p, k:opts.verdict.kenapa };
     } else if (L.jeda){
+      /* istirahat di rumah hanya kalau simulasi memang memulangkan Ibu (atau
+         dekat rumah); selain itu istirahat di sekitar tempat itu */
+      var jedaRumah = L.diRumah != null ? L.diRumah : (!tidakPulang && !(pos && pos.home > 15));
       def = L.sesi
         ? { b:"Istirahat + ngecas",
-            s:"Di rumah atau SPKLU langganan &middot; <b>" + Math.round(L.sesi.dari*100) + " &rarr; " + Math.round(L.sesi.ke*100) + "%</b> &middot; &plusmn;" + Math.round(L.sesi.durasi*60) + " menit",
-            i:L.sesi.ac ? "Ngecas di rumah (7 kW) sampai " + Math.round(L.sesi.ke*100) + "%, &plusmn;" + (L.sesi.durasi).toFixed(1).replace(".", ",") + " jam."
+            s:(L.sesi.sebelumPindah ? "Ngecas dulu di SPKLU terdekat, baru " + (jedaRumah ? "pulang istirahat" : "istirahat") : jedaRumah ? "Di rumah atau SPKLU langganan" : "SPKLU terdekat, sambil makan") + " &middot; <b>" + pctB(L.sesi.dari) + " &rarr; " + pctB(L.sesi.ke) + "%</b> &middot; &plusmn;" + Math.round(L.sesi.durasi*60) + " menit",
+            i:L.sesi.ac ? "Ngecas di rumah (7 kW) sampai " + pctB(L.sesi.ke) + "%, &plusmn;" + (L.sesi.durasi).toFixed(1).replace(".", ",") + " jam."
                         : "Waktu terbaik ngecas &mdash; tidak ada order hilang, tidak perlu sampai 100%.",
             k:"Ngecas di jam istirahat tidak memakan jam narik" + (L.sesi.jamHilang > 0.05 ? ", kecuali " + Math.round(L.sesi.jamHilang*60) + " menit yang lewat dari istirahat" : "") + ". " +
               (L.sesi.ac ? "Istirahat panjang dan ada colokan di rumah: sisa hari butuh lebih dari 90%, jadi diisi pelan di rumah."
                          : "Isi secukupnya sampai pulang dengan cadangan; SPKLU berhenti di 90%.") }
-        : STEP["Istirahat"];
+        : (jedaRumah ? STEP["Istirahat"] : ISTIRAHAT_SINI);
     } else if (masihPulang){
       if (!sudahSampai){
         sudahSampai = true;
@@ -862,27 +907,32 @@ function buildSteps(o, r, opts){
     } else {
       def = STEP[nama];
     }
+    /* Tidak pulang: tidak satu langkah pun menyuruh pulang / ke arah rumah
+       (dulu "Sudah malam — pulang", "Hanya order ke arah barat") */
+    if (tidakPulang && !L.jeda && TEKS_PULANG.test((def.b || "") + " " + (def.s || "") + " " + (def.i || "")))
+      def = kartuStay(nama, o);
     var charge = !!L.sesi;
     var val = 0, order = 0, kmBayar = 0, detail = "";
     if (!L.jeda){
       val = L.grossH * L.jamJalan - (L.kmH * L.jamJalan / CALIB.kmkwh) * TARIF_KWH;
       kmBayar = L.paidKmH * L.jamJalan; order = kmBayar / L.tripKm;
-      detail = "&asymp; " + (order < 1 ? "1" : Math.round(order)) + " order &middot; " + Math.round(kmBayar) + " km berpenumpang" +
+      detail = tanpaNarik ? "baterai " + pctB(L.socMulai) + "%&rarr;" + pctB(L.socAkhir) + "%" + (L.pindahKm > 0.5 ? " &middot; pindah &plusmn;" + Math.round(L.pindahKm) + " km" : "") :
+               "&asymp; " + (order < 0.5 ? "0" : order < 1 ? "1" : Math.round(order)) + " order &middot; " + Math.round(kmBayar) + " km berpenumpang" +
                (order >= 1 ? " &middot; Rp " + Math.round(L.grossH * L.jamJalan / order).toLocaleString("id-ID") + "/order" : "") +
-               " &middot; baterai " + Math.round(L.socMulai*100) + "%&rarr;" + Math.round(L.socAkhir*100) + "%";
+               " &middot; baterai " + pctB(L.socMulai) + "%&rarr;" + pctB(L.socAkhir) + "%";
     } else {
-      detail = "baterai " + Math.round(L.socMulai*100) + "%" + (L.sesi ? " &rarr; " + Math.round(L.sesi.ke*100) + "% setelah ngecas" : " (istirahat, tidak jalan)");
+      detail = "baterai " + pctB(L.socMulai) + "%" + (L.sesi ? " &rarr; " + pctB(L.sesi.ke) + "% setelah ngecas" : " (istirahat, tidak jalan)");
     }
     cum += val;
     var sesiTeks = charge && !L.jeda
-      ? " &middot; <b>ngecas " + Math.round(L.sesi.dari*100) + "&rarr;" + Math.round(L.sesi.ke*100) + "% &plusmn;" + Math.round(L.sesi.durasi*60) + " menit</b>" : "";
+      ? " &middot; <b>ngecas " + pctB(L.sesi.dari) + "&rarr;" + pctB(L.sesi.ke) + "% &plusmn;" + Math.round(L.sesi.durasi*60) + " menit</b>" : "";
     var kenapa = def.k || "";
     if (charge && !L.jeda){
       if (L.sesi.luber > 0.05) kenapa += (kenapa ? " " : "") + "Ngecas ini " + Math.round(L.sesi.luber*60) + " menit lebih lama dari sisa " + labelBlok(nama).toLowerCase() + "; sisanya masuk jam berikutnya.";
       if (L.sesi.peak) kenapa += (kenapa ? " " : "") + "Terpaksa ngecas di jam peak (" + labelBlok(nama).toLowerCase() + ") karena baterai tidak cukup sampai jam murah berikutnya.";
     }
     out.push({ t:hhmm(L.s) + "&ndash;" + hhmm(L.e), dur:L.jeda ? "istirahat" : L.w.toFixed(1) + " jam",
-      b:(charge && !L.jeda && !tanpaNarik) ? def.b + " + ngecas" : def.b,
+      b:(charge && !L.jeda && !tanpaNarik && !/[Nn]gecas|[Cc]olok/.test(def.b)) ? def.b + " + ngecas" : def.b,
       s:(charge && !L.jeda) ? def.s + sesiTeks : def.s,
       i:def.i + (charge && !L.jeda && L.sesi.peak ? " <b>Terpaksa di jam peak</b> &mdash; besok berangkat dengan baterai lebih penuh." : ""),
       k:kenapa, d:detail, v:L.jeda ? "&mdash;" : rp(val), cum:rp(cum),
@@ -906,8 +956,8 @@ function buildSteps(o, r, opts){
       b:opts.stay ? "Tidak pulang" : "Waktunya pulang",
       s:opts.stay ? "Cari SPKLU 24 jam"
                   : "Filter tujuan &rarr; Modernland &middot; " + Math.round(kmHome) + " km &middot; &plusmn;" + Math.round(jamTempuh*60) + " menit",
-      i:opts.stay ? "Ngecas malam ini supaya cukup untuk peak pagi besok."
-                  : "Pasang filter jam ini; kalau filter habis, order ke barat saja &mdash; paling telat " + hhmm(batas) + "." +
+      i:opts.stay ? (r.socAkhir < 0.6 ? "Ngecas malam ini supaya cukup untuk peak pagi besok." : "Baterai masih &plusmn;" + pctB(r.socAkhir) + "%; ngecas besok pagi cukup.")
+                  : (o.keluar >= batas - 0.01 ? "Pasang filter sekarang; kalau filter habis, order ke barat saja." : "Pasang filter jam ini; kalau filter habis, order ke barat saja &mdash; paling telat " + hhmm(batas) + ".") +
                     (perluCas ? (tidakSampai && diRumah
                       ? " <b>Baterai tinggal &plusmn;" + socTibaPct + "%: " + (o.rumah ? "langsung pulang pelan dan colok di rumah." : "ngecas malam ini di SPKLU terdekat dari rumah.") + "</b>"
                       : tidakSampai
@@ -933,6 +983,15 @@ function buildSteps(o, r, opts){
   return out;
 }
 
+var ISTIRAHAT_SINI = { b:"Istirahat di sekitar sini", s:"Makan, parkir, tidur sebentar",
+  i:"Rumah terlalu jauh untuk bolak-balik di jam istirahat ini.",
+  k:"Pulang lalu balik lagi memakan hampir seluruh jam istirahat dan baterai; lebih hemat istirahat di dekat sini." };
+/* Baterai minimal untuk pulang langsung dari jarak km: cadangan 15% + km
+   pulang. SATU angka untuk panel, spanduk, kartu, dan Tanya (dulu 15% di
+   panel dan 33% di kartu untuk tempat yang sama). */
+function socMinPulang(km, bat){ return Math.max(10, Math.round((0.15 + Math.max(0, km || 0) / ((bat || 30.08) * CALIB.kmkwh)) * 100)); }
+/* Persen baterai untuk tampilan: tidak pernah negatif. */
+function pctB(x){ return Math.round(Math.max(0, x) * 100); }
 function note(k,t,x){ return '<div class="note '+k+'"><span class="tag">'+t+"</span><span>"+x+"</span></div>"; }
 
 /* ---------------- advice ---------------- */
@@ -958,7 +1017,27 @@ function mulaiPulangKartu(o, L){
   var batas = (o.ctx.dow === 0 && !o.ctx.holi) ? 20.5 : 22;
   return Math.min(o.pulang - jpAdvise(o, L), batas);
 }
+/* Kalimat yang menyuruh pulang / ke arah rumah. Dipakai untuk "Tidak pulang":
+   kartu dan langkah yang mengandungnya diganti kartuStay. */
+var TEKS_PULANG = /Waktunya pulang|[Mm]ulai (jalan )?pulang|jalan pulang|pulang istirahat|[Pp]ulang, makan|pulang 20:30|[Kk]eluar Jakarta|(&rarr;|\u2192) ?Modernland|Filter tujuan|arah rumah|ke arah barat|order ke barat|paling telat 2[02]|[Ss]udah malam|[Bb]alik ke|[Pp]ulang sebentar/;
+function kartuStay(nama, o){
+  var malam = nama === "Malam" || nama === "Larut" || nama === "Di luar jam";
+  var dasar = (typeof STEP !== "undefined" && STEP[nama]) || {};
+  return { k:"", h:malam ? "Narik malam, tidak pulang" : "Narik di sekitar sini",
+    b:malam ? "Narik malam, tidak pulang" : "Narik di sekitar sini",
+    r:malam ? "Kuliner malam &middot; kedatangan bandara &middot; order ke mana saja" : (dasar.s && !TEKS_PULANG.test(dasar.s) ? dasar.s : "Order ke mana saja"),
+    s:malam ? "Kuliner malam &middot; kedatangan bandara &middot; order ke mana saja" : (dasar.s && !TEKS_PULANG.test(dasar.s) ? dasar.s : "Order ke mana saja"),
+    p:"Ibu tidak pulang malam ini: order ke arah mana pun boleh sampai " + hhmm(o.pulang) + ", lalu ngecas di SPKLU 24 jam untuk besok.",
+    i:"Order ke arah mana pun boleh sampai " + hhmm(o.pulang) + "; sesudahnya ngecas di SPKLU 24 jam.",
+    kenapa:"Ibu memilih \u201cTidak pulang\u201d, jadi batas jam pulang 22:00 dan aturan Jakarta 20:00 tidak dipakai.",
+    k:"Ibu memilih \u201cTidak pulang\u201d, jadi batas jam pulang 22:00 dan aturan Jakarta 20:00 tidak dipakai." };
+}
 function advise(blk, L, o){
+  var v = adviseInti(blk, L, o);
+  if (o && o.stay && v && TEKS_PULANG.test((v.h || "") + " " + (v.r || "") + " " + (v.p || ""))) v = kartuStay(blk.n, o);
+  return v;
+}
+function adviseInti(blk, L, o){
   var ctx=o.ctx, noPagi = !!ctx.holi||ctx.dow===6||ctx.dow===0;
   /* Tidak ada narik tersisa menurut simulate (o.habisKerja, dipasang oleh
      simulate pada o yang sama): kartu besar = langkah berikutnya, yaitu
@@ -968,7 +1047,8 @@ function advise(blk, L, o){
     /* sudah di sekitar rumah: tidak disuruh ke SPKLU (ngecas di rumah / dekat rumah) */
     if (L.home <= 1) return { k:"good", h:"Selesai untuk hari ini",
       r:"Sudah dekat rumah" + (o.perluCasPulang ? (o.rumah ? " &middot; colok di rumah malam ini" : " &middot; ngecas malam ini") : ""),
-      p:"Jam pulang Ibu sudah tiba. Kalau masih ada order searah rumah, boleh diambil; selebihnya istirahat" + (o.perluCasPulang ? (o.rumah ? " dan colok di rumah." : " dan ngecas di SPKLU terdekat dari rumah.") : "."),
+      p:o.perluCasPulang ? "Jam pulang Ibu sudah tiba dan baterai tinggal sedikit: jangan ambil order lagi, " + (o.rumah ? "colok di rumah." : "ngecas di SPKLU terdekat dari rumah.")
+                         : "Jam pulang Ibu sudah tiba. Kalau masih ada order searah rumah, boleh diambil; selebihnya istirahat.",
       kenapa:"Tidak ada lagi jam narik sebelum jam pulang yang Ibu isi." };
     if (o.perluCasPulang) return { k:"bad", h:"Ngecas dulu, lalu pulang",
       r:(typeof spkluTeks === "function" && spkluTeks(spkluUntuk(L))) ? "SPKLU terdekat: " + spkluTeks(spkluUntuk(L)) : "SPKLU terdekat yang searah pulang",
@@ -980,6 +1060,20 @@ function advise(blk, L, o){
       p:"Perjalanan pulang &plusmn;" + Math.max(10, Math.round((jp0 - 0.25) * 60)) + " menit; berangkat sekarang. Terima hanya order yang searah pulang.",
       kenapa:"Jam mulai pulang (jam pulang dikurangi waktu tempuh + 15 menit" + ((o.ctx.dow === 0 && !o.ctx.holi) ? ", paling telat 20:30 hari Minggu" : ", paling telat 22:00") +
         ") sudah lewat" + (L.z === "jkt" && o.keluar >= 20 ? ", dan mulai 20:00 aplikasi menghitung Ibu sudah keluar dari Jakarta" : "") + "." };
+  }
+  /* Masih ada jam narik, tapi langkah pertama ngecas (baterai sekarang tidak
+     cukup) atau baterai tidak cukup sampai rumah: kartu = ngecas, sama dengan
+     spanduk "Ngecas sekarang" dan langkah. Dulu "Antar orang pulang ke
+     Tangerang" dengan baterai 2%, "Waktunya pulang, ambil order" di 2%. */
+  if (!o.stay && L && (o.casSekarang || o.perluCasPulang)){
+    var spk = (typeof spkluTeks === "function" && spkluTeks(spkluUntuk(L))) ? "SPKLU terdekat: " + spkluTeks(spkluUntuk(L)) : "SPKLU terdekat";
+    if (L.home <= 1 && o.rumah) return { k:"bad", h:"Colok di rumah dulu",
+      r:"Colokan rumah &middot; isi secukupnya", p:"Baterai tidak cukup untuk narik lagi. Isi dulu di rumah, baru berangkat.",
+      kenapa:"Langkah pertama di bawah memang ngecas: baterai sekarang di bawah batas aman." };
+    return { k:"bad", h:o.casSekarang ? "Ngecas dulu" : "Ngecas dulu, lalu pulang", r:spk,
+      p:o.casSekarang ? "Baterai tidak cukup untuk narik dan pulang. Ngecas secukupnya dulu, baru terima order lagi."
+                      : "Kalau langsung pulang, baterai habis sebelum sampai rumah. Ngecas dulu; terima hanya order pendek yang searah SPKLU.",
+      kenapa:"Baterai minimal untuk pulang dari " + L.n + ": " + socMinPulang(L.home, o.bat) + "% (cadangan 15% + " + Math.round(L.home) + " km). Langkah di bawah memakai hitungan yang sama." };
   }
   /* Jakarta mulai 20:00 dan masih ada jam narik: arah rumah (aturan yang
      sama dengan urutan tempat); jam mulai pulangnya dari tempat terakhir. */
@@ -1006,7 +1100,7 @@ function advise(blk, L, o){
     var slack = (geser != null ? geser : mulaiJam) - o.keluar;   /* jam narik di sini sebelum meninggalkan tempat ini */
     var mulai = hhmm(mulaiJam);
     var dasar = "Jarak pulang dari "+L.n+" <b>"+Math.round(L.home)+" km</b>, sekitar <b>"+
-                Math.round(jamPulang*60)+" menit</b>; baterai minimal untuk pulang <b>"+L.res+"%</b>.";
+                Math.round(jamPulang*60)+" menit</b>; baterai minimal untuk pulang <b>"+socMinPulang(L.home, o.bat)+"%</b>.";
 
     /* Tidak ada "Pulang sekarang" di sini: kalau jam narik sudah habis,
        cabang o.habisKerja di atas yang menjawab (sama dengan langkah). Dulu
@@ -1219,6 +1313,9 @@ function spkluUntuk(L){
   }
   if (v && v.indexOf("custom:") === 0){
     var r = REGISTRI[v.slice(7)];
+    /* koordinat kecamatan yang sudah dicatat: SPKLU dekat titik itu (nama
+       bisa kembar: "Setu" Bekasi vs Tangerang Selatan) */
+    if (r && typeof r.lat === "number" && typeof r.lon === "number" && isFinite(r.lat) && isFinite(r.lon)) return spkluDekat(r.lat, r.lon, 3);
     var nm = r && String(r.nama || "").split(",")[0].trim().toLowerCase();
     for (var i = 0; nm && i < KEC.length; i++)
       if (KEC[i][0].toLowerCase() === nm && SPD[i] && SPD[i].length)
@@ -1267,6 +1364,7 @@ function watakLok(L){
   }
   if (v && v.indexOf("custom:") === 0){
     var r = REGISTRI[v.slice(7)];
+    if (r && typeof r.lat === "number" && typeof r.lon === "number" && isFinite(r.lat) && isFinite(r.lon)) return watakDi(r.lat, r.lon);
     var nm = r && String(r.nama || "").split(",")[0].trim().toLowerCase();
     if (!nm) return null;
     for (var i = 0; i < KEC.length; i++)

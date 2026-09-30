@@ -360,7 +360,9 @@ function deteksiLokasi(otomatis){
     /* Bandara 2 km: sejauh itu hukuman akses tolnya masih berlaku, lebih jauh
        sudah tidak. Kalau ragu di batas itu, angka bandara yang kelebihan
        lebih aman daripada angka biasa yang kekurangan. */
-    var radius = (best && best.id === "bandara") ? 2 : 2.5;
+    /* Kota = titik rumah (0 km): hanya dalam 1 km, sama dengan aturan "sudah
+       di sekitar rumah" -- dulu 2,3 km dari rumah dianggap 0 km */
+    var radius = (best && best.id === "bandara") ? 2 : (best && best.home <= 1) ? 1 : 2.5;
     if (best && bestD <= radius){
       renderLok(best.id);
       setLokSumber("auto");
@@ -678,7 +680,7 @@ function runNow(){
      boleh terima order", dan batas pulang (15% + km pulang) untuk
      "minimal saat mulai pulang" -- bukan 10% di satu tempat dan L.res di
      tempat lain. */
-  var resMin = Math.max(10, Math.round(r.ambangPulang*100));
+  var resMin = socMinPulang(L.home, o.bat);
   var usableKm = Math.max(0, soc/100 - r.floor)*o.bat*CALIB.kmkwh;   /* km sampai lantai */
   var butuh = r.km + kmHome;
   var blk = blockAt(o.keluar, ctx.shapeDay);
@@ -689,7 +691,9 @@ function runNow(){
     ["Order sisa", "&asymp;"+Math.round(r.trips)+" &middot; "+Math.round(r.paidKm)+" km berpenumpang"]
   ].concat(dpt > 0 ? [["Listrik terpakai sejak "+hhmm(mulaiHari), "&minus;"+rp(listrikSejak)+" &middot; &asymp;"+Math.round(kmSejak)+" km"]] : []).concat([
     ["Km sampai pulang", Math.round(butuh)+" km"],
-    ["Baterai cukup untuk", Math.round(usableKm)+" km"], ["Pulang dari sini", Math.round(kmHome)+" km"],
+    ["Baterai cukup untuk", Math.round(usableKm)+" km"]
+  ]).concat(stay ? [["Baterai akhir hari", "&asymp;"+pctB(r.socAkhir)+"%"+(r.sessions ? " &middot; "+r.sessions+"&times; ngecas" : "")]] : [
+    ["Pulang dari sini", Math.round(kmHome)+" km"],
     ["Baterai minimal untuk pulang", resMin+"%"],
     ["Sampai rumah", "&asymp;"+Math.round(Math.max(0, r.socTiba)*100)+"%"+(r.sessions ? " &middot; "+r.sessions+"&times; ngecas" : "")]
   ]).map(function(x){ return "<div><span>"+x[0]+"</span><b>"+x[1]+"</b></div>"; }).join("");
@@ -697,17 +701,26 @@ function runNow(){
   /* Baterai jadi banner terpisah, supaya judul kartu selalu mencerminkan
      lokasi dan blok jam — bukan tertimpa peringatan daya. */
   var bw = el("batwarn");
-  if (soc < resMin && !stay && !(o.rumah && L.home <= 1)){
+  /* "Ngecas sekarang" hanya kalau rencana memang ngecas sekarang (atau tidak
+     sempat ngecas sama sekali); kalau sesi pertamanya nanti, spanduk biasa
+     dengan jamnya -- dulu spanduk "sekarang" vs langkah "jam 20:00". */
+  var sesiNanti = r.sessions > 0 && r.sesi[0].jam > o.keluar + 0.25;
+  var colokRumah = o.rumah && L.home <= 1;
+  if (soc < resMin && !stay && !colokRumah && !sesiNanti){
     bw.hidden = false; bw.className = "batwarn";
     bw.innerHTML = '<span class="tag">Baterai kritis</span><span><b>Ngecas sekarang.</b> Baterai '+soc+
       "%, untuk pulang dari "+L.n+" butuh minimal <b>"+resMin+"%</b>." +
       (spkluTeks(spkluUntuk(L)) ? " SPKLU terdekat: " + spkluTeks(spkluUntuk(L)) + "." : "") +
       (spkluCepatTeks(L, spkluUntuk(L)) ? " " + spkluCepatTeks(L, spkluUntuk(L)) : "") + "</span>";
+  } else if (r.sessions > 0 && colokRumah && !stay && r.sesi[0].jam <= o.keluar + 0.25){
+    var s0 = r.sesi[0];
+    bw.hidden = false; bw.className = "batwarn";
+    bw.innerHTML = '<span class="tag">Baterai ' + soc + '%</span><span><b>Colok di rumah dulu</b>, sampai &plusmn;' + pctB(s0.ke) + '%, baru berangkat.</span>';
   } else if (r.sessions > 0){
     var s1 = r.sesi[0];
     bw.hidden = false; bw.className = "batwarn mild";
     bw.innerHTML = '<span class="tag">Ngecas '+r.sessions+'&times;</span><span><b>Ngecas jam '+hhmm(s1.jam)+", "+
-      Math.round(s1.dari*100)+"&rarr;"+Math.round(s1.ke*100)+"%, &plusmn;"+Math.round(s1.durasi*60)+" menit</b>"+
+      pctB(s1.dari)+"&rarr;"+pctB(s1.ke)+"%, &plusmn;"+Math.round(s1.durasi*60)+" menit</b>"+
       (s1.diJeda ? " (saat istirahat)" : (s1.peak ? " &mdash; <b>terpaksa di jam peak</b>" : ""))+
       ". Baterai cukup "+Math.round(usableKm)+" km, sampai pulang perlu "+Math.round(butuh)+" km." +
       (spkluTeks(spkluUntuk(L)) ? '<details class="kenapa"><summary>SPKLU terdekat</summary><div>' + spkluTeks(spkluUntuk(L)) +
@@ -729,11 +742,17 @@ function runNow(){
   var jedaPlan = planAktif ? rehatRange(PLAN.rehat) : null;
   /* sisa istirahat < 15 menit, atau jam narik sudah habis: kartu biasa
      (dulu "istirahat sampai 16:00" jam 15:50, padahal langkahnya pulang) */
-  if (jedaPlan && o.keluar >= jedaPlan[0] && jedaPlan[1] - o.keluar >= 0.25 && !o.habisKerja){
+  /* sama dengan langkah: istirahat di rumah hanya kalau simulasi memulangkan Ibu */
+  var jedaKini = r.pieces.filter(function(q){ return q.jeda && q.s <= o.keluar + 0.01 && q.e > o.keluar; })[0];
+  var jedaSini = stay || (jedaKini && jedaKini.diRumah != null ? !jedaKini.diRumah : L.home > 15);
+  /* kartu istirahat hanya kalau hitungan juga istirahat sekarang (dulu kartu
+     "istirahat sampai 21:15" padahal jam narik habis 20:30) */
+  if (jedaPlan && jedaKini && o.keluar >= jedaPlan[0] && jedaPlan[1] - o.keluar >= 0.25 && !o.habisKerja){
     /* Rencana Ibu sendiri bilang jam ini istirahat — kartu tidak boleh
        menyuruh kerja dan menabrak rencananya. */
     v = { k:"warn", h:"Menurut rencana, jam ini istirahat",
-          r:"Pulang, makan, tidur sebentar &middot; sampai "+hhmm(jedaPlan[1]),
+          r:(jedaKini && jedaKini.sesi && jedaKini.sesi.sebelumPindah ? "Ngecas dulu di SPKLU terdekat, lalu " + (jedaSini ? "istirahat" : "pulang istirahat")
+             : jedaSini ? "Makan dan istirahat di sekitar sini" : "Pulang, makan, tidur sebentar")+" &middot; sampai "+hhmm(jedaPlan[1]),
           p:"Jam paling sepi. Kalau mau lanjut, ubah dulu di Rencanakan." };
   } else {
     v = advise(blk, L, o);
@@ -893,7 +912,7 @@ function runPlan(){
     ["Listrik", dec(r.kwh,1)+" kWh &middot; "+rp(r.listrik)],
     ["Pendapatan blok", rp(r.blockNet)], ["Insentif", rp(r.insentif)],
     ["Sesi SPKLU", r.sessions+"&times;"+(r.sessions ? " &middot; "+Math.round(r.chargeHours*60)+" mnt kerja hilang" : "")],
-    ["Baterai", Math.round(r.soc0*100)+"%"+(socAwalPlan != null ? " (Mulai hari)" : "")+" &rarr; terendah "+Math.round(Math.max(0,r.socMinKerja)*100)+"% &rarr; tiba "+Math.round(Math.max(0,r.socTiba)*100)+"%"]
+    ["Baterai", Math.round(r.soc0*100)+"%"+(socAwalPlan != null ? " (Mulai hari)" : "")+" &rarr; terendah "+pctB(Math.min(r.soc0, r.socMinKerja, r.socAkhir))+"% &rarr; tiba "+Math.round(Math.max(0,r.socTiba)*100)+"%"]
   ].map(function(x){ return "<div><span>"+x[0]+"</span><b>"+x[1]+"</b></div>"; }).join("");
   el("p-ringkas").innerHTML = "<b>"+hhmm(o.keluar)+"&ndash;"+hhmm(o.pulang)+"</b>"+(jedaR ? ", istirahat "+hhmm(jedaR[0])+"&ndash;"+hhmm(jedaR[1]) : "")+
     ": &asymp;<b>"+Math.round(r.trips)+" order</b>, "+Math.round(r.kmTotal)+" km, "+(r.sessions ? r.sessions+"&times; ngecas" : "tanpa ngecas")+
@@ -910,7 +929,7 @@ function runPlan(){
   else if (r.effHours<=8.4) nn.push(catatan("good","Sesuai aturan 8 jam","Per jam <b>"+rp(r.perHour)+"</b> \u2014 biasanya paling tinggi."));
   if (r.sessions) nn.push(catatan(r.sesi.some(function(x){ return x.peak; }) ? "bad" : "", "Ngecas "+r.sessions+"&times;",
     r.sesi.map(function(x){
-      return "Jam "+hhmm(x.jam)+": "+Math.round(x.dari*100)+"&rarr;"+Math.round(x.ke*100)+"%, &plusmn;"+Math.round(x.durasi*60)+" menit"+
+      return "Jam "+hhmm(x.jam)+": "+pctB(x.dari)+"&rarr;"+pctB(x.ke)+"%, &plusmn;"+Math.round(x.durasi*60)+" menit"+
              (x.diJeda ? " (saat istirahat)" : "")+(x.ac ? " (colok di rumah 7 kW)" : "")+(x.peak ? " \u2014 <b>terpaksa di jam peak</b>" : "")+".";
     }).join(" ")+" Biaya "+rp(r.feeCharge)+".",
     "Semua penempatan dicoba dan yang termurah dipilih; tiap sesi diisi secukupnya sampai sesi berikutnya atau sampai pulang dengan cadangan. Sebelum istirahat hanya sedikit, isi penuhnya saat istirahat."+
@@ -1102,7 +1121,7 @@ function konteksTanya(){
     "=== POSISI DAN KEADAAN ===",
     "Posisi: " + L.n + ", " + Math.round(L.home) + " km dari rumah (Modernland, Kota Tangerang)",
     "Jam sekarang " + hhmm(jam) + ", rencana pulang " + hhmm(pulang),
-    "Sisa baterai " + soc + "%, minimum untuk pulang dari sini " + L.res + "%",
+    "Sisa baterai " + soc + "%, minimum untuk pulang dari sini " + socMinPulang(L.home, +el("n-bat").value) + "%",
     "Sudah dapat hari ini Rp " + Math.round(dpt).toLocaleString("id-ID"),
     "Mobil BYD Atto 1 listrik, " + el("n-bat").value + " kWh, isi cepat maksimum 40 kW",
     "",
@@ -2499,17 +2518,19 @@ function renderTujuan(){
   var p = [];
   p.push("<b>Ke " + esc(K.n) + ":</b> &plusmn;" + Math.round(x.kmPindah) + " km, &plusmn;" + mnt + " menit" +
          (x.sumberMacet === "tomtom" ? " (macet TomTom sekarang)" : x.sumberMacet === "terukur" ? " (pola macet TomTom terukur jam itu)" : " (" + labelLalin(x.macet) + ", perkiraan)") +
-         " &rarr; tiba " + hhmm(x.tiba) + ", baterai tiba &plusmn;" + x.socTiba + "%.");
+         " &rarr; tiba " + hhmm(x.tiba) + ", baterai tiba &plusmn;" + Math.max(0, x.socTiba) + "%.");
   p.push("Kalau macet parah: &plusmn;" + mntParah + " menit di jalan.");
-  var biasa = Lalulintas.pulangBiasaCache(K, x.mulaiPulang, tgl);
-  if (x.keluarJkt != null)
+  var biasa = x.mulaiPulang != null ? Lalulintas.pulangBiasaCache(K, x.mulaiPulang, tgl) : null;
+  if (x.mulaiPulang == null)
+    p.push("Ibu tidak pulang malam ini: narik di sana sampai " + hhmm(S.o.pulang) + ".");
+  else if (x.keluarJkt != null)
     p.push("Keluar Jakarta jam " + hhmm(x.keluarJkt) + " (aturan 20:00), &plusmn;" + Math.round(x.keluarJktJam * 60) + " menit ke arah rumah, lalu narik dekat rumah sampai &plusmn;" + hhmm(x.mulaiPulang) + ".");
   else if (x.mulaiPulang <= x.tiba + 0.01)
     p.push("<b>Sampai di sana sudah waktunya pulang</b> &mdash; tidak ada waktu narik di sana.");
   else
     p.push("Mulai pulang dari sana &plusmn;" + hhmm(x.mulaiPulang) + (biasa != null ? " &middot; pola macet TomTom jam itu: &plusmn;" + biasa + " menit ke rumah" : "") + ".");
   if (h.basis){
-    p.push("Hasil sampai pulang &plusmn;" + rp(x.sisa) + ", " + (x.selisih >= 0 ? "+" : "−") + rp(Math.abs(x.selisih)) + " dibanding tetap di " + esc(h.tinggal.n) + ".");
+    p.push("Hasil sampai " + (x.mulaiPulang == null ? hhmm(S.o.pulang) : "pulang") + " &plusmn;" + rp(x.sisa) + ", " + (x.selisih >= 0 ? "+" : "−") + rp(Math.abs(x.selisih)) + " dibanding tetap di " + esc(h.tinggal.n) + ".");
     if (!(x.selisih > 0)) p.push('<b class="dn">Tidak sepadan</b> &mdash; waktu di jalan tidak tertutup hasilnya di sana.');
     else if (x.rapuh) p.push('<b class="dn">Berisiko</b> &mdash; untung hanya kalau jalan lancar; kalau macet parah hasilnya ' +
                              (x.selisihParah == null ? "tidak sempat kerja di sana" : (x.selisihParah >= 0 ? "+" : "−") + rp(Math.abs(x.selisihParah)) + " dibanding tetap") + ".");
@@ -2527,7 +2548,7 @@ el("tj-hitung").addEventListener("click", function(){
   var janji = [];
   if (S.L && LOKMAP[S.L.id] && S.L.id !== id) janji.push(Lalulintas.segarkan([[S.L, K]]));
   var h = Rekomendasi.tujuan(S.o, S.L, S.soc, S.stay, id);
-  if (h && h.x && !h.x.terlewat) janji.push(Lalulintas.pulangBiasa(K, h.x.mulaiPulang, iso(S.o.ctx.d)));
+  if (h && h.x && !h.x.terlewat && h.x.mulaiPulang != null) janji.push(Lalulintas.pulangBiasa(K, h.x.mulaiPulang, iso(S.o.ctx.d)));
   Promise.all(janji).then(function(){ runNow(); });
 });
 
@@ -2564,8 +2585,8 @@ function renderRekomendasi(o, L, soc, stay){
     return '<div class="rek-item' + (i === 0 ? " top" : "") + (x.diSini ? " here" : "") + '">' +
       '<div class="rek-rank">' + (i + 1) + "</div>" +
       '<div class="rek-body"><b>' + esc(x.n) + "</b>" +
-      '<span class="rek-num">±' + rp(x.sisa) + " <em>sampai pulang</em></span>" +
-      "<i>" + gerak + " " + rapi(x.saran.h) + "." + (x.sesi ? " " + x.sesi + "× ngecas." : "") + " Pulang " + Math.round(x.kmHome) + " km.</i>" +
+      '<span class="rek-num">±' + rp(x.sisa) + " <em>" + (stay ? "sampai " + hhmm(o.pulang) : "sampai pulang") + "</em></span>" +
+      "<i>" + gerak + " " + rapi(x.saran.h) + "." + (x.sesi ? " " + x.sesi + "× ngecas." : "") + (stay ? "" : " Pulang " + Math.round(x.kmHome) + " km.") + "</i>" +
       '<span class="rek-delta ' + (x.selisih > 0 ? "up" : x.selisih < 0 ? "dn" : "") + '">' + sel + "</span>" +
       risikoMacet(x) +
       (x.diSini ? "" : '<a class="linkbtn" target="_blank" rel="noopener" href="' + Rekomendasi.tautanArah(x.lat, x.lon) + '">Arahkan (Google Maps)</a>') +
@@ -3099,26 +3120,26 @@ function renderPeluang(id, o, L, opsi){
   el(id + "-info").textContent = (h.awal ? "dari " + h.awal.n : "") + " \u00b7 " + Math.round((o.pulang - o.keluar)) + " jam" + (opsi.rencana ? "" : " lagi") + " \u00b7 terbaik \u00b1" + rp(h.daftar[0].net);
   el(id + "-list").innerHTML = h.daftar.map(function(x, i){
     var chips = x.segmen.map(function(sg){
-      if (sg.jeda) return '<span class="jeda' + (sg.sesi ? " cas" : "") + '"><b>' + hhmm(sg.s) + "\u2013" + hhmm(sg.e) + "</b>istirahat" + (sg.sesi ? " + ngecas " + Math.round(sg.sesi.dari*100) + "\u2192" + Math.round(sg.sesi.ke*100) + "%" : "") + "</span>";
+      if (sg.jeda) return '<span class="jeda' + (sg.sesi ? " cas" : "") + '"><b>' + hhmm(sg.s) + "\u2013" + hhmm(sg.e) + "</b>istirahat" + (sg.sesi ? " + ngecas " + pctB(sg.sesi.dari) + "\u2192" + pctB(sg.sesi.ke) + "%" : "") + "</span>";
       return '<span class="' + (sg.sesi ? "cas" : "") + '"><b>' + hhmm(sg.s) + "\u2013" + hhmm(sg.e) + "</b>" + esc(sg.tempat.n) +
         (sg.pindahKm > 0.5 ? " <em style=\"color:var(--muted)\">(" + Math.round(sg.pindahKm) + " km, " + Math.round(sg.pindahJam*60) + " mnt)</em>" : "") +
         "<em style=\"color:var(--muted)\">\u2248 " + Math.round(sg.order) + " order \u00b7 " + rp(sg.gross) + "</em>" +
-        (sg.sesi ? "<em style=\"color:var(--signal)\">ngecas " + Math.round(sg.sesi.dari*100) + "\u2192" + Math.round(sg.sesi.ke*100) + "%</em>" : "") + "</span>";
+        (sg.sesiSemua || (sg.sesi ? [sg.sesi] : [])).map(function(ss){ return "<em style=\"color:var(--signal)\">ngecas " + pctB(ss.dari) + "\u2192" + pctB(ss.ke) + "%</em>"; }).join("") + "</span>";
     }).join('<i>\u2192</i>');
     var sel = x.diam ? "kalau tetap di " + esc(h.awal.n) : (x.selisih >= 0 ? "+" : "\u2212") + rp(Math.abs(x.selisih)) + " dibanding tetap di " + esc(h.awal.n);
     var pertama = x.segmen.filter(function(sg){ return !sg.jeda && sg.pindahKm > 0.5; })[0];
     return '<div class="rek-item' + (i === 0 ? " top" : "") + (x.diam ? " here" : "") + '">' +
       '<div class="rek-rank">' + (i + 1) + "</div>" +
       '<div class="rek-body"><b>' + (x.diam ? "Tetap di " + esc(h.awal.n) + (x.diamPulangMalam ? " sampai 20:00, lalu ke arah rumah" : "") : "Pindah " + x.pindahN + " kali (" + Math.round(x.kmPindah) + " km)") + "</b>" +
-      '<span class="rek-num">\u00b1' + rp(x.net) + " <em>sampai pulang</em></span>" +
+      '<span class="rek-num">\u00b1' + rp(x.net) + " <em>" + (o.stay ? "sampai " + hhmm(o.pulang) : "sampai pulang") + "</em></span>" +
       '<div class="rute">' + chips + "</div>" +
       "<i>\u2248" + Math.round(x.r.trips) + " order \u00b7 " + Math.round(x.r.paidKm) + " km berpenumpang \u00b7 " + (x.r.sessions ? x.r.sessions + "\u00d7 ngecas \u00b7 " : "") +
-      "sampai rumah \u00b1" + Math.round(Math.max(0, x.r.socTiba)*100) + "%</i>" +
+      (o.stay ? "baterai akhir \u00b1" + Math.round(Math.max(0, x.r.socAkhir)*100) : "sampai rumah \u00b1" + Math.round(Math.max(0, x.r.socTiba)*100)) + "%</i>" +
       '<span class="rek-delta ' + (x.selisih > 0 ? "up" : x.selisih < 0 ? "dn" : "") + '">' + sel + "</span>" +
       (pertama ? '<a class="linkbtn" target="_blank" rel="noopener" href="' + Rekomendasi.tautanArah(pertama.tempat.lat, pertama.tempat.lon) + '">Arahkan ke ' + esc(pertama.tempat.n) + "</a>" : "") +
       "</div></div>";
   }).join("");
-  el(id + "-catatan").innerHTML = "Aturan yang dipakai: lewat 20:00 hanya mendekat ke rumah, keluar Jakarta sebelum 20:00, bandara perlu waktu antre, paling banyak 4 kali pindah. " +
+  el(id + "-catatan").innerHTML = "Aturan yang dipakai: " + (o.stay ? "Ibu tidak pulang malam ini, jadi aturan jam pulang tidak dipakai" : "lewat 20:00 hanya mendekat ke rumah, keluar Jakarta sebelum 20:00") + ", bandara perlu waktu antre, paling banyak 4 kali pindah. " +
     "Tiap urutan dihitung lengkap: tarif jam &times; daerah &times; ramainya tempat, dikurangi listrik, waktu dan km pindah, ngecas, filter Jakarta, cadangan pulang. Ramainya tempat berasal dari Rute 700K, bukan pengukuran.";
   return h;
 }

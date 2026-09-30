@@ -737,7 +737,9 @@ async function main(){
     });
     ok(liveKota.pengali && Math.abs(liveKota.menit - baseKota * 1.3 / 1.5) < 0.05,
        "Lalulintas: kota (posisi bawaan) -> CBD lewat cabang v() juga memakai angka TomTom", JSON.stringify({ ...liveKota, baseKota }));
-    await setField(ci, "n-lok", "jakbar"); await setField(ci, "n-jam", 14);
+    /* baterai diketik: perkiraan dari Mulai hari bergantung jam mesin uji
+       (07:45 -> jam 14 = 6%, semua pindah tidak terjangkau) */
+    await setField(ci, "n-lok", "jakbar"); await setField(ci, "n-soc", 80); await setField(ci, "n-jam", 14);
     await ci.waitForFunction(() => /TomTom langsung/.test(document.getElementById("rek-list").innerText), null, { timeout:5000 });
     const kartuTT = await ci.evaluate(() => document.getElementById("rek-list").innerText);
     ok(/TomTom langsung/.test(kartuTT), "kartu rekomendasi menandai sumber TomTom langsung", kartuTT.slice(0, 300));
