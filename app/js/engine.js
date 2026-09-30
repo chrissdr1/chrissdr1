@@ -732,9 +732,11 @@ function simulate(o){
   /* Langkah pertama diawali ngecas karena baterai sekarang tidak cukup
      (di bawah lantai / tidak cukup pulang dari tempat awal): kartu besar =
      "Ngecas dulu", sama dengan spanduk dan langkah. */
-  var p0 = pieces.filter(function(p){ return p.w >= 0.05 || p.sesi; })[0];
+  /* sesi pertama dalam 15 menit (potongan 5 menit sebelum 20:00 tidak
+     menunda "ngecas dulu") dan baterai di bawah kebutuhan */
+  var s0 = pieces.filter(function(p){ return p.sesi && !p.jeda; }).map(function(p){ return p.sesi; })[0];
   var kmAwal = o.tempatAwal ? o.tempatAwal.home : (typeof o.kmHome === "number" ? o.kmHome : kmHome);
-  o.casSekarang = !o.stay && !!(p0 && !p0.jeda && p0.sesi && p0.sesi.jam <= o.keluar + 0.01 && p0.sesi.dari < Math.max(floor, 0.15 + kmAwal / kmPerFrac));
+  o.casSekarang = !o.stay && !!(s0 && s0.jam <= o.keluar + 0.25 && s0.dari < Math.max(floor, 0.15 + kmAwal / kmPerFrac));
   /* Tidak ada lagi JAM NARIK (jam mulai pulang / batas 22:00 sudah lewat, atau
      sisa potongan habis untuk pindah): kartu besar (advise) membaca tanda ini
      supaya tidak menyuruh narik lagi -- keputusan yang SAMA dengan hitungan

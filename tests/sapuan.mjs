@@ -134,7 +134,7 @@ async function kerja(job){
            baris "Tidak pulang" sesudah narik terakhir */
         if (o.stay){
           const tks = [vt, txt("rek-list"), el("peluang").hidden ? "" : txt("peluang"), ...S.langkah.filter(x => x.dur !== "pulang").map(x => (x.b || "") + " " + (x.s || "") + " " + (x.i || ""))].join(" ");
-          const mp = tks.match(TEKS_PULANG) || tks.match(/sampai pulang|Pulang \d+ km|sampai rumah|Mulai pulang dari sana/);
+          const mp = tks.match(/Waktunya pulang|[Mm]ulai (jalan )?pulang|jalan pulang|pulang istirahat|[Pp]ulang, makan|pulang 20:30|[Kk]eluar Jakarta|(&rarr;|→) ?Modernland|Filter tujuan|arah rumah|ke arah barat|order ke barat|paling telat 2[02]|[Ss]udah malam|[Bb]alik ke|[Pp]ulang sebentar|searah pulang|searah rumah/) || tks.match(/sampai pulang|Pulang \d+ km|sampai rumah|Mulai pulang dari sana/);
           if (mp) M.push("tidak pulang tapi '" + mp[0] + "'");
           const akhirKerja = Math.max(0, ...S.r.pieces.filter(q => !q.jeda).map(q => q.e));
           if (jp != null && jp < akhirKerja - 0.02) M.push("baris Tidak pulang " + mt[0] + " sebelum narik selesai " + hhmm(akhirKerja));
