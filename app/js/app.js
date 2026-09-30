@@ -605,9 +605,32 @@ function ikutJam(paksa){
   tandaiJam();
   /* Jam pulang tidak boleh tertinggal di belakang jam sekarang. */
   if (parseFloat(el("n-pulang").value) <= t){
+    if (PULANG_ASLI == null) PULANG_ASLI = parseFloat(el("n-pulang").value);
     el("n-pulang").value = Math.min(24, t + 0.5);
   }
+  bukaCheckinOtomatis();   /* halaman terbuka sejak dini hari / semalam: Mulai hari tetap muncul */
   runNow();
+}
+/* Jam pulang sebelum digeser ikutJam. Kolom pulang ikut jam supaya tidak
+   tertinggal, tapi mobil sudah diam sesudah jam pulang yang sebenarnya:
+   dulu baterai terus turun (21:30 54% -> 23:00 41%) karena batasnya ikut
+   bergeser. Dihapus saat Ibu memilih jam pulang sendiri / hari baru. */
+var PULANG_ASLI = null;
+/* Pilihan perkiraan baterai: jam mulai, jam pulang, dan wilayah HARI INI
+   (rencana / Mulai hari), bukan posisi dan kolom yang ikut jam.
+   - mulai: yang lebih akhir dari rencana & Mulai hari -- mobil di rumah
+     sebelum itu (dulu 61 km "terpakai" selagi menunggu rencana 08:00);
+     kalau sudah ada pendapatan sebelum jam itu, Ibu ternyata sudah jalan.
+   - wilayah: dulu wilayah posisi SEKARANG dipakai untuk semua jam sejak
+     jangkar, jadi pindah dari Jakarta ke Karawaci menaikkan baterai 5%. */
+function opsiBaterai(pulangKolom){
+  var hari = iso(new Date()), pl = (PLAN && PLAN.date === hari) ? PLAN : null, m = MULAI_HARI;
+  var keluar = (m && typeof m.keluar === "number") ? m.keluar : 0;
+  if (pl && pl.keluar > keluar) keluar = pl.keluar;
+  if ((parseRp(el("n-dpt").value) || 0) > 0 && jamSekarangTepat() < keluar) keluar = (m && typeof m.keluar === "number") ? Math.min(m.keluar, jamSekarangTepat()) : 0;
+  var pulang = PULANG_ASLI != null ? PULANG_ASLI : pulangKolom;
+  return { bat:parseFloat(el("n-bat").value), zona:pl ? pl.zona : (m && m.zona ? m.zona : currentLok().z),
+           rehat:pl ? pl.rehat : "none", keluar:keluar, pulang:isFinite(pulang) ? pulang : 24 };
 }
 
 /* ---------------- plan of the day (the loop) ---------------- */
@@ -711,11 +734,11 @@ function runNow(){
   runNow.socTerakhir = soc;
   /* Perkiraan baterai dari jangkar terakhir (Mulai hari / selesai ngecas):
      mengisi kolom sendiri selama Ibu belum mengetik angka lain sejak jangkar. */
-  var est = Baterai.perkiraan(o.keluar, { bat:o.bat, zona:o.zona, rehat:o.rehat,
-    keluar:(MULAI_HARI && typeof MULAI_HARI.keluar === "number") ? MULAI_HARI.keluar : 0, pulang:o.pulang });
+  var est = Baterai.perkiraan(o.keluar, opsiBaterai(o.pulang));
   var seTouched = el("n-soc").dataset.touched === "1";
-  /* perkiraan 0% juga dipakai (dulu diabaikan dan kolom tetap 65%) */
-  if (est && !seTouched && Math.abs(est.soc - soc) >= 1 && est.soc >= 0){ el("n-soc").value = est.soc; soc = Math.max(1, est.soc); }
+  /* perkiraan 0% juga dipakai (dulu diabaikan dan kolom tetap 65%); kolom,
+     bilah status, dan peringatan memakai angka yang sama (min. 1%) */
+  if (est && !seTouched && Math.abs(Math.max(1, est.soc) - soc) >= 1 && est.soc >= 0){ soc = Math.max(1, est.soc); el("n-soc").value = soc; }
   renderSocEst(est, soc, seTouched);
   var dpt = Math.max(0, parseRp(el("n-dpt").value)||0);
   o.soc = soc;   /* rencana ngecas harus memakai daya nyata, bukan 90% */
@@ -2125,9 +2148,14 @@ el("n-soc").addEventListener("change", function(){
   /* selalu jadi jangkar (dulu hanya kalau sudah Mulai hari: dibuka ulang = 65%) */
   /* tanpa jangkar sebelumnya: ketikan tetap dipakai apa adanya sampai
      dibuka ulang, lalu perkiraan berjalan dari jangkar ini */
-  if (isFinite(v) && v >= 0 && v <= 100){ var adaJ = Baterai.terakhir(); Baterai.jangkar(jamSekarangTepat(), Math.round(v), "diketik"); if (adaJ) this.dataset.touched = ""; }
+  /* ketikan = jangkar baru, lalu kolom mengikuti perkiraan dari jangkar itu
+     (dulu tanpa jangkar sebelumnya kolom membeku 80% seharian, sementara
+     perkiraannya sudah 3% -- dan dibuka ulang langsung jadi 3%) */
+  if (isFinite(v) && v >= 1 && v <= 100){ Baterai.jangkar(jamSekarangTepat(), Math.round(v), "diketik"); this.dataset.touched = ""; }
 }, true);
 el("jam-auto").addEventListener("click", function(){ ikutJam(true); });
+/* Ibu memilih jam pulang sendiri: itulah batas diamnya mobil */
+el("n-pulang").addEventListener("change", function(){ PULANG_ASLI = null; }, true);
 tandaiJam();
 /* Diperiksa tiap 30 detik: cukup rapat untuk kotak seperempat jam, dan
    tidak melakukan apa pun kalau jamnya belum berpindah. */
@@ -2408,6 +2436,10 @@ function cekGantiHari(){
      dan proyeksi pagi ini langsung "sudah dekat target". */
   el("n-dpt").value = 0;
   el("n-soc").dataset.touched = "";
+  /* baterai perkiraan kemarin malam bukan baterai pagi ini (semalam bisa
+     dicas di rumah): tanpa jangkar hari ini kolom kembali seperti dibuka baru */
+  if (!Baterai.terakhir()) el("n-soc").value = "65";
+  PULANG_ASLI = null; checkinOtomatisTgl = null;
   el("n-hujan").dataset.touched = ""; el("n-hujan").checked = !!(WEATHER && WEATHER.tanggal === h && WEATHER.hujan);
   el("n-acara").dataset.touched = ""; el("n-acara").checked = !!EVENTS[h];
   /* jam pulang, "Tidak pulang", dan sisa filter kemarin juga tidak terbawa
@@ -2432,6 +2464,7 @@ function cekGantiHari(){
   }
   terapkanRencanaHariIni();
   renderAll(); if (typeof renderSegar === "function") renderSegar();   /* kartu bulan, kalibrasi, kesegaran kalender ikut hari baru */
+  bukaCheckinOtomatis();
 }
 setInterval(cekGantiHari, 60000);
 document.addEventListener("visibilitychange", function(){ if (!document.hidden) cekGantiHari(); });
@@ -3152,17 +3185,16 @@ function renderSocEst(est, soc, touched){
   }
   var selisih = est.soc - soc;
   if (src){ src.textContent = touched ? "diketik sendiri" : "perkiraan"; src.className = touched ? "man" : ""; }
-  n.innerHTML = "Perkiraan &plusmn;" + est.soc + "% (dari " + est.dariSoc + "% jam " + hhmm(est.dariJam) + ", &plusmn;" + Math.round(est.km) + " km" + (est.gps ? " GPS" : "") + ")." +
+  n.innerHTML = "Perkiraan " + (est.soc < 1 ? "hampir habis (&le;1%)" : "&plusmn;" + est.soc + "%") + " (dari " + est.dariSoc + "% jam " + hhmm(est.dariJam) + ", &plusmn;" + Math.round(est.km) + " km" + (est.gps ? " GPS" : "") + ")." +
     (touched && Math.abs(selisih) >= 2 ? ' <button type="button" class="linkbtn" id="socest-pakai">Pakai ' + est.soc + "%</button>" : "") +
     "";
   var b = el("socest-pakai");
-  if (b) b.addEventListener("click", function(){ el("n-soc").value = est.soc; el("n-soc").dataset.touched = ""; runNow(); });
+  if (b) b.addEventListener("click", function(){ el("n-soc").value = Math.max(1, est.soc); el("n-soc").dataset.touched = ""; runNow(); });
 }
 function renderSocEstSaja(){
-  var o = { bat:parseFloat(el("n-bat").value), zona:currentLok().z, rehat:(PLAN && PLAN.date === iso(new Date())) ? PLAN.rehat : "none",
-            keluar:(MULAI_HARI && typeof MULAI_HARI.keluar === "number") ? MULAI_HARI.keluar : 0, pulang:parseFloat(el("n-pulang").value) };
+  var o = opsiBaterai(parseFloat(el("n-pulang").value));
   var est = Baterai.perkiraan(jamKeluarSekarang(), o);
-  if (est && el("n-soc").dataset.touched !== "1" && Math.abs(est.soc - parseFloat(el("n-soc").value)) >= 1){ runNow(); return; }
+  if (est && el("n-soc").dataset.touched !== "1" && Math.abs(Math.max(1, est.soc) - parseFloat(el("n-soc").value)) >= 1){ runNow(); return; }
   renderSocEst(est, parseFloat(el("n-soc").value) || 0, el("n-soc").dataset.touched === "1");
 }
 el("cas-selesai").addEventListener("click", function(){
@@ -3218,7 +3250,16 @@ function bukaCheckin(){
   el("ci-tgl").textContent = now.toLocaleDateString("id-ID", { weekday:"long", day:"numeric", month:"long" });
   /* Baterai dan "sudah dapat" diambil dari keadaan SEKARANG (kolom tab
      Sekarang, yang sudah mengikuti ngecas/ketikan), bukan isian pagi. */
-  el("ci-soc").value = parseFloat(el("n-soc").value) || (m ? m.soc : 90);
+  /* perkiraan 0% = 1% (dulu 0 dianggap kosong dan terisi 95% pagi tadi,
+     jadi mengubah jam pulang saja "mengecas" baterai). Tanpa jangkar hari
+     ini angka kolom itu bukan bacaan (65 bawaan / sisa kemarin malam). */
+  var socK = parseFloat(el("n-soc").value);
+  el("ci-soc").value = (Baterai.terakhir() && isFinite(socK)) ? Math.max(1, Math.round(socK)) : (m ? m.soc : 90);
+  el("ci-soc").dataset.awal = el("ci-soc").value;
+  var jamNow = now.getHours();
+  el("ci-judul").textContent = (m ? "Ubah isian hari ini, Bu." :
+    (jamNow < 11 ? "Selamat pagi" : jamNow < 15 ? "Selamat siang" : jamNow < 18 ? "Selamat sore" : "Selamat malam") + ", Bu. Isi dulu keadaan sekarang.");
+  if (el("ci-status")){ el("ci-status").textContent = ""; el("ci-status").className = "status"; }
   /* buka ulang (sudah Mulai hari): isian SEKARANG, bukan isian pagi --
      dulu mengganti baterai saja mengembalikan jam pulang & filter pagi */
   el("ci-bat").value = String(m ? parseFloat(el("n-bat").value) : (pl ? pl.bat : parseFloat(el("n-bat").value)));
@@ -3237,6 +3278,21 @@ function bukaCheckin(){
   el("checkin").hidden = false;
   try { el("ci-soc").focus(); } catch (e) {}
 }
+/* Mulai hari dibuka sendiri sekali per tanggal: saat dibuka, dan juga kalau
+   halaman sudah terbuka sejak semalam / sebelum 03:30 (dulu hanya saat
+   dibuka, jadi pagi itu baterai 15% kemarin malam yang dipakai). Tidak
+   sesudah 20:30 -- jam segitu Ibu merencanakan besok (dulu "Selamat pagi"
+   muncul di atas rencana besok dan Mulai membuat hari setengah jam). */
+var checkinOtomatisTgl = null;
+function bukaCheckinOtomatis(){
+  var t = jamSekarangTepat(), h = iso(new Date());
+  if (checkinOtomatisTgl === h || MULAI_HARI || lewatiHariIni() || /tanpa-mulai/.test(location.search) || t < 3.5 || t > 23.5) return;
+  if (!el("checkin").hidden) return;
+  var pl = (PLAN && PLAN.date === h) ? PLAN : null;
+  if (t >= 20.5 && !(pl && t < pl.pulang)) return;
+  checkinOtomatisTgl = h;
+  bukaCheckin();
+}
 function tutupCheckin(){ el("checkin").hidden = true; try { el("ci-buka").focus(); } catch (e) {} }
 document.addEventListener("keydown", function(e){ if (e.key === "Escape" && !el("checkin").hidden) tutupCheckin(); });
 fillTimes(el("ci-keluar"), 3.5, 23.5, 5.25);
@@ -3254,20 +3310,31 @@ el("ci-mulai").addEventListener("click", function(){
   var soc = Math.round(parseFloat(el("ci-soc").value));
   if (!(soc >= 1 && soc <= 100)){ el("ci-soc").focus(); return; }
   var jam = jamSekarangTepat();
-  var keluar = parseFloat(el("ci-keluar").value), pulang = parseFloat(el("ci-pulang").value);
+  var keluar = Math.max(3.5, Math.min(23, parseFloat(el("ci-keluar").value))), pulang = parseFloat(el("ci-pulang").value);
+  /* jam pulang sebelum/sama dengan jam mulai: tolak dengan pesan (dulu
+     diam-diam jadi hari setengah jam dengan bersih minus) */
+  if (!(pulang > keluar)){
+    el("ci-status").textContent = "Jam pulang harus sesudah jam mulai narik."; el("ci-status").className = "status err";
+    try { el("ci-pulang").focus(); } catch (e) {}
+    return;
+  }
   if (!(pulang > jam)) pulang = Math.min(24, Math.round((jam + 0.5) * 4) / 4);
-  var m = { date:iso(new Date()), jam:jam, soc:soc, bat:parseFloat(el("ci-bat").value), keluar:keluar, pulang:pulang,
+  /* Dibuka ulang: jam & baterai MULAI tetap yang pagi (dulu mengubah jam
+     pulang saja menggeser awal rencana ke baterai siang dan "Mulai jam
+     12:00"); baterai baru hanya jadi jangkar bila Ibu mengubahnya. */
+  var ubah = !!MULAI_HARI, socBeda = String(soc) !== String(Math.round(parseFloat(el("ci-soc").dataset.awal)));
+  var m = { date:iso(new Date()), jam:ubah ? MULAI_HARI.jam : jam, soc:ubah ? MULAI_HARI.soc : soc, bat:parseFloat(el("ci-bat").value), keluar:keluar, pulang:pulang,
             zona:el("ci-zona").value, filter:parseInt(el("ci-filter").value, 10), dpt:Math.max(0, parseRp(el("ci-dpt").value) || 0),
             rehat:rehatCI(), rumah:el("ci-rumah").checked };
   var pertama = !MULAI_HARI;
   var mulaiOk = simpanMulaiHari(m);
   /* Isian pertama hari ini = jangkar awal; buka ulang = jangkar baru tanpa
      menghapus jejak ngecas sebelumnya. */
-  if (pertama || !Baterai.terakhir()) Baterai.mulai(jam, soc, "mulai hari"); else Baterai.jangkar(jam, soc, "isi ulang");
+  if (pertama || !Baterai.terakhir()) Baterai.mulai(jam, soc, "mulai hari"); else if (socBeda) Baterai.jangkar(jam, soc, "isi ulang");
   /* proyeksi "awal" hari ini dihitung ulang dari isian Mulai hari */
   try { var mp = JSON.parse(localStorage.getItem(LSPROY) || "{}") || {}; delete mp[iso(new Date())]; localStorage.setItem(LSPROY, JSON.stringify(mp)); } catch (e) {}
   /* Tab Sekarang mengikuti isian ini. */
-  el("n-soc").value = soc; el("n-soc").dataset.touched = "";
+  el("n-soc").value = soc; el("n-soc").dataset.touched = ""; PULANG_ASLI = null;
   el("n-bat").value = String(m.bat); el("n-pulang").value = String(m.pulang);
   el("n-filter").value = String(m.filter); el("n-rumah").checked = m.rumah; el("n-dpt").value = m.dpt;
   /* Rencana hari ini = isian ini, supaya jeda, jam mulai, dan insentif sehari ikut. */
@@ -3283,8 +3350,9 @@ el("ci-mulai").addEventListener("click", function(){
   sinkronNanti();
   tutupCheckin();
   setMode("narik", true);   /* hari sudah dimulai: tampilkan Sedang narik */
-  if (mulaiOk){ el("hari-status").textContent = "Mulai jam " + hhmm(jam) + ", baterai " + soc + "%."; el("hari-status").className = "status ok"; }
-  else { el("hari-status").textContent = "Mulai jam " + hhmm(jam) + ", baterai " + soc + "% — tapi GAGAL disimpan di HP ini (penyimpanan penuh?), bisa hilang kalau aplikasi ditutup."; el("hari-status").className = "status err"; }
+  var kabar = ubah ? "Diubah jam " + hhmm(jam) + (socBeda ? ", baterai " + soc + "%" : "") + "." : "Mulai jam " + hhmm(jam) + ", baterai " + soc + "%.";
+  if (mulaiOk){ el("hari-status").textContent = kabar; el("hari-status").className = "status ok"; }
+  else { el("hari-status").textContent = kabar.replace(/\.$/, "") + " — tapi GAGAL disimpan di HP ini (penyimpanan penuh?), bisa hilang kalau aplikasi ditutup."; el("hari-status").className = "status err"; }
   if (el("ci-gps").checked) deteksiLokasi(false);
   simpanFakta(); simpanIsianHari();
   runNow(); runPlan();
@@ -3383,11 +3451,7 @@ tandaiTomTom();
 /* Buka halaman Mulai hari sekali sehari, di jam kerja, kecuali dilewati
    atau dibuka dengan ?tanpa-mulai (untuk uji). */
 muatMulaiHari();
-(function(){
-  var t = jamSekarangTepat();
-  if (MULAI_HARI || lewatiHariIni() || /tanpa-mulai/.test(location.search) || t < 3.5 || t > 23.5) return;
-  bukaCheckin();
-})();
+bukaCheckinOtomatis();
 if (MULAI_HARI) renderSocEstSaja();
 /* Satu tab "Hari ini": keadaan bawaan + isian kembar diselaraskan sekali. */
 (function(){

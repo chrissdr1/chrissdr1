@@ -34,7 +34,7 @@ var Baterai = (function(){
   function jangkar(jam, soc, sumber){
     if (!muat()) return mulai(jam, soc, sumber);
     D.jangkar.push({ jam:jam, soc:soc, sumber:sumber || "isi" });
-    D.gpsKm = 0; D.fix = null; simpan(); return D;
+    D.gpsKm = 0; D.fix = null; D.fix0 = null; D.tambahAkhir = 0; simpan(); return D;
   }
   function terakhir(){ var d = muat(); return d ? d.jangkar[d.jangkar.length - 1] : null; }
 
@@ -52,8 +52,18 @@ var Baterai = (function(){
       var d = jarakLurus(f.lat, f.lon, lat, lon), dt = Math.max(1, t - (f.t || t)) / 3600000;
       if (d < ambang) return 0;
       if (d >= 30 || d / dt > 150) return 0;
+      /* Bolak-balik ke titik sebelumnya (A -> B -> A) = goyangan GPS saat
+         parkir, bukan jalan: lompatan terakhir dibatalkan. Dulu parkir satu
+         jam dengan dua titik berselang 70 m tercatat 58 km. */
+      var f0 = D.fix0;
+      if (f0 && jarakLurus(f0.lat, f0.lon, lat, lon) < ambang){
+        D.gpsKm = Math.max(0, D.gpsKm - (D.tambahAkhir || 0));
+        D.fix = { lat:f0.lat, lon:f0.lon, t:t }; D.fix0 = null; D.tambahAkhir = 0; simpan();
+        return 0;
+      }
       tambah = d * LIKU; D.gpsKm += tambah;
     }
+    D.fix0 = f ? { lat:f.lat, lon:f.lon } : null; D.tambahAkhir = tambah;
     D.fix = { lat:lat, lon:lon, t:t }; simpan();
     return tambah;
   }
@@ -83,7 +93,9 @@ var Baterai = (function(){
     var kmM = kmModel(dari, sampai, o.zona, o.rehat);
     /* GPS dipakai bila menutupi sebagian besar waktu sejak jangkar; kalau
        halaman lama tertutup, angkanya terlalu kecil dan model yang dipakai. */
-    var pakaiGps = D.gpsKm > 0 && (kmM === 0 || D.gpsKm >= 0.6 * kmM);
+    /* ... dan tidak jauh DI ATAS model: GPS yang melebihi 2x model + 5 km
+       hampir pasti goyangan yang terjumlah, bukan jalan sungguhan. */
+    var pakaiGps = D.gpsKm > 0 && (kmM === 0 ? D.gpsKm >= 2 : (D.gpsKm >= 0.6 * kmM && D.gpsKm <= 2 * kmM + 5));
     var km = pakaiGps ? D.gpsKm : kmM;
     var turun = Math.min(j.soc, km / kmPerFrac * 100);
     var soc = Math.max(0, Math.min(100, j.soc - turun));
