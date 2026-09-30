@@ -739,6 +739,12 @@ function simulate(o){
      supaya tidak menyuruh narik lagi -- keputusan yang SAMA dengan hitungan
      dan langkah. */
   o.habisKerja = !o.stay && !pieces.some(adaJamNarik);
+  /* potongan terakhir hanya perjalanan pindah yang lebih lama dari
+     potongannya: pulang (langkah DAN kartu) dimulai sesudah sampai -- dulu
+     "±30 menit" untuk 64 menit jalan, lalu "mulai pulang" padahal masih di jalan */
+  var akhirP = pieces.filter(function(q){ return !q.jeda; }).slice(-1)[0];
+  o.tibaAkhir = (!o.stay && akhirP && !adaJamNarik(akhirP) && akhirP.pindahJam > akhirP.w + 0.02)
+    ? Math.min(akhirP.s + akhirP.pindahJam, Math.max(batasPulang, o.keluar)) : null;
   if (o.habisKerja && !o.__kosong && pieces.length){
     /* ada potongan tapi tanpa jam narik (hanya pindah, atau sisa istirahat
        yang terpotong jam mulai pulang): hitung ulang sebagai "pulang sekarang"
@@ -821,10 +827,19 @@ function buildSteps(o, r, opts){
     var jt = pp ? jamTempuhRumah(pp, o.pulang - 0.5, km, tipeDari(ctx)) : km / CALIB.kecepatan * faktorMacet(o.pulang - 0.5, o.zona, tipeDari(ctx));
     var bt = (ctx.dow === 0 && !ctx.holi) ? 20.5 : 22;
     var m = Math.min(o.pulang - Math.max(0.5, jt + 0.25), bt);
-    if (!tidakPulang && !r.pieces.some(adaJamNarik)) m = o.keluar;
+    if (!tidakPulang && !r.pieces.some(adaJamNarik)){
+      /* pulang sekarang dari posisi SEKARANG, dengan jarak sebenarnya (dulu di
+         rumah pun "6 km ±11 menit") */
+      m = o.keluar;
+      if (pos && typeof pos.home === "number"){ pp = pos; km = pos.home; jt = km <= 1 ? 0 : jamTempuhRumah(pos, o.keluar, km, tipeDari(ctx)); }
+    }
+    /* potongan terakhir hanya perjalanan pindah yang lebih lama dari
+       potongannya: pulang dimulai sesudah sampai (dulu "±30 menit" untuk 64
+       menit jalan, lalu "mulai pulang" padahal masih di jalan) */
+    if (!tidakPulang && o.tibaAkhir != null) m = Math.max(m, o.tibaAkhir);
     /* Tidak pulang: tidak ada batas 22:00, baris "Tidak pulang" = jam narik
        selesai (dulu "mulai 22:00 Tidak pulang" sesudah narik sampai 23:00) */
-    if (tidakPulang){ bt = 24; m = o.pulang; }
+    if (tidakPulang){ bt = 24; var akhirK = r.pieces.filter(function(q){ return !q.jeda; }).slice(-1)[0]; m = akhirK ? Math.min(o.pulang, akhirK.e) : o.pulang; }
     return { km:km, jamTempuh:jt, batas:bt, mulai:Math.max(o.keluar, m) };
   })();
   var mulaiPulang = jauh ? HP.mulai : o.pulang - jamPulang;
@@ -860,13 +875,24 @@ function buildSteps(o, r, opts){
        "Belum ada arus komuter" yang tidak pernah cocok dengan pola "Panen ". */
     var peak = !L.jeda && !!PEAKS[nama] && !(noPagi && (nama === "Peak pagi" || nama === "Subuh"));
     var tengah = (L.s + L.e) / 2;
-    var masihPulang = jauh && tengah >= mulaiJalan;
-    var sisaKm = masihPulang ? Math.max(0, pos.home * (o.pulang - tengah) / jamPulang) : 0;
+    /* posisi potongan ini: urutan tempat bisa sudah memindahkan Ibu (mis.
+       Kota sesudah 20:00) -- dulu langkah di Kota masih "lewat JORR, sisa
+       129 km" */
+    var posP = (L.tempat && pos && L.tempat.id !== pos.id) ? L.tempat : pos;
+    var sudahPindah = posP !== pos;
+    var diJktP = !!(posP && posP.z === "jkt");
+    var masihPulang = jauh && !sudahPindah && tengah >= mulaiJalan;
+    var tibaRumah = Math.min(o.pulang, HP.mulai + Math.max(0.5, HP.jamTempuh + 0.25));
+    var sisaKm = masihPulang ? pos.home * Math.max(0, Math.min(1, (tibaRumah - tengah) / Math.max(0.25, tibaRumah - mulaiJalan))) : 0;
+    var arah = arahPulang(posP);
+    /* Jakarta tanpa koordinat (km diketik) lewat 20:00: aturan yang sama --
+       keluar Jakarta, bukan "narik di sini" */
+    var jktMalam = !tidakPulang && !L.jeda && !L.tempat && diJkt && L.s >= 20 - 1e-6;
     if (tanpaNarik && L.sesi){
       def = { b:"Ngecas", s:"SPKLU terdekat", i:"Isi secukupnya untuk sisa hari dan perjalanan pulang.",
               k:"Waktu di potongan ini habis untuk ngecas dan pindah; belum ada jam narik." };
     } else if (tanpaNarik){
-      def = { b:"Pindah" + (L.tempat ? " ke " + L.tempat.n : ""), s:"&plusmn;" + Math.round(Math.min(L.w, L.pindahJam || L.w) * 60) + " menit di jalan",
+      def = { b:"Pindah" + (L.tempat ? " ke " + L.tempat.n : ""), s:"&plusmn;" + Math.round((L.pindahJam || L.w) * 60) + " menit di jalan",
               i:"Terima hanya order yang searah.", k:"Potongan ini habis untuk perjalanan pindah; belum ada jam narik di tujuan." };
     } else if (idx === 0 && opts.verdict && !L.jeda){
       def = { b:opts.verdict.h, s:opts.verdict.r, i:opts.verdict.p, k:opts.verdict.kenapa };
@@ -883,29 +909,41 @@ function buildSteps(o, r, opts){
               (L.sesi.ac ? "Istirahat panjang dan ada colokan di rumah: sisa hari butuh lebih dari 90%, jadi diisi pelan di rumah."
                          : "Isi secukupnya sampai pulang dengan cadangan; SPKLU berhenti di 90%.") }
         : (jedaRumah ? STEP["Istirahat"] : ISTIRAHAT_SINI);
-    } else if (masihPulang){
+    } else if (masihPulang || (jktMalam && jauh)){
+      /* tahap JORR / Tangsel hanya dari Jakarta (timur rumah); dari tempat jauh
+         lain: order searah rumah */
+      var tahap = (masihPulang && pos.z === "jkt" && !arah.barat) ? pulangStep(sisaKm, pos.n) : null;
+      if (!masihPulang) sisaKm = pos.home;   /* km diketik: model tidak memindahkan Ibu, jarak tetap */
       if (!sudahSampai){
         sudahSampai = true;
-        def = { b:"Mulai jalan pulang", s:pulangStep(sisaKm, pos.n).s,
-                i:"Mulai sekarang ambil hanya order ke arah Modernland &mdash; sisa " + Math.round(sisaKm) + " km.",
-                k:"Sampai jam ini Ibu bebas narik di sekitar sana. Sisa " + Math.round(sisaKm) + " km pas untuk tiba di jam pulang kalau tiap order menggeser Ibu ke barat." };
-      } else def = pulangStep(sisaKm, pos.n);
-    } else if (jauh){
-      def = { b:"Narik di sini dulu", s:"Pilih order ke barat kalau ada",
+        def = { b:jktMalam && !masihPulang ? "Keluar Jakarta, ke arah rumah" : "Mulai jalan pulang", s:tahap ? tahap.s : (diJkt ? "Tujuan: " + KATA_BARAT : "Order " + arah.ke + " saja"),
+                i:"Mulai sekarang ambil hanya order ke arah Modernland &mdash; sisa &plusmn;" + Math.round(Math.max(sisaKm, 1)) + " km.",
+                k:"Sampai jam ini Ibu bebas narik di sekitar sana. Tiap order sesudah ini sebaiknya menggeser Ibu " + arah.ke + "." };
+      } else def = tahap || { b:"Terus ke arah rumah", s:diJkt ? "Tujuan: " + KATA_BARAT : "Order " + arah.ke + " saja", i:"Sisa &plusmn;" + Math.round(Math.max(sisaKm, 1)) + " km.", k:"" };
+    } else if (jktMalam){
+      def = STEP_JKT["Malam"];
+    } else if (jauh && !sudahPindah){
+      def = { b:"Narik di sini dulu", s:"Pilih order " + arah.ke + " kalau ada",
               i:(geserJauh != null ? "Jam <b>" + hhmm(geserJauh) + "</b> mulai geser ke arah rumah; " : "") + "Mulai pulang jam <b>" + hhmm(mulaiPulang) + "</b>.",
-              k:"Waktu masih longgar. Kerjakan order apa adanya; kalau ada dua pilihan, ambil yang ke arah barat. Jam " + hhmm(mulaiPulang) + " baru mulai pulang bertahap." };
+              k:"Waktu masih longgar. Kerjakan order apa adanya; kalau ada dua pilihan, ambil yang " + arah.ke + ". Jam " + hhmm(mulaiPulang) + " baru mulai pulang bertahap." };
     } else if (noPagi && (nama === "Peak pagi" || nama === "Subuh")){
       def = OFFPAGI;
     } else if (ctx.eve && (nama === "Peak sore" || nama === "Malam")){
       def = EVEPETANG;
-    } else if (pos && pos.z === "apt" && STEP_APT[nama]){
+    } else if (posP && posP.z === "apt" && STEP_APT[nama]){
       def = STEP_APT[nama];
-    } else if (opts.rencana && pos && (pos.z === "mix" || pos.z === "jkt") && STEP_MIX[nama]){
+    } else if (opts.rencana && posP && (posP.z === "mix" || posP.z === "jkt") && STEP_MIX[nama]){
       def = STEP_MIX[nama];
-    } else if (!opts.rencana && diJkt && !jauh && STEP_JKT[nama]){
+    } else if (!opts.rencana && diJktP && !(jauh && !sudahPindah) && STEP_JKT[nama]){
       def = STEP_JKT[nama];
     } else {
       def = STEP[nama];
+    }
+    /* potongan diawali pindah tempat (urutan): sebutkan perjalanannya --
+       dulu Jakarta Timur 20:00 langsung "Mal tutup dan kuliner" di Serpong */
+    if (!L.jeda && !tanpaNarik && L.tempat && L.pindahKm > 3 && L.pindahJam > 0.1 && def && def.b){
+      def = { b:def.b, s:def.s, k:def.k,
+              i:"Pindah dulu ke " + L.tempat.n + " (&plusmn;" + Math.round(L.pindahKm) + " km, &plusmn;" + Math.round(L.pindahJam * 60) + " menit), lalu: " + (def.i || "") };
     }
     /* Tidak pulang: tidak satu langkah pun menyuruh pulang / ke arah rumah
        (dulu "Sudah malam — pulang", "Hanya order ke arah barat") */
@@ -955,9 +993,9 @@ function buildSteps(o, r, opts){
     out.push({ t:"mulai<br>" + hhmm(Math.max(o.keluar, mulai)), dur:"pulang",
       b:opts.stay ? "Tidak pulang" : "Waktunya pulang",
       s:opts.stay ? "Cari SPKLU 24 jam"
-                  : "Filter tujuan &rarr; Modernland &middot; " + Math.round(kmHome) + " km &middot; &plusmn;" + Math.round(jamTempuh*60) + " menit",
+                  : kmHome <= 1 ? "Sudah di sekitar rumah" : "Filter tujuan &rarr; Modernland &middot; " + Math.round(kmHome) + " km &middot; &plusmn;" + Math.round(jamTempuh*60) + " menit",
       i:opts.stay ? (r.socAkhir < 0.6 ? "Ngecas malam ini supaya cukup untuk peak pagi besok." : "Baterai masih &plusmn;" + pctB(r.socAkhir) + "%; ngecas besok pagi cukup.")
-                  : (o.keluar >= batas - 0.01 ? "Pasang filter sekarang; kalau filter habis, order ke barat saja." : "Pasang filter jam ini; kalau filter habis, order ke barat saja &mdash; paling telat " + hhmm(batas) + ".") +
+                  : (kmHome <= 1 ? "Sudah di sekitar rumah." : o.keluar >= batas - 0.01 ? "Pasang filter sekarang; kalau filter habis, order searah rumah saja." : "Pasang filter jam ini; kalau filter habis, order searah rumah saja &mdash; paling telat " + hhmm(batas) + ".") +
                     (perluCas ? (tidakSampai && diRumah
                       ? " <b>Baterai tinggal &plusmn;" + socTibaPct + "%: " + (o.rumah ? "langsung pulang pelan dan colok di rumah." : "ngecas malam ini di SPKLU terdekat dari rumah.") + "</b>"
                       : tidakSampai
@@ -977,7 +1015,7 @@ function buildSteps(o, r, opts){
     s:"+ insentif " + rp(r.insentif) + (r.feeCharge ? " &minus; " + r.sessions + "&times; ngecas " + rp(r.feeCharge) : "") + (r.parkir ? " &minus; parkir " + rp(r.parkir) : ""),
     i:"Belum dipotong cicilan, asuransi, servis, ban.",
     k:"Insentif dihitung sesuai jam kerja hari ini: " + r.effHours.toFixed(1) + " jam narik" + (o.jamSebelum ? " + " + o.jamSebelum.toFixed(1) + " jam sebelumnya" : "") + " dari 10,5 jam penuh.",
-    d:"&asymp; " + Math.round(r.trips) + " order &middot; " + Math.round(r.paidKm) + " km berpenumpang dari " + Math.round(r.kmTotal) + " km &middot; " + (r.trips > 0 ? "Rp " + Math.round(r.rpOrder).toLocaleString("id-ID") + "/order" : ""),
+    d:"&asymp; " + Math.round(r.trips) + " order &middot; " + Math.round(r.paidKm) + " km berpenumpang dari " + Math.round(r.kmTotal) + " km" + (r.trips > 0 ? " &middot; Rp " + Math.round(r.rpOrder).toLocaleString("id-ID") + "/order" : ""),
     v:rp(r.insentif - potongan), cum:rp(cum + r.insentif - potongan), cls:"rekap",
     blok:"Rekap", label:"Rekap", peak:false });
   return out;
@@ -990,6 +1028,15 @@ var ISTIRAHAT_SINI = { b:"Istirahat di sekitar sini", s:"Makan, parkir, tidur se
    pulang. SATU angka untuk panel, spanduk, kartu, dan Tanya (dulu 15% di
    panel dan 33% di kartu untuk tempat yang sama). */
 function socMinPulang(km, bat){ return Math.max(10, Math.round((0.15 + Math.max(0, km || 0) / ((bat || 30.08) * CALIB.kmkwh)) * 100)); }
+/* Arah pulang dari posisi L. Dari barat rumah (Balaraja, Cikupa, Serang)
+   rumah ada di TIMUR -- dulu semua posisi disuruh "ambil order ke barat",
+   yang dari Balaraja justru menjauh. */
+function arahPulang(L){
+  var barat = !!(L && L.lon != null && typeof RUMAH !== "undefined" && L.lon < RUMAH.lon - 0.05);
+  return barat ? { ke:"ke arah timur (Kota Tangerang)", daftar:"Cikupa &middot; Bitung &middot; Kutabumi &middot; Karawaci &middot; Kota Tangerang",
+                   jalur:"Cikupa &rarr; Bitung &rarr; Karawaci &rarr; Modernland", barat:true }
+               : { ke:"ke arah barat", daftar:KATA_BARAT, jalur:"Ulujami &rarr; Pondok Aren &rarr; Bintaro &rarr; Serpong", barat:false };
+}
 /* Persen baterai untuk tampilan: tidak pernah negatif. */
 function pctB(x){ return Math.round(Math.max(0, x) * 100); }
 function note(k,t,x){ return '<div class="note '+k+'"><span class="tag">'+t+"</span><span>"+x+"</span></div>"; }
@@ -1015,11 +1062,12 @@ function jpAdvise(o, L){
    dengan simulate dan langkah. */
 function mulaiPulangKartu(o, L){
   var batas = (o.ctx.dow === 0 && !o.ctx.holi) ? 20.5 : 22;
-  return Math.min(o.pulang - jpAdvise(o, L), batas);
+  var m = Math.min(o.pulang - jpAdvise(o, L), batas);
+  return (o.tibaAkhir != null && !o.habisKerja) ? Math.max(m, o.tibaAkhir) : m;
 }
 /* Kalimat yang menyuruh pulang / ke arah rumah. Dipakai untuk "Tidak pulang":
    kartu dan langkah yang mengandungnya diganti kartuStay. */
-var TEKS_PULANG = /Waktunya pulang|[Mm]ulai (jalan )?pulang|jalan pulang|pulang istirahat|[Pp]ulang, makan|pulang 20:30|[Kk]eluar Jakarta|(&rarr;|\u2192) ?Modernland|Filter tujuan|arah rumah|ke arah barat|order ke barat|paling telat 2[02]|[Ss]udah malam|[Bb]alik ke|[Pp]ulang sebentar/;
+var TEKS_PULANG = /Waktunya pulang|[Mm]ulai (jalan )?pulang|jalan pulang|pulang istirahat|[Pp]ulang, makan|pulang 20:30|[Kk]eluar Jakarta|(&rarr;|\u2192) ?Modernland|Filter tujuan|arah rumah|ke arah barat|order ke barat|paling telat 2[02]|[Ss]udah malam|[Bb]alik ke|[Pp]ulang sebentar|searah pulang|searah rumah/;
 function kartuStay(nama, o){
   var malam = nama === "Malam" || nama === "Larut" || nama === "Di luar jam";
   var dasar = (typeof STEP !== "undefined" && STEP[nama]) || {};
@@ -1070,6 +1118,10 @@ function adviseInti(blk, L, o){
     if (L.home <= 1 && o.rumah) return { k:"bad", h:"Colok di rumah dulu",
       r:"Colokan rumah &middot; isi secukupnya", p:"Baterai tidak cukup untuk narik lagi. Isi dulu di rumah, baru berangkat.",
       kenapa:"Langkah pertama di bawah memang ngecas: baterai sekarang di bawah batas aman." };
+    var daftarS = (typeof spkluUntuk === "function") ? spkluUntuk(L) : null;
+    var jangkau = Math.max(0, (o.soc || 0) / 100 - 0.03) * (o.bat || 30.08) * CALIB.kmkwh;
+    if (daftarS && daftarS.length && daftarS[0].km > jangkau)
+      spk += " &mdash; <b>lebih jauh dari sisa baterai (&plusmn;" + Math.round(jangkau) + " km)</b>: cari SPKLU/colokan lebih dekat di PLN Mobile atau Google Maps";
     return { k:"bad", h:o.casSekarang ? "Ngecas dulu" : "Ngecas dulu, lalu pulang", r:spk,
       p:o.casSekarang ? "Baterai tidak cukup untuk narik dan pulang. Ngecas secukupnya dulu, baru terima order lagi."
                       : "Kalau langsung pulang, baterai habis sebelum sampai rumah. Ngecas dulu; terima hanya order pendek yang searah SPKLU.",
@@ -1106,13 +1158,14 @@ function adviseInti(blk, L, o){
        cabang o.habisKerja di atas yang menjawab (sama dengan langkah). Dulu
        kartu "berangkat sekarang" padahal langkah "Waktunya pulang" jam 19:30. */
     if (slack < 3.5) return {k:"bad", h:"Mulai jalan pulang, sambil narik",
-      r:(geser != null ? "Geser ke arah rumah jam <b>"+hhmm(geser)+"</b> &middot; " : "")+"Mulai pulang jam <b>"+mulai+"</b> &middot; ambil order ke: "+KATA_BARAT,
-      p:"Cukup waktu, tapi jangan santai: ambil order ke arah barat, Ulujami &rarr; Pondok Aren &rarr; Bintaro &rarr; Serpong.",
+      r:(geser != null ? "Geser ke arah rumah jam <b>"+hhmm(geser)+"</b> &middot; " : "")+"Mulai pulang jam <b>"+mulai+"</b> &middot; ambil order ke: "+arahPulang(L).daftar,
+      p:"Cukup waktu, tapi jangan santai: ambil order "+arahPulang(L).ke+", "+arahPulang(L).jalur+".",
       kenapa:dasar+" Kosong 10 menit? Jalan sendiri lewat JORR sambil online."};
 
     return {k:"warn", h:"Narik dulu di sini",
       r:(geser != null ? "Mulai geser ke arah rumah jam <b>"+hhmm(geser)+"</b> &middot; " : "")+"Mulai pulang jam <b>"+mulai+"</b>",
-      p:"Longgar "+slack.toFixed(1).replace(".", ",")+" jam di sini &mdash; kalau ada dua order, pilih yang ke barat.",
+      p:"Longgar "+slack.toFixed(1).replace(".", ",")+" jam di sini"+(function(){ var jr = rehatRange(o.rehat); var ov = jr ? Math.max(0, Math.min(jr[1], o.keluar + slack) - Math.max(jr[0], o.keluar)) : 0;
+          return ov >= 0.25 ? " (termasuk istirahat "+ov.toFixed(1).replace(".", ",")+" jam)" : ""; })()+" &mdash; kalau ada dua order, pilih yang "+arahPulang(L).ke+".",
       kenapa:dasar+" Jam "+mulai+" baru pulang bertahap, hanya menerima order yang mendekatkan ke Modernland."};
   }
   if (L.luar && L.z==="tng" && !PEAKS[blk.n]) return {k:"warn", h:"Geser ke Alam Sutera / Kota Tangerang",
@@ -1188,7 +1241,7 @@ function adviseInti(blk, L, o){
       kenapa:(telat ? "Lewat 15:30 jalan keluar kota mulai padat; tibanya kesorean dan peak sore Jakarta lewat."
                     : "Tanpa filter tujuan, pulang dari Jakarta bisa 18&ndash;30 km kosong.")};
     return {k:"good",h:"Bertahan di Jakarta sampai peak sore",
-      r:"Tunggu di kawasan kantor &middot; pulang 20:30 pakai filter",
+      r:"Tunggu di kawasan kantor &middot; mulai pulang "+hhmm(mulaiPulangKartu(o, L))+" pakai filter",
       p:"Sudah di daerah termahal; tiga jam lagi lebih untung, asal pulangnya bawa penumpang.",
       kenapa:"Pulang sekarang berarti 18&ndash;30 km kosong di jam murah; peak sore Jakarta yang terbesar hari ini."};
   }
@@ -1208,7 +1261,7 @@ function adviseInti(blk, L, o){
     kenapa:"Datang sebelum antrean mobil terbentuk. Kedatangan bandara ordernya panjang dan arahnya sama dengan pulang."};
   return {k:"warn",h:"Waktunya pulang",
     r:"Filter tujuan &rarr; Modernland",
-    p:"Pasang filter sekarang, atau ambil hanya order ke barat &mdash; paling telat 22:00.",
+    p:"Pasang filter sekarang, atau ambil hanya order searah rumah &mdash; paling telat "+((ctx.dow === 0 && !ctx.holi) ? "20:30" : "22:00")+".",
     kenapa:"Tarif sudah turun, dan jam ini memakan peak pagi besok."};
 }
 

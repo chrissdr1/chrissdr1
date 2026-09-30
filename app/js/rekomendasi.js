@@ -50,6 +50,11 @@ var Rekomendasi = (function(){
         if (typeof Lalulintas !== "undefined" && liveBerlaku(o.keluar, iso(o.ctx.d)) && Lalulintas.pengaliCache(L, K) != null) sumberMacet = "tomtom";
         else if (typeof UkurMacet !== "undefined" && UkurMacet.menitRute(L.id, K.id, o.keluar, UkurMacet.tipeTgl(iso(o.ctx.d))) != null) sumberMacet = "terukur";
       }
+      /* posisi GPS: rumus yang sama dengan urutan tempat (jarakAntar /
+         jamTempuhAntar), dan ke rumah = jarak pulang terukur -- dulu satu
+         perjalanan punya dua angka (Cikarang->CBD 125 vs 143 menit) */
+      else if (asal && K.id === "kota" && L && typeof L.home === "number"){ kmPindah = L.home; jamPindah = jamTempuhRumah(L, o.keluar, L.home, tipeDari(o.ctx)); }
+      else if (asal && typeof tempatPosisi === "function" && tempatPosisi(L)){ var tp = tempatPosisi(L); kmPindah = jarakAntar(tp, K); jamPindah = jamTempuhAntar(tp, K, o.keluar, iso(o.ctx.d)); }
       else if (asal){ kmPindah = jarakDatar(asal.lat, asal.lon, K.lat, K.lon) * LIKU; jamPindah = kmPindah / CALIB.kecepatan * faktorMacet(o.keluar, K.z, tipeDari(o.ctx)); }
       else { kmPindah = Math.abs(((L && L.home) || 0) - K.home) + 3; jamPindah = kmPindah / CALIB.kecepatan * faktorMacet(o.keluar, K.z, tipeDari(o.ctx)); }   /* tanpa koordinat: tebakan kasar */
     }
@@ -84,7 +89,7 @@ var Rekomendasi = (function(){
     return { id:K.id, n:K.n, z:K.z, lat:K.lat, lon:K.lon, diSini:diSini, tempat:K,
              kmPindah:kmPindah, jamPindah:jamPindah, macet:macet, sumberMacet:sumberMacet, tiba:keluar, socTiba:Math.round(o2.soc),
              sisa:sisa, sesi:r.sessions, kmHome:stay ? 0 : K.home, res:K.res, pulangMalam:!!o2.urutan.pindahMalam,
-             mulaiPulang:stay ? null : o.pulang - jamPulang, jamPulang:jamPulang,
+             mulaiPulang:stay ? null : Math.max(keluar, Math.min(o.pulang - jamPulang, (o.ctx.dow === 0 && !o.ctx.holi) ? 20.5 : 22)), jamPulang:jamPulang,
              keluarJkt:pm ? pm.s : null, keluarJktJam:pm ? pm.pindahJam : null,
              saran:advise(blkTiba, K, o2), r:r };
   }

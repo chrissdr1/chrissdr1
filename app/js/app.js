@@ -295,13 +295,19 @@ function resolveKetik(){
 
   /* Sudah pernah diketik? pakai langsung, tanpa menebak lagi. */
   var s = slug(txt);
-  if (REGISTRI[s] && REGISTRI[s].km > 0){ pasangLokasi(s); return; }
+  var manual = parseFloat(el("n-ketikkm").value);
+  if (REGISTRI[s] && REGISTRI[s].km > 0){
+    /* km baru yang Ibu ketik menggantikan yang lama (dulu diam-diam diabaikan) */
+    if (isFinite(manual) && manual > 0 && Math.abs(manual - REGISTRI[s].km) >= 0.5){ REGISTRI[s].km = manual; REGISTRI[s].sendiri = true; simpanRegistri(); }
+    pasangLokasi(s); return;
+  }
 
   /* Jalur 2 — Ibu isi sendiri kilometernya. Tidak butuh Claude. */
-  var manual = parseFloat(el("n-ketikkm").value);
   if (isFinite(manual) && manual > 0){
-    var dekat = LOK[0], beda = Infinity;
-    LOK.forEach(function(l){ var d = Math.abs(l.home - manual); if (d < beda){ beda = d; dekat = l; } });
+    /* patokan wilayah: bukan Bandara (antrean & parkir bandara bukan milik
+       tempat yang cuma kebetulan sama jaraknya) */
+    var dekat = LOKMAP.kota, beda = Infinity;
+    LOK.forEach(function(l){ if (l.z === "apt") return; var d = Math.abs(l.home - manual); if (d < beda){ beda = d; dekat = l; } });
     var recM = { nama:txt, km:manual, anchor:dekat.id, terukur:false, dibuat:iso(new Date()) };
     REGISTRI[s] = recM; pasangLokasi(s);
     simpanRegistri();
@@ -713,7 +719,10 @@ function runNow(){
      luar wilayah sudah selesai jauh sebelum jam pulang — jadi protokol
      pulangnya dihitung dari wilayah inti, bukan dari titik terjauh. */
   var kmProtokol = kmHome;
-  if (!stay && L.jauh && (o.pulang - o.keluar) > (L.home / CALIB.kecepatan) + 1.5) kmProtokol = 9;
+  /* hanya untuk posisi berkoordinat (urutan tempat memang memindahkannya);
+     km diketik tanpa koordinat = jarak sebenarnya (dulu "9 km ±16 menit"
+     untuk tempat 40 km) */
+  if (!stay && L.jauh && L.lat != null && (o.pulang - o.keluar) > (L.home / CALIB.kecepatan) + 1.5) kmProtokol = 9;
   /* Jam pulang nanti Ibu tidak akan persis di titik ini — pakai jarak
      khas wilayah inti, jangan nol. */
   if (!stay) kmProtokol = Math.max(kmProtokol, 6);
@@ -786,7 +795,9 @@ function runNow(){
   if (soc < resMin && !stay && !colokRumah && !sesiNanti){
     bw.hidden = false; bw.className = "batwarn";
     bw.innerHTML = '<span class="tag">Baterai kritis</span><span><b>Ngecas sekarang.</b> Baterai '+soc+
-      "%, untuk pulang dari "+L.n+" butuh minimal <b>"+resMin+"%</b>." +
+      (L.home <= 1 ? "%: isi dulu di SPKLU terdekat dari rumah sebelum narik lagi."
+       : resMin > 95 ? "%; " + L.n + " terlalu jauh untuk pulang dengan sekali isi &mdash; ngecas penuh dan sekali lagi di jalan."
+       : "%, untuk pulang dari "+L.n+" butuh minimal <b>"+resMin+"%</b>.") +
       (spkluTeks(spkluUntuk(L)) ? " SPKLU terdekat: " + spkluTeks(spkluUntuk(L)) + "." : "") +
       (spkluCepatTeks(L, spkluUntuk(L)) ? " " + spkluCepatTeks(L, spkluUntuk(L)) : "") + "</span>";
   } else if (r.sessions > 0 && colokRumah && !stay && r.sesi[0].jam <= o.keluar + 0.25){
@@ -3248,6 +3259,9 @@ function renderPeluang(id, o, L, opsi){
   opsi = opsi || {};
   /* jam narik sudah habis (langkah = pulang): tidak ada rute untuk dibandingkan */
   if (!o.stay && o.habisKerja){ box.hidden = true; return { daftar:[], basis:null, habis:true }; }
+  /* posisi tanpa koordinat (km diketik): "tetap di sini" tidak bisa dihitung
+     per tempat -- dulu tampil sebagai "Tetap di Jakarta CBD" dengan angka lain */
+  if (!opsi.rencana && L && L.lat == null){ box.hidden = true; return { daftar:[], basis:null, tanpaKoordinat:true }; }
   var h;
   try { h = Peluang.hitung(o, L, { banyak:3 }); } catch (e) { box.hidden = true; return null; }
   if (!h || !h.daftar.length){ box.hidden = true; return h; }

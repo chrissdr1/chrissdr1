@@ -265,7 +265,7 @@ var STEP = {
   "Malam":{b:"Mal tutup dan kuliner",s:"Summarecon Serpong &middot; AEON &amp; The Breeze BSD &middot; Supermal Karawaci &middot; Tangcity &rarr; lalu Flavor Bliss &amp; Scientia Square",
     i:"Di pintu parkir 15 menit sebelum mal tutup (21:00); bandara 19:00&ndash;22:00 searah pulang.",
     k:"Datang sebelum antrean mobil terbentuk, bukan sesudahnya. Kedatangan bandara 19:00&ndash;22:00 ordernya panjang dan arahnya sama dengan pulang."},
-  "Larut":{b:"Sudah malam &mdash; pulang",s:"Hanya order ke arah barat",
+  "Larut":{b:"Sudah malam &mdash; pulang",s:"Hanya order searah rumah",
     i:"Order jarang, dan besok pagi jadi capek.",
     k:"Tarifnya naik, tapi ordernya jarang; jam ini memakan peak pagi besok yang jauh lebih besar."},
   "Istirahat":{b:"Istirahat di rumah",s:"Pulang, makan, tidur sebentar",
