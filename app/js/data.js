@@ -169,7 +169,10 @@ var HOLI = {
   "2027-05-20":["Waisak 2571","L"], "2027-06-01":["Hari Lahir Pancasila","L"],
   "2027-06-06":["Tahun Baru Islam 1449 H","L"], "2027-08-15":["Maulid Nabi Muhammad SAW","L"],
   "2027-08-17":["Hari Kemerdekaan RI","L"], "2027-12-24":["Cuti bersama Natal","C"],
-  "2027-12-25":["Hari Raya Natal","L"], "2027-12-26":["Isra Mikraj 1449 H","L"]
+  "2027-12-25":["Hari Raya Natal","L"], "2027-12-26":["Isra Mikraj 1449 H","L"],
+  /* tanggal tetap (bukan dari SKB 2028, yang belum terbit): supaya malam
+     31-12-2027 tetap "malam sebelum libur" */
+  "2028-01-01":["Tahun Baru 2028 Masehi","L"]
 };
 /* Acara besar di sekitar wilayah kerja. Ditanam di sini karena halaman
    tidak mengambil data sendiri. Terakhir diperbarui 9 September 2026 —

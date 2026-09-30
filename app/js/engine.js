@@ -179,9 +179,28 @@ function dayCtx(dateStr){
   var d = new Date(dateStr + "T00:00:00");
   var dow = d.getDay();
   var h = HOLI[dateStr] || null;
-  var eve = !isOff(d) && !!HOLI[iso(addDays(d,1))];
-  var runLen = 0;
-  if (h || dow===0 || dow===6){ var x=d; while (isOff(x)){ runLen++; x=addDays(x,1); } }
+  var besok = addDays(d,1);
+  var eve = !isOff(d) && !!HOLI[iso(besok)];
+  /* malam sebelum libur panjang yang DIMULAI akhir pekan (Jumat 5-3-2027
+     sebelum libur Lebaran): dulu tanpa perlakuan malam-sebelum-libur */
+  var eveMulaiLibur = false;
+  if (!eve && !isOff(d) && isOff(besok)){
+    var y = besok, ny = 0;
+    while (isOff(y) && ny < 12){ if (HOLI[iso(y)]){ eve = eveMulaiLibur = true; break; } y = addDays(y,1); ny++; }
+  }
+  /* panjang libur SELURUHNYA (dulu hanya sisa hari: hari ke-7 dari libur 10
+     hari disebut "Libur panjang 4 hari") dan hari ke berapa */
+  var runLen = 0, hariKe = 0;
+  if (h || dow===0 || dow===6){
+    var x=d; while (isOff(x)){ runLen++; x=addDays(x,1); }
+    var xb=addDays(d,-1); while (isOff(xb) && hariKe < 30){ hariKe++; xb=addDays(xb,-1); }
+    runLen += hariKe; hariKe += 1;
+  }
+  /* batas mulai pulang malam ini: 20:30 kalau besok hari kerja sesudah
+     Minggu (Senin pagi harus segar), selain itu 22:00. Dulu "Minggu dan
+     bukan tanggal merah": Minggu Maulid sebelum Senin kerja 22:00, Minggu
+     sebelum Senin Nyepi 20:30. */
+  var batasMalam = (dow === 0 && !isOff(besok)) ? 20.5 : 22;
   var evePlus = false;
   if (!h && dow!==0 && dow!==6){
     var x2 = addDays(d,1), c=0; while (isOff(x2) && c<6){ c++; x2=addDays(x2,1); }
@@ -191,15 +210,22 @@ function dayCtx(dateStr){
   var shapeDay = h ? 0 : dow;
   var mult = DAYMULT[dow];
   if (h) mult = 0.97 * (runLen >= 3 ? 1.05 : 1);
-  if (eve) mult *= (evePlus ? 1.18 : 1.08);
+  /* Jumat sebelum libur yang dimulai Sabtu: pengali Jumat sudah memuat
+     efek akhir pekan, jadi hanya +8% (1,15 x 1,18 = 1,36 terlalu tinggi) */
+  if (eve) mult *= (evePlus && !eveMulaiLibur ? 1.18 : 1.08);
   var ev = EVENTS[dateStr] || null;
   if (ev) mult *= (ev[2] === "lokal" ? 1.12 : 1.06);
   /* Musim gajian tanggal 25-5 (Rute 700K): permintaan naik di hampir semua blok. */
   var dm = d.getDate(), gajian = dm >= 25 || dm <= 5;
   /* Konteks saja (lihat LIBUR_SEKOLAH di data.js): tidak mengubah mult. */
-  return { d:d, dow:dow, holi:h, eve:eve, evePlus:evePlus, runLen:runLen, ev:ev, gajian:gajian,
+  return { d:d, dow:dow, holi:h, eve:eve, eveMulaiLibur:eveMulaiLibur, evePlus:evePlus, runLen:runLen, hariKe:hariKe, batasMalam:batasMalam, ev:ev, gajian:gajian,
            shapeDay:shapeDay, mult:mult, name:DAYNAME[dow],
            sekolahLibur:dalamRentang(LIBUR_SEKOLAH, dateStr), ramadan:dalamRentang(RAMADAN, dateStr) };
+}
+/* batas malam dari ctx (ctx buatan tangan tanpa batasMalam: aturan lama) */
+function batasMalam(ctx){
+  if (ctx && typeof ctx.batasMalam === "number") return ctx.batasMalam;
+  return (ctx && ctx.dow === 0 && !ctx.holi) ? 20.5 : 22;
 }
 function dalamRentang(daftar, tgl){
   if (typeof daftar === "undefined" || !daftar) return null;
@@ -637,7 +663,7 @@ function simulate(o){
      19:54. Batas 22:00 (Minggu 20:30) sama dengan kartu "Waktunya pulang". */
   var pieces = potongBlok(o);
   var akhir = adaUrutan ? pasangTempat(pieces) : null;
-  var batasPulang = (!o.stay) ? ((ctx.dow === 0 && !ctx.holi) ? 20.5 : 22) : 24;
+  var batasPulang = (!o.stay) ? (batasMalam(ctx)) : 24;
   var oKerja = {}; Object.keys(o).forEach(function(k){ oKerja[k] = o[k]; });
   oKerja.pulangIsi = o.pulang;
   for (var ulang = 0; ulang < 4; ulang++){
@@ -881,7 +907,7 @@ function buildSteps(o, r, opts){
     var km = (typeof opts.kmHome === "number") ? opts.kmHome : r.kmHome, pp = pos;
     if (o.tempatAkhir && !opts.stay){ pp = o.tempatAkhir; km = Math.max(o.tempatAkhir.home, 6); }
     var jt = pp ? jamTempuhRumah(pp, o.pulang - 0.5, km, tipeDari(ctx)) : km / CALIB.kecepatan * faktorMacet(o.pulang - 0.5, o.zona, tipeDari(ctx));
-    var bt = (ctx.dow === 0 && !ctx.holi) ? 20.5 : 22;
+    var bt = batasMalam(ctx);
     var m = Math.min(o.pulang - Math.max(0.5, jt + 0.25), bt);
     if (!tidakPulang && !r.pieces.some(adaJamNarik)){
       /* pulang sekarang dari posisi SEKARANG, dengan jarak sebenarnya (dulu di
@@ -992,7 +1018,7 @@ function buildSteps(o, r, opts){
     } else if ((ctx.holi || ctx.dow === 0) && (nama === "Pra-peak" || nama === "Peak sore") && !(posP && posP.z === "apt") && !diJktP){
       /* tanggal merah / Minggu: kantor tutup -- bukan "lobi gedung sebelum bubaran" */
       def = LIBURSORE;
-    } else if (ctx.eve && (nama === "Peak sore" || nama === "Malam")){
+    } else if (ctx.eve && (nama === "Pra-peak" || nama === "Peak sore" || nama === "Malam")){
       def = EVEPETANG;
     } else if (posP && posP.z === "apt" && STEP_APT[nama]){
       def = STEP_APT[nama];
@@ -1134,7 +1160,7 @@ function jpAdvise(o, L){
 /* Jam mulai pulang untuk kartu besar: batas 22:00 (Minggu 20:30) sama
    dengan simulate dan langkah. */
 function mulaiPulangKartu(o, L){
-  var batas = (o.ctx.dow === 0 && !o.ctx.holi) ? 20.5 : 22;
+  var batas = batasMalam(o.ctx);
   var m = Math.min(o.pulang - jpAdvise(o, L), batas);
   return (o.tibaAkhir != null && !o.habisKerja) ? Math.max(m, o.tibaAkhir) : m;
 }
@@ -1179,7 +1205,7 @@ function adviseInti(blk, L, o){
     return { k:"bad", h:"Waktunya pulang",
       r:"Filter tujuan &rarr; Modernland" + (L.z === "jkt" ? " &middot; keluar Jakarta sekarang" : ""),
       p:"Perjalanan pulang &plusmn;" + Math.max(10, Math.round((jp0 - 0.25) * 60)) + " menit; berangkat sekarang. Terima hanya order yang searah pulang.",
-      kenapa:"Jam mulai pulang (jam pulang dikurangi waktu tempuh + 15 menit" + ((o.ctx.dow === 0 && !o.ctx.holi) ? ", paling telat 20:30 hari Minggu" : ", paling telat 22:00") +
+      kenapa:"Jam mulai pulang (jam pulang dikurangi waktu tempuh + 15 menit" + ((batasMalam(o.ctx) === 20.5) ? ", paling telat 20:30 hari Minggu" : ", paling telat 22:00") +
         ") sudah lewat" + (L.z === "jkt" && o.keluar >= 20 ? ", dan mulai 20:00 aplikasi menghitung Ibu sudah keluar dari Jakarta" : "") + "." };
   }
   /* Masih ada jam narik, tapi langkah pertama ngecas (baterai sekarang tidak
@@ -1247,10 +1273,14 @@ function adviseInti(blk, L, o){
     r:Math.round(L.home)+" km ke rumah",
     p:"Di sini sepi di luar peak &mdash; jalan sambil online, jangan nunggu.",
     kenapa:"Masih Tangerang, tapi di luar daerah biasa Ibu; di luar peak ordernya tipis."};
+  /* tanggal merah / Minggu sore: kantor tutup -- sama dengan langkah
+     (LIBURSORE); dulu kartu & langkah 1 "lobi sebelum bubaran" */
+  if ((ctx.holi || ctx.dow === 0) && (blk.n==="Pra-peak"||blk.n==="Peak sore") && L.z!=="apt" && L.z!=="jkt")
+    return {k:"good", h:LIBURSORE.b, r:LIBURSORE.s, p:LIBURSORE.i, kenapa:LIBURSORE.k};
   if (ctx.eve && (blk.n==="Peak sore"||blk.n==="Malam"||blk.n==="Pra-peak"))
     return {k:"good",h:"Kejar orang keluar kota",
       r:"Bandara &middot; Stasiun Batu Ceper &middot; Terminal Poris Plawad",
-      p:"Besok tanggal merah: penumpang berkoper, tujuan jauh &mdash; dahulukan tiga tempat itu.",
+      p:(ctx.eveMulaiLibur ? "Besok mulai libur panjang" : "Besok tanggal merah")+": penumpang berkoper, tujuan jauh &mdash; dahulukan tiga tempat itu.",
       kenapa:"Malam sebelum libur salah satu malam terkuat dalam sebulan; tiga tempat itu lebih ramai daripada muter mal biasa."};
   if (blk.n==="Peak pagi"||blk.n==="Subuh"){
     if (noPagi) return {k:"warn",h:"Belum ramai &mdash; santai dulu",
@@ -1342,7 +1372,7 @@ function adviseInti(blk, L, o){
     kenapa:"Datang sebelum antrean mobil terbentuk. Kedatangan bandara ordernya panjang dan arahnya sama dengan pulang."};
   return {k:"warn",h:"Waktunya pulang",
     r:"Filter tujuan &rarr; Modernland",
-    p:"Pasang filter sekarang, atau ambil hanya order searah rumah &mdash; paling telat "+((ctx.dow === 0 && !ctx.holi) ? "20:30" : "22:00")+".",
+    p:"Pasang filter sekarang, atau ambil hanya order searah rumah &mdash; paling telat "+(batasMalam(ctx) === 20.5 ? "20:30" : "22:00")+".",
     kenapa:"Tarif sudah turun, dan jam ini memakan peak pagi besok."};
 }
 
@@ -1357,7 +1387,7 @@ var WEATHER = null, REGISTRI = {}, lastLok = "kota";
    menanggung sesi ngecas yang justru dipicu km perpanjangan itu sendiri. */
 function tambahanJam(o, r, jam){
   /* tidak pernah melewati batas pulang 22:00 (Minggu 20:30) plus perjalanan pulang */
-  var batasT = (o.ctx.dow === 0 && !o.ctx.holi) ? 20.5 : 22;
+  var batasT = batasMalam(o.ctx);
   var sampai = Math.min(23, o.pulang + jam, batasT + (o.stay ? 0 : jamMulaiPulang(o, o.tempatAkhir || null)));
   if (sampai <= o.pulang) return { sampai:sampai, tambah:0 };
   var p = {}; Object.keys(o).forEach(function(k){ p[k] = o[k]; });

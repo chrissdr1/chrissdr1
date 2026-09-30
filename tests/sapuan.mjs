@@ -99,7 +99,7 @@ async function kerja(job){
         const vt = el("verdict").textContent;
         const lp = S.langkah.find(x => x.dur === "pulang"), mt = lp && String(lp.t).match(/(\d\d):(\d\d)/);
         const jp = mt ? +mt[1] + +mt[2] / 60 : null;
-        const batas = (o.ctx.dow === 0 && !o.ctx.holi) ? 20.5 : 22;
+        const batas = typeof batasMalam === "function" ? batasMalam(o.ctx) : ((o.ctx.dow === 0 && !o.ctx.holi) ? 20.5 : 22);
         if (jp != null && !o.stay){
           /* sudah lewat batas dan tidak ada jam narik: mulai = sekarang, itu sah */
           if (jp > Math.max(batas, o.keluar) + 0.02) M.push("langkah pulang " + mt[0] + " lewat batas " + batas);
@@ -188,7 +188,7 @@ async function kerja(job){
           if (document.querySelectorAll("#cmp .pola").length !== 8 || document.querySelectorAll("#cmp .pola.best").length < 1) M.push("kartu pola");
           const st = [...el("p-steps").querySelectorAll(".step")].map(s => s.textContent);
           const home = st.find(s => /Waktunya pulang/.test(s)), hm = home && home.match(/mulai\s*(\d\d):(\d\d)/);
-          const ctx = dayCtx(el("p-tgl").value), batas = (ctx.dow === 0 && !ctx.holi) ? 20.5 : 22;
+          const ctx = dayCtx(el("p-tgl").value), batas = typeof batasMalam === "function" ? batasMalam(ctx) : ((ctx.dow === 0 && !ctx.holi) ? 20.5 : 22);
           if (hm && +hm[1] + +hm[2] / 60 > batas + 0.01) M.push("rencana pulang " + hm[0] + " lewat batas");
           if (!/Rp/.test(el("p-net").textContent)) M.push("p-net kosong");
           if (M.length) out.push({ label:"pola " + i + " " + zona + " tgl " + el("p-tgl").value, M });

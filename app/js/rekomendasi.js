@@ -89,7 +89,7 @@ var Rekomendasi = (function(){
     return { id:K.id, n:K.n, z:K.z, lat:K.lat, lon:K.lon, diSini:diSini, tempat:K,
              kmPindah:kmPindah, jamPindah:jamPindah, macet:macet, sumberMacet:sumberMacet, tiba:keluar, socTiba:Math.round(o2.soc),
              sisa:sisa, sesi:r.sessions, kmHome:stay ? 0 : K.home, res:K.res, pulangMalam:!!o2.urutan.pindahMalam,
-             mulaiPulang:stay ? null : Math.max(keluar, Math.min(o.pulang - jamPulang, (o.ctx.dow === 0 && !o.ctx.holi) ? 20.5 : 22)), jamPulang:jamPulang,
+             mulaiPulang:stay ? null : Math.max(keluar, Math.min(o.pulang - jamPulang, batasMalam(o.ctx))), jamPulang:jamPulang,
              keluarJkt:pm ? pm.s : null, keluarJktJam:pm ? pm.pindahJam : null,
              saran:advise(blkTiba, K, o2), r:r };
   }

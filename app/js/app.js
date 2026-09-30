@@ -82,32 +82,48 @@ function catatan(k, judul, isi, kenapa){
   return '<div class="note ' + k + '"><span class="tag">' + judul + "</span><span>" + isi +
     (kenapa ? '<details class="kenapa"><summary>Kenapa?</summary><div>' + kenapa + "</div></details>" : "") + "</span></div>";
 }
+/* Jam mulai bawaan (Rute 700K): Senin 04:45, Sabtu 07:30, Minggu 07:00,
+   lainnya 05:15; tanggal merah 10:00 -- "Mulai siang" seperti bendera
+   harinya (dulu Natal/Idulfitri 05:15, sebelum peak pagi yang tidak ada). */
+function jamMulaiBawaan(tgl){
+  var d = new Date(tgl + "T00:00:00"), dow = d.getDay();
+  if (HOLI[tgl]) return 10;
+  return dow === 1 ? 4.75 : dow === 6 ? 7.5 : dow === 0 ? 7 : 5.25;
+}
 function renderDayFlag(ctx, dateStr){
   var n = el("dayflag");
+  /* acara besar DITAMBAHKAN ke bendera hari (dulu menggantikan "Tanggal
+     merah" / "Malam sebelum libur") */
+  var acara = "";
   if (ctx.ev){
     var lokal = ctx.ev[2] === "lokal";
-    n.hidden = false; n.className = "flag" + (lokal ? "" : " warn");
-    n.innerHTML = '<span class="tag">Acara besar</span><span><b>' + esc(ctx.ev[0]) + "</b> di " + esc(ctx.ev[1]) + ". " +
+    acara = "<b>" + esc(ctx.ev[0]) + "</b> di " + esc(ctx.ev[1]) + ". " +
       (lokal
         ? "Dekat rumah. Sore/malam ada di sekitar BSD saat acara bubar."
-        : "Di Jakarta (26&ndash;30 km). Bubar 22:30&ndash;23:30, tarif tinggi, tapi pulang jauh. Ambil hanya kalau besok Ibu libur.") + "</span>";
-    return;
+        : "Di Jakarta (26&ndash;30 km). Bubar 22:30&ndash;23:30, tarif tinggi, tapi pulang jauh. Ambil hanya kalau besok Ibu libur.");
   }
+  var tag = null, isi = "", kelas = "flag";
   if (ctx.holi){
-    n.hidden = false; n.className = "flag warn";
-    n.innerHTML = '<span class="tag">Tanggal merah</span><span><b>' + ctx.holi[0] +
-      (ctx.holi[1]==="C" ? " (cuti bersama)" : "") + ".</b> Tidak ada peak pagi. Mulai siang; ramai di mal, tempat makan, bandara sampai malam. " +
-      (ctx.runLen>=3 ? "Libur panjang " + ctx.runLen + " hari: bandara ramai di awal dan akhirnya." : "") +
-      "</span>";
+    tag = "Tanggal merah"; kelas = "flag warn";
+    isi = "<b>" + ctx.holi[0] + (ctx.holi[1]==="C" && !/cuti bersama/i.test(ctx.holi[0]) ? " (cuti bersama)" : "") +
+      ".</b> Tidak ada peak pagi. Mulai siang; ramai di mal, tempat makan, bandara sampai malam. " +
+      (ctx.runLen>=3 ? "Libur panjang " + ctx.runLen + " hari" + (ctx.hariKe > 1 ? " (hari ke-" + ctx.hariKe + ")" : "") + ": bandara ramai di awal dan akhirnya." : "");
   } else if (ctx.eve){
-    n.hidden = false; n.className = "flag";
-    n.innerHTML = '<span class="tag">Malam sebelum libur</span><span><b>Besok tanggal merah' +
-      (ctx.evePlus ? ", awal libur panjang" : "") + ".</b> Sore&ndash;malam ini orang keluar kota: <b>bandara, Stasiun Batu Ceper, Terminal Poris</b> ramai. " +
-      (ctx.evePlus ? "Malam terkuat bulan ini &mdash; narik penuh." : "") + "</span>";
+    tag = "Malam sebelum libur";
+    isi = "<b>" + (ctx.eveMulaiLibur ? "Besok mulai libur panjang" : "Besok tanggal merah" + (ctx.evePlus ? ", awal libur panjang" : "")) +
+      ".</b> Sore&ndash;malam ini orang keluar kota: <b>bandara, Stasiun Batu Ceper, Terminal Poris</b> ramai. " +
+      (ctx.evePlus ? "Salah satu malam terkuat bulan ini &mdash; narik penuh." : "");
   } else if (ctx.dow===6 || ctx.dow===0){
-    n.hidden = false; n.className = "flag quiet";
-    n.innerHTML = '<span class="tag">Akhir pekan</span><span>Tidak ada peak pagi. <b>Mulai 07:30&ndash;09:00</b>, andalkan sore&ndash;malam.</span>';
-  } else { n.hidden = true; }
+    tag = "Akhir pekan"; kelas = "flag quiet";
+    isi = "Tidak ada peak pagi. <b>Mulai 07:30&ndash;09:00</b>, andalkan sore&ndash;malam.";
+  }
+  if (acara){
+    if (!tag){ tag = "Acara besar"; isi = acara; kelas = "flag" + (ctx.ev[2] === "lokal" ? "" : " warn"); }
+    else isi += " <br>Acara besar: " + acara;
+  }
+  if (!tag){ n.hidden = true; return; }
+  n.hidden = false; n.className = kelas;
+  n.innerHTML = '<span class="tag">' + tag + "</span><span>" + isi + "</span>";
 }
 
 function renderSteps(node, list, title){
@@ -1111,14 +1127,14 @@ function runPlan(){
       (jt2 ? "Paling pas 30 menit jam <b>"+hhmm(jt2.s)+"&ndash;"+hhmm(jt2.e)+"</b> ("+(jt2.net - r.net >= 0 ? "+" : "\u2212")+rp(Math.abs(jt2.net - r.net))+"). <button type=\"button\" class=\"linkbtn\" data-jeda=\""+jt2.s+","+jt2.e+"\">Pakai</button>" : ""),
       "Aturan lalu lintas: istirahat 30 menit tiap 4 jam mengemudi."));
   }
-  var batasPulang = (ctx.dow === 0 && !ctx.holi) ? 20.5 : 22;
+  var batasPulang = batasMalam(ctx);
   /* batas = jam paling lambat MULAI pulang (sama dengan simulate, langkah, dan
      "Kalau lanjut"); dulu jam TIBA 22:30 dibilang lewat batas padahal langkah
      dan saran lanjut di tab Sedang narik menyarankan persis itu */
   var jpBatas = jamMulaiPulang(o, null);
   if (o.pulang - jpBatas > batasPulang + 0.01) nn.push(catatan("bad","Pulang "+hhmm(o.pulang)+" lewat batas "+hhmm(batasPulang),"Narik paling lambat sampai "+hhmm(batasPulang)+", lalu pulang (tiba &plusmn;"+hhmm(batasPulang + jpBatas)+"). Sebaiknya jangan lebih."+(batasPulang === 20.5 ? " Senin pagi harus segar." : "")));
   if (ctx.dow === 6 && !ctx.holi && o.keluar < 7.5) nn.push(catatan("","Sabtu","Tidak ada peak pagi; saran mulai <b>07:30</b>."));
-  if (ctx.dow === 0 && !ctx.holi && o.keluar < 7) nn.push(catatan("","Minggu","Pagi tenang; saran mulai <b>07:00</b>, selesai <b>20:30</b>."));
+  if (ctx.dow === 0 && !ctx.holi && o.keluar < 7) nn.push(catatan("","Minggu","Pagi tenang; saran mulai <b>07:00</b>, selesai <b>"+hhmm(batasMalam(ctx))+"</b>."));
   if (ctx.dow === 1 && !ctx.holi && o.keluar > 4.75 && o.keluar <= 5.25) nn.push(catatan("","Senin","Peak pagi paling berat; saran berangkat <b>04:45</b>."));
   if (ctx.gajian) nn.push(catatan("good","Tanggal gajian (25\u20135)", ctx.holi ? "Ramai; di tanggal merah ramainya siang sampai malam." : "Ramai. Pakai jadwal penuh."));
   if (ctx.ramadan) nn.push(catatan("","Bulan puasa: pola jam berubah","Jelang buka (&plusmn;15:30&ndash;18:00) paling ramai dan macet; saat buka order turun. <b>Angka di atas belum memperhitungkan ini.</b>"));
@@ -1157,7 +1173,7 @@ function runPlan(){
   /* pola memakai batas pulang hari itu (Minggu 20:30, lainnya 22:00) dan
      baterai awal yang sama dengan rencana di atas -- dulu "paling untung"
      sampai 23:00 lalu "Sebaiknya jangan", dan angka kartu beda dari rencana */
-  var batasHari = (ctx.dow === 0 && !ctx.holi) ? 20.5 : 22;
+  var batasHari = batasMalam(ctx);
   var best=-1, res=PRESETS.map(function(p0){
     var p = { n:p0.n, k:p0.k, p:Math.min(p0.p, batasHari), r:p0.r };
     var qq = {ctx:ctx,keluar:p.k,pulang:p.p,rehat:p.r,zona:o.zona,filter:o.filter,
@@ -1303,7 +1319,10 @@ function konteksTanya(){
   var soc = parseFloat(el("n-soc").value)||0, dpt = Math.max(0, parseRp(el("n-dpt").value)||0);
   var baris = ["=== HARI INI ===",
     "Tanggal " + iso(d) + ", " + ctx.name + (ctx.holi ? " (TANGGAL MERAH: "+ctx.holi[0]+")" : ""),
-    ctx.eve ? "Besok tanggal merah - malam ini arus keluar kota." : "",
+    ctx.eve ? (ctx.eveMulaiLibur ? "Besok mulai libur panjang" : "Besok tanggal merah") + " - malam ini arus keluar kota." : "",
+    ctx.runLen >= 3 ? "Libur panjang " + ctx.runLen + " hari" + (ctx.hariKe ? " (hari ke-" + ctx.hariKe + ")" : "") + "." : "",
+    ctx.ramadan ? "Bulan puasa: " + ctx.ramadan + " (jelang buka ramai, saat buka sepi)." : "",
+    ctx.sekolahLibur ? "Libur sekolah: " + ctx.sekolahLibur + "." : "",
     ctx.ev ? ("Acara besar: "+ctx.ev[0]+" di "+ctx.ev[1]) : "",
     WEATHER && WEATHER.tanggal===iso(d) ? ("Cuaca: "+(WEATHER.hujan?("hujan "+(WEATHER.jam||"")):"tidak hujan")) : "",
     "",
@@ -2240,6 +2259,7 @@ el("p-tgl").addEventListener("change", function(){
   else {
     /* tanggal lain tanpa rencana: jam pulang lewat batas malam ini (mis. 23:30) tidak terbawa */
     if (d !== iso(new Date()) && parseFloat(el("p-pulang").value) > 22) el("p-pulang").value = "21.5";
+    if (d !== iso(new Date())) el("p-keluar").value = String(jamMulaiBawaan(d));
     el("p-acara").checked = !!EVENTS[d];
     el("p-hujan").dataset.touched = "";
     el("p-hujan").checked = !!(WEATHER && WEATHER.tanggal === d && WEATHER.hujan);
@@ -2503,7 +2523,7 @@ function cekGantiHari(){
   el("hari-status").textContent = ""; el("hari-status").className = "status";
   if ((el("p-tgl").value || h) < h){
     /* isian coba-coba Rencanakan kemarin tidak terbawa ke hari baru tanpa rencana */
-    if (!rencanaUntuk(h)){ var dw = new Date().getDay(); el("p-keluar").value = String(dw === 1 ? 4.75 : dw === 6 ? 7.5 : dw === 0 ? 7 : 5.25); el("p-pulang").value = "21.5"; }
+    if (!rencanaUntuk(h)){ el("p-keluar").value = String(jamMulaiBawaan(h)); el("p-pulang").value = "21.5"; }
     el("p-tgl").value = h; el("p-tgl").dispatchEvent(new Event("change", { bubbles:true }));
   }
   terapkanRencanaHariIni();
@@ -2513,6 +2533,10 @@ function cekGantiHari(){
 setInterval(cekGantiHari, 60000);
 document.addEventListener("visibilitychange", function(){ if (!document.hidden) cekGantiHari(); });
 if (EVENTS[iso(now)]) el("n-acara").checked = true;
+/* Rencanakan tanpa rencana tersimpan: jam mulai bawaan tanggal itu (tanggal merah 10:00) */
+if (!rencanaUntuk(el("p-tgl").value || iso(now))) el("p-keluar").value = String(jamMulaiBawaan(el("p-tgl").value || iso(now)));
+/* Rencanakan juga (dulu kotaknya kosong sementara catatannya "Acara sudah dihitung") */
+if (!rencanaUntuk(el("p-tgl").value || iso(now)) && EVENTS[el("p-tgl").value || iso(now)]) el("p-acara").checked = true;
 /* Fase capture: penibu "manual" harus tercatat sebelum runNow menggambar. */
 el("n-acara").addEventListener("change", function(){ this.dataset.touched = "1"; }, true);
 el("n-hujan").addEventListener("change", function(){ this.dataset.touched = "1"; }, true);
@@ -2552,7 +2576,7 @@ function renderSegar(){
     pesan.push("<b>Kalender acara sudah habis</b> (sampai "+EVENTS_SAMPAI+"). Centang &ldquo;Acara besar&rdquo; sendiri kalau ada.");
   }
   if (hariIni > HOLI_SAMPAI){ kelas = "warn";
-    pesan.push("Tanggal merah tahun depan baru yang pasti saja.");
+    pesan.push("<b>Tanggal merah hanya tercatat sampai " + HOLI_SAMPAI + "</b> &mdash; perbarui aplikasi; libur sesudahnya dihitung sebagai hari biasa.");
   }
   if (hariIni > KONTEKS_SAMPAI){ kelas = "warn";
     pesan.push("Kalender libur sekolah dan Ramadan sudah habis (sampai " + KONTEKS_SAMPAI + ").");
@@ -3309,7 +3333,7 @@ function bukaCheckin(){
      dulu mengganti baterai saja mengembalikan jam pulang & filter pagi */
   el("ci-bat").value = String(m ? parseFloat(el("n-bat").value) : (pl ? pl.bat : parseFloat(el("n-bat").value)));
   /* Jam mulai bawaan menurut hari (Rute 700K): Senin 04:45, Sabtu 07:30, Minggu 07:00, lainnya 05:15 -- kecuali sudah lewat */
-  var dow = now.getDay(), mulaiHari = dow === 1 ? 4.75 : dow === 6 ? 7.5 : dow === 0 ? 7 : 5.25;
+  var mulaiHari = jamMulaiBawaan(iso(now));
   el("ci-keluar").value = String(m ? m.keluar : (pl ? pl.keluar : Math.max(3.5, Math.min(23.5, t > mulaiHari + 0.5 ? t : mulaiHari))));
   el("ci-pulang").value = String(m ? parseFloat(el("n-pulang").value) : (pl ? pl.pulang : parseFloat(el("n-pulang").value)));
   el("ci-zona").value = m ? m.zona : (pl ? pl.zona : (currentLok().z === "apt" ? "apt" : currentLok().z === "jkt" ? "jkt" : "tng"));
