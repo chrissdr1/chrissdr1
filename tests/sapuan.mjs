@@ -129,6 +129,7 @@ async function kerja(job){
         const neg = tn.match(/±-\d|[^\d\w]-\d+ ?(%|→|&rarr;)|\s-\d+\s?→/);
         if (neg) M.push("baterai negatif: " + tn.slice(Math.max(0, neg.index - 60), neg.index + 20));
         if (!el("peluang").hidden && /Pindah 0 kali/.test(txt("peluang"))) M.push("rute kosong 'Pindah 0 kali'");
+        if (S.peluang && S.peluang.daftar && S.peluang.daftar.some(x => !x.segmen.some(g => !g.jeda))) M.push("rute tanpa segmen narik");
         if (S.peluang && S.peluang.daftar) S.peluang.daftar.forEach(x => { if (!x.diam && !o.stay && x.r.socTiba < 0.03) M.push("rute tiba rumah " + Math.round(x.r.socTiba * 100) + "%"); });
         /* Tidak pulang: tidak ada kalimat pulang di kartu, langkah, dan daftar tempat;
            baris "Tidak pulang" sesudah narik terakhir */

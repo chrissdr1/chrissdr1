@@ -713,6 +713,7 @@ function runNow(){
   renderSocEst(est, soc, seTouched);
   var dpt = Math.max(0, parseFloat(el("n-dpt").value)||0);
   o.soc = soc;   /* rencana ngecas harus memakai daya nyata, bukan 90% */
+  o.diRumahAwal = L.home <= 1;
   var stay = el("n-tujuan").value === "stay";
   var kmHome = stay ? 0 : L.home;
   /* Kalau Ibu jauh tapi sifnya masih panjang, perjalanan pulang dari
@@ -800,10 +801,10 @@ function runNow(){
        : "%, untuk pulang dari "+L.n+" butuh minimal <b>"+resMin+"%</b>.") +
       (spkluTeks(spkluUntuk(L)) ? " SPKLU terdekat: " + spkluTeks(spkluUntuk(L)) + "." : "") +
       (spkluCepatTeks(L, spkluUntuk(L)) ? " " + spkluCepatTeks(L, spkluUntuk(L)) : "") + "</span>";
-  } else if (r.sessions > 0 && colokRumah && !stay && r.sesi[0].jam <= o.keluar + 0.25){
+  } else if (r.sessions > 0 && colokRumah && !stay && r.sesi[0].jam <= o.keluar + 0.25 && r.sesi[0].ac){
     var s0 = r.sesi[0];
     bw.hidden = false; bw.className = "batwarn";
-    bw.innerHTML = '<span class="tag">Baterai ' + soc + '%</span><span><b>Colok di rumah dulu</b>, sampai &plusmn;' + pctB(s0.ke) + '%, baru berangkat.</span>';
+    bw.innerHTML = '<span class="tag">Baterai ' + soc + '%</span><span><b>Colok di rumah dulu</b>, sampai &plusmn;' + pctB(s0.ke) + '%' + (s0.ac ? ' (&plusmn;' + (s0.durasi < 1 ? Math.round(s0.durasi * 60) + ' menit' : s0.durasi.toFixed(1).replace(".", ",") + ' jam') + ' dengan colokan rumah)' : '') + ', baru berangkat.</span>';
   } else if (r.sessions > 0){
     var s1 = r.sesi[0];
     bw.hidden = false; bw.className = "batwarn mild";
@@ -3305,7 +3306,7 @@ function renderPeluang(id, o, L, opsi){
     var pertama = x.segmen.filter(function(sg){ return !sg.jeda && sg.pindahKm > 0.5; })[0];
     return '<div class="rek-item' + (i === 0 ? " top" : "") + (x.diam ? " here" : "") + '">' +
       '<div class="rek-rank">' + (i + 1) + "</div>" +
-      '<div class="rek-body"><b>' + (x.diam ? "Tetap di " + esc(h.awal.n) + (x.diamPulangMalam ? " sampai 20:00, lalu ke arah rumah" : "") : "Pindah " + x.pindahN + " kali (" + Math.round(x.kmPindah) + " km)") + "</b>" +
+      '<div class="rek-body"><b>' + (x.diam ? "Tetap di " + esc(h.awal.n) + (x.diamPulangMalam ? " sampai " + hhmm(x.diamPindahJam != null ? x.diamPindahJam : 20) + ", lalu ke arah rumah" : "") : x.pindahN === 0 ? "Tetap di " + esc(h.awal.n) + " sampai pulang" : "Pindah " + x.pindahN + " kali (" + Math.round(x.kmPindah) + " km)") + "</b>" +
       '<span class="rek-num">\u00b1' + rp(x.net) + " <em>" + (o.stay ? "sampai " + hhmm(o.pulang) : "sampai pulang") + "</em></span>" +
       '<div class="rute">' + chips + "</div>" +
       "<i>\u2248" + Math.round(x.r.trips) + " order \u00b7 " + Math.round(x.r.paidKm) + " km berpenumpang \u00b7 " + (x.r.sessions ? x.r.sessions + "\u00d7 ngecas \u00b7 " : "") +

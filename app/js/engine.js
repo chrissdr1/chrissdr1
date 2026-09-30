@@ -444,16 +444,19 @@ function pilihSesi(pieces, socAwal, floor, ambang, fullSesi, kmPerFrac, deadJam,
         /* DC cepat (SPKLU) berhenti di 90%. Sampai 100% hanya di jeda panjang
            (>= 2,5 jam) DAN ada charger di rumah: colok AC 7 kW, lambat tapi
            gratis waktu; durasinya kWh / 7 kW + 15 menit pulang. */
+        var acPaksa = !!(p.acRumah && !tanpaAC);
+        /* SPKLU cepat dari rumah butuh baterai untuk sampai ke sana (&plusmn;5 km) */
+        if (p.acRumah && tanpaAC && soc < 5 / kmPerFrac + 0.01) return null;
         var bolehAC = !!(p.jeda && p.w >= 2.5 && rumah && p.diRumah !== false && !casDulu && !tanpaAC);
         /* AC 7 kW hanya kalau isi penuhnya muat di jam istirahat; kalau tidak,
            SPKLU cepat sampai 90% (dulu dipaksa AC 4 jam, colokan rumah malah
            membuat rencana lebih buruk) */
         if (bolehAC && (Math.min(1, kum[(si + 1 < idxs.length) ? idxs[si+1] : n] - kum[i] + floor + 0.02) - soc) * cap / 7 + 0.25 > p.w) bolehAC = false;
-        var maks = bolehAC ? 1.00 : 0.90;
+        var maks = (bolehAC || acPaksa) ? 1.00 : 0.90;
         var dari = soc, ke = Math.min(maks, dasar), durasi = 0, hilang = 0, luber = 0, ac = false;
         var kmNext = (pieces[i+1] && !pieces[i+1].jeda) ? pieces[i+1].kmH : 0;
         for (var it = 0; it < 3; it++){   /* jam hilang mengurangi km yang dipakai */
-          ac = bolehAC && ke > 0.90;
+          ac = acPaksa || (bolehAC && ke > 0.90);
           durasi = ac ? (ke - dari) * cap / 7 + 0.25 : fullSesi * (ke - dari) / 0.75 + 0.12;
           if (p.jeda){ hilang = Math.max(0, durasi - p.w); luber = 0; }
           else { hilang = Math.min(durasi, p.w); luber = Math.max(0, durasi - p.w); }
@@ -688,6 +691,10 @@ function simulate(o){
   var socAwal = soc0 - deadKm / kmPerFrac;
   /* Km kosong menuju pangkalan memakan WAKTU juga, bukan hanya baterai. */
   var deadJam = deadKm / CALIB.kecepatan;
+  /* Mulai dari rumah dengan colokan: sesi di potongan pertama boleh (atau,
+     kalau SPKLU tak terjangkau, harus) lewat colokan rumah 7 kW -- dulu 1%
+     di rumah dihitung "ngecas 1->74% 49 menit" seperti SPKLU cepat. */
+  pieces.forEach(function(p, i){ p.acRumah = i === 0 && !p.jeda && !!(o.diRumahAwal && o.rumah && !o.stay); });
   var tl = pilihSesi(pieces, socAwal, floor, ambangPulang, fullSesi, kmPerFrac, deadJam, !!o.rumah && !o.stay, cap);   /* tidak pulang = tidak ada colokan rumah */
   var sesi = tl.sesi;
 
@@ -737,6 +744,7 @@ function simulate(o){
   var s0 = pieces.filter(function(p){ return p.sesi && !p.jeda; }).map(function(p){ return p.sesi; })[0];
   var kmAwal = o.tempatAwal ? o.tempatAwal.home : (typeof o.kmHome === "number" ? o.kmHome : kmHome);
   o.casSekarang = !o.stay && !!(s0 && s0.jam <= o.keluar + 0.25 && s0.dari < Math.max(floor, 0.15 + kmAwal / kmPerFrac));
+  o.sesiAwal = o.casSekarang ? s0 : null;
   /* Tidak ada lagi JAM NARIK (jam mulai pulang / batas 22:00 sudah lewat, atau
      sisa potongan habis untuk pindah): kartu besar (advise) membaca tanda ini
      supaya tidak menyuruh narik lagi -- keputusan yang SAMA dengan hitungan
@@ -900,7 +908,10 @@ function buildSteps(o, r, opts){
     /* Jakarta tanpa koordinat (km diketik) lewat 20:00: aturan yang sama --
        keluar Jakarta, bukan "narik di sini" */
     var jktMalam = !tidakPulang && !L.jeda && !L.tempat && diJkt && L.s >= 20 - 1e-6;
-    if (tanpaNarik && L.sesi){
+    if (tanpaNarik && L.sesi && L.sesi.ac && L.acRumah){
+      def = { b:"Colok di rumah", s:"Colokan rumah (&plusmn;7 kW)", i:"Isi sampai &plusmn;" + pctB(L.sesi.ke) + "%, baru berangkat.",
+              k:"Baterai terlalu rendah untuk sampai SPKLU dengan aman; colokan rumah pelan tapi pasti." };
+    } else if (tanpaNarik && L.sesi){
       def = { b:"Ngecas", s:"SPKLU terdekat", i:"Isi secukupnya untuk sisa hari dan perjalanan pulang.",
               k:"Waktu di potongan ini habis untuk ngecas dan pindah; belum ada jam narik." };
     } else if (tanpaNarik){
@@ -961,7 +972,9 @@ function buildSteps(o, r, opts){
        dulu Jakarta Timur 20:00 langsung "Mal tutup dan kuliner" di Serpong */
     if (!L.jeda && !tanpaNarik && L.tempat && L.pindahKm > 3 && L.pindahJam > 0.1 && def && def.b){
       def = { b:def.b, s:def.s, k:def.k,
-              i:"Pindah dulu ke " + L.tempat.n + " (&plusmn;" + Math.round(L.pindahKm) + " km, &plusmn;" + Math.round(L.pindahJam * 60) + " menit), lalu: " + (def.i || "") };
+              i:(pos && pos.z === "jkt" && L.tempat.z !== "jkt" && !tidakPulang
+                  ? "Pasang filter tujuan, pulang bawa penumpang ke " + L.tempat.n + " (&plusmn;" + Math.round(L.pindahKm) + " km, &plusmn;" + Math.round(L.pindahJam * 60) + " menit), lalu: "
+                  : "Pindah dulu ke " + L.tempat.n + " (&plusmn;" + Math.round(L.pindahKm) + " km, &plusmn;" + Math.round(L.pindahJam * 60) + " menit), lalu: ") + (def.i || "") };
     }
     /* Tidak pulang: tidak satu langkah pun menyuruh pulang / ke arah rumah
        (dulu "Sudah malam — pulang", "Hanya order ke arah barat") */
@@ -1136,8 +1149,10 @@ function adviseInti(blk, L, o){
      Tangerang" dengan baterai 2%, "Waktunya pulang, ambil order" di 2%. */
   if (!o.stay && L && (o.casSekarang || o.perluCasPulang)){
     var spk = (typeof spkluTeks === "function" && spkluTeks(spkluUntuk(L))) ? "SPKLU terdekat: " + spkluTeks(spkluUntuk(L)) : "SPKLU terdekat";
-    if (L.home <= 1 && o.rumah) return { k:"bad", h:"Colok di rumah dulu",
-      r:"Colokan rumah &middot; isi secukupnya", p:"Baterai tidak cukup untuk narik lagi. Isi dulu di rumah, baru berangkat.",
+    var sa = o.sesiAwal;
+    if (L.home <= 1 && o.rumah && (!sa || sa.ac)) return { k:"bad", h:"Colok di rumah dulu",
+      r:"Colokan rumah" + (sa ? " &middot; sampai &plusmn;" + pctB(sa.ke) + "%, &plusmn;" + (sa.durasi < 1 ? Math.round(sa.durasi * 60) + " menit" : sa.durasi.toFixed(1).replace(".", ",") + " jam") : " &middot; isi secukupnya"),
+      p:"Baterai tidak cukup untuk narik lagi. Isi dulu di rumah" + (sa && sa.ac ? " (colokan rumah pelan, &plusmn;7 kW)" : "") + ", baru berangkat.",
       kenapa:"Langkah pertama di bawah memang ngecas: baterai sekarang di bawah batas aman." };
     var daftarS = (typeof spkluUntuk === "function") ? spkluUntuk(L) : null;
     var jangkau = Math.max(0, (o.soc || 0) / 100 - 0.03) * (o.bat || 30.08) * CALIB.kmkwh;

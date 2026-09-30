@@ -64,11 +64,17 @@ var Peluang = (function(){
        berangkat pulang dari T sebelum 20:00 -- tidak perlu (dan rugi) pindah
        dulu ke Kota. Tidak pulang malam ini (stay): aturan pulang tidak berlaku. */
     var berangkatDariT = o.stay ? 24 : o.pulang - jamMulaiPulang(o, T);
+    /* Jakarta lewat 09:30 sampai 15:15 (Rute 700K, sama dengan teks langkah
+       dan kartu "Pasang filter, pulang bawa penumpang" / "Jakarta sepi"):
+       pulang bawa penumpang ke Kota. Dulu angkanya tetap di CBD seharian
+       sementara langkahnya menyuruh keluar Jakarta tiga kali lalu kembali. */
+    var SIANG_JKT = { "Pagi akhir":1, "Siang":1, "Jam mati":1 }, pindahJam = null;
     var u = potongBlok(o).filter(function(p){ return !p.jeda; }).map(function(p){
-      if (!o.stay && !bolehKe(kini, kini, p) && !(kini === T && berangkatDariT <= p.s + 0.01)){ kini = LOKMAP.kota; pindahMalam = true; }
+      if (!o.stay && kini.z === "jkt" && kini.home <= 38 && SIANG_JKT[p.b.n] && !(kini === T && berangkatDariT <= p.s + 0.01)){ kini = LOKMAP.kota; pindahMalam = true; if (pindahJam == null) pindahJam = p.s; }
+      if (!o.stay && !bolehKe(kini, kini, p) && !(kini === T && berangkatDariT <= p.s + 0.01)){ kini = LOKMAP.kota; pindahMalam = true; if (pindahJam == null) pindahJam = p.s; }
       return kini.id;
     });
-    u.pindahMalam = pindahMalam;
+    u.pindahMalam = pindahMalam; u.pindahJam = pindahJam;
     return u;
   }
 
@@ -155,7 +161,7 @@ var Peluang = (function(){
       var pindahN = 0; r.pieces.forEach(function(p){ if (p.pindahKm > 0.5) pindahN++; });
       var diamIni = u.join(">") === kunciDiam;
       return { urutan:u, segmen:seg, r:r, net:r.net - insentifSebelum(o), kmPindah:r.kmPindah, pindahN:pindahN, akhir:cari(u[u.length - 1]),
-               diam:diamIni, diamPulangMalam:diamIni && !!diam.pindahMalam };
+               diam:diamIni, diamPulangMalam:diamIni && !!diam.pindahMalam, diamPindahJam:diamIni ? diam.pindahJam : null };
     }
     /* Sama dengan kartu "ke mana sekarang": rencana yang tiba di suatu tempat
        dengan baterai < 8% tidak ditawarkan -- kecuali pulang ke Kota dan ada
