@@ -754,6 +754,9 @@ function runNow(){
   AKTUAL = { jam:o.keluar, dpt:dpt, lok:L.n, home:Math.round(kmHome*10)/10, z:L.z,
              tanggal:iso(new Date()) };
   try { localStorage.setItem("sekarang-terakhir", JSON.stringify(AKTUAL)); } catch (e) {}
+  /* posisi narik terakhir hari ini yang JAUH dari rumah: km untuk "menit
+     perjalanan pulang" (dulu terhapus begitu aplikasi dibuka di rumah) */
+  if (!stay && kmHome > 1.5){ try { localStorage.setItem("posisi-narik-terakhir", JSON.stringify({ tanggal:AKTUAL.tanggal, home:AKTUAL.home, z:AKTUAL.z })); } catch (e) {} }
 
   el("n-net").textContent = rp(proyeksi);
   el("n-net").className = "big " + (proyeksi>=TARGET_DAY?"ok":(proyeksi>=TARGET_DAY*0.75?"mid":"bad"));
@@ -896,8 +899,12 @@ function runNow(){
     if (lem) isi += (isi ? " " : "") + "<b>Stasiun:</b> 10:00\u201315:00 kereta tinggal " + Math.round(lem*100) + "%" + (lem <= 0.6 ? " \u2014 jangan menunggu di stasiun jam segitu." : ".");
     if (isi) tambah("","Di sekitar " + wk.kec, isi, "Dari apa yang ada di sana menurut peta, bukan dari jumlah order terukur.");
   }
+  /* per angka: mana yang dari catatan Ibu, mana yang masih perkiraan (dulu
+     semuanya disebut "angka Ibu" walau km berpenumpang tidak pernah diisi) */
+  var dariI = CALIB.dari || {};
   if (CALIB.live) tambah("good","Pakai angka Ibu ("+CALIB.n+" hari)",
-    "Rp "+Math.round(CALIB.rpkm).toLocaleString("id-ID")+"/km, insentif "+rp(CALIB.ins)+", "+dec(CALIB.kmkwh,1)+" km/kWh.");
+    "Rp "+Math.round(CALIB.rpkm).toLocaleString("id-ID")+"/km"+(dariI.rpkm ? "" : " (perkiraan &mdash; isi km berpenumpang)")+
+    ", insentif "+rp(CALIB.ins)+(dariI.ins ? "" : " (perkiraan)")+", "+dec(CALIB.kmkwh,1)+" km/kWh"+(dariI.kmkwh ? "" : " (perkiraan)")+".");
   else tambah("warn","Masih angka perkiraan","Isi 3 hari di tab Catatan supaya jadi angka Ibu.");
   if (gap>5000 && o.pulang<21.5){
     var tj = tambahanJam(o, r, 1.5);
@@ -1650,6 +1657,11 @@ function jumlahBlok(bl){ var s = 0; for (var k in bl) s += bl[k]; return s; }
 function cekBlok(){
   var e = el("blok-cek"); if (!e) return;
   var bl = bacaBlok(), trip = num(el("trip").value);
+  /* isian yang akan dibuang harus kelihatan (dulu 45 dibuang diam-diam lalu "Cocok") */
+  var tolak = [];
+  BASE.forEach(function(b, i){ var v = el("ob-" + i).value.trim(); if (v === "") return; var n = Number(v);
+    if (!(isFinite(n) && n >= 0 && n <= 40 && Math.floor(n) === n)) tolak.push(labelBlok(b.n) + ": " + v); });
+  if (tolak.length){ e.textContent = tolak.join(", ") + " tidak masuk akal (0\u201340 order, bilangan bulat) \u2014 cek lagi; tidak ikut disimpan."; e.className = "hint err"; return; }
   if (!bl){ e.textContent = ""; e.className = "hint"; return; }
   var s = jumlahBlok(bl);
   if (!trip){ e.textContent = "Jumlah " + s + " order — dipakai sebagai \"Order selesai\" kalau kolom itu kosong."; e.className = "hint"; }
@@ -1673,12 +1685,14 @@ function renderCarter(){
   e.hidden = !ada.length; if (!ada.length) return;
   var grup = {};
   ada.forEach(function(r){
-    var c = carterBersih(r.carter), g = grup[r.carter.jenis] || (grup[r.carter.jenis] = { n:0, net:0, jam:0 });
-    g.n++; g.net += c.net; g.jam += num(r.carter.jam);
+    var c = carterBersih(r.carter), g = grup[r.carter.jenis] || (grup[r.carter.jenis] = { n:0, net:0, jam:0, netJ:0 });
+    g.n++; g.net += c.net;
+    /* per jam hanya dari carter yang lamanya diisi */
+    if (num(r.carter.jam) > 0){ g.jam += num(r.carter.jam); g.netJ += c.net; }
   });
-  var grab = avgOf(rows.slice(0, 14), function(d){ return d.perjam; });
+  var grab = avgOf(rows.filter(function(r){ return num(r.dpt) > 0; }).slice(0, 14), function(d){ return d.perjam; });
   var bagian = Object.keys(grup).map(function(k){
-    var g = grup[k], pj = g.jam > 0 ? g.net / g.jam : null;
+    var g = grup[k], pj = g.jam > 0 ? g.netJ / g.jam : null;
     var banding = (pj != null && grab) ? " &mdash; " + (pj >= grab.v ? "<span class=\"up\">" + rp(pj - grab.v) + "/jam di atas</span>" : "<span class=\"dn\">" + rp(grab.v - pj) + "/jam di bawah</span>") + " narik" : "";
     return esc(JENIS_CARTER[k] || k) + ": " + g.n + "&times;, rata-rata bersih " + rp(g.net / g.n) + (pj != null ? " (" + rp(pj) + "/jam)" : "") + banding;
   });
@@ -1716,20 +1730,29 @@ el("tf-hitung").addEventListener("click", function(){
 });
 function preview(){
   var r={}; F.forEach(function(k){ r[k]=el(k).value; });
-  var d=derive(r), any=num(r.dpt)>0||num(r.kmt)>0;
+  var d=derive(r), ctP=bacaCarter(), any=num(r.dpt)>0||num(r.kmt)>0||!!ctP;
+  var netP = d.net + (ctP ? carterBersih(ctP).net : 0);   /* sama dengan yang tersimpan (termasuk carter) */
   function set(id,txt,good){ el(id).textContent=txt; el(id).className="v"+(txt==="—"?"":(good?" good":" warn")); }
-  set("pv-net", any?rp(d.net):"—", d.net>=TARGET_DAY);
+  set("pv-net", any?rp(netP):"—", netP>=TARGET_DAY);
   set("pv-jam", d.perjam==null?"—":rp(d.perjam), d.perjam>=42000);
   set("pv-kmj", d.kmjam==null?"—":dec(d.kmjam,1), d.kmjam>=15);
   set("pv-util",d.util==null?"—":dec(d.util,0)+"%", d.util>=75);
   set("pv-eff", d.eff==null?"—":dec(d.eff,1), d.eff>=6.7);
+  /* angka yang mustahil tidak boleh tampil hijau (dulu 40 km/kWh "bagus") */
+  var jg = nilaiJanggal(d);
+  if (d.util != null && d.util > 100) set("pv-util", dec(d.util,0)+"%", false);
+  if (d.eff != null && (d.eff > BATAS_CAL.eff[1] || d.eff < BATAS_CAL.eff[0])) set("pv-eff", dec(d.eff,1), false);
+  if (d.kmjam != null && d.kmjam > 40) set("pv-kmj", dec(d.kmjam,1), false);
+  var st = el("status");
+  if (jg.length){ st.textContent = "Cek lagi: " + jg.join("; ") + ". Angka janggal tidak dipakai untuk kalibrasi."; st.className = "status err"; }
+  else if (/^Cek lagi/.test(st.textContent)){ st.textContent = ""; st.className = "status"; }
 }
 function tile(l,v,c,s){ return '<div class="tile '+s+'"><span class="lbl">'+l+
   '</span><span class="val">'+v+'</span><span class="cmp">'+c+"</span></div>"; }
 function renderCal(){
-  var recent=rows.slice(0,14);
-  el("calbasis").textContent = recent.length ? "Rata-rata "+recent.length+" hari" : "Belum ada data";
-  var a=avgOf(recent,function(d){return d.rpkm;}), b=avgOf(recent,function(d){return d.eff;});
+  var recent=rows.filter(function(r){ return num(r.dpt) > 0 || num(r.kmt) > 0; }).slice(0,14);
+  el("calbasis").textContent = recent.length ? "Nilai tengah "+recent.length+" hari narik" : "Belum ada data";
+  var a=medianOf(recent,function(d){return d.util!=null&&d.util>100?null:d.rpkm;},BATAS_CAL.rpkm[0],BATAS_CAL.rpkm[1],1), b=medianOf(recent,function(d){return d.eff;},BATAS_CAL.eff[0],BATAS_CAL.eff[1],1);
   var c=avgOf(recent,function(d){return d.util;}), e=avgOf(recent,function(d){return d.kmjam;});
   el("caltiles").innerHTML =
     tile("Rp / km penumpang", a?Math.round(a.v).toLocaleString("id-ID"):"—","asumsi <b>2.900</b>",
@@ -1773,12 +1796,14 @@ function weekMonth(){
   el("monthname").textContent = now.toLocaleDateString("id-ID",{month:"long",year:"numeric"});
   el("mnet").textContent = rp(sum);
   el("mbar").style.width = Math.max(0,Math.min(100,(sum/TARGET_MONTH)*100)).toFixed(1)+"%";
-  var dim=new Date(y,m+1,0).getDate(), left=dim-now.getDate();
+  /* hari ini ikut dihitung selama belum dicatat */
+  var dim=new Date(y,m+1,0).getDate(), left=dim-now.getDate()+(rows.some(function(r){ return r.id === iso(now); }) ? 0 : 1);
   var lw=Math.max(0,Math.round(left*6/7)), rem=TARGET_MONTH-sum, msg;
   if (!worked) msg="Belum ada catatan bulan ini. Target <b>"+rp(TARGET_MONTH)+"</b> dari sekitar <b>"+
     Math.round(dim*6/7)+"</b> hari kerja.";
   else if (rem<=0) msg='<span class="up">Target bulan ini sudah tercapai.</span> Kelebihan <b>'+rp(-rem)+"</b>.";
   else if (lw<=0) msg="Bulan hampir habis. Kurang <b>"+rp(rem)+"</b>.";
+  else if (rem/lw > TARGET_DAY*1.5) msg="Target bulan ini sulit terkejar: kurang <b>"+rp(rem)+"</b> dengan sisa sekitar <b>"+lw+"</b> hari kerja. Jangan dikejar dengan narik lewat 12 jam.";
   else { var need=rem/lw, cls=need<=515000?"up":(need<=620000?"":"dn");
     msg=worked+" hari tercatat &middot; sisa sekitar <b>"+lw+"</b> hari kerja &middot; perlu <b class=\""+
       cls+"\">"+rp(need)+"</b> per hari"+(cls==="up"?" &mdash; Ibu sedang unggul":(cls==="dn"?" &mdash; kejar di hari kuat":"")); }
@@ -1819,8 +1844,17 @@ el("save").addEventListener("click", function(){
   /* Menit pulang tidak ada artinya tanpa tahu berapa km yang ditempuh. Km-nya
      diambil dari posisi terakhir yang tercatat di tab Sekarang hari itu, jadi
      Ibu cukup mengetik satu angka. */
-  if (rec.mnt > 0 && AKTUAL && AKTUAL.tanggal === tgl && AKTUAL.home > 0){
-    rec.pkm = AKTUAL.home; rec.pz = AKTUAL.z || "tng";
+  /* catatan tanggal ini sudah ada tapi form tidak dimuat darinya: kolom yang
+     dibiarkan kosong memakai angka lama (bukan dihapus) */
+  var lamaR = rows.filter(function(r){ return r.id === tgl; })[0], gabung = false;
+  if (lamaR && CATATAN_DARI !== tgl){
+    F.forEach(function(k){ if (k !== "tgl" && el(k).value === "" && lamaR[k] != null) rec[k] = lamaR[k]; });
+    gabung = true;
+  }
+  var posN = null; try { posN = JSON.parse(localStorage.getItem("posisi-narik-terakhir") || "null"); } catch (e) {}
+  var posP = (AKTUAL && AKTUAL.tanggal === tgl && AKTUAL.home > 1.5) ? AKTUAL : (posN && posN.tanggal === tgl && posN.home > 0 ? posN : null);
+  if (rec.mnt > 0 && posP){
+    rec.pkm = posP.home; rec.pz = posP.z || "tng";
     /* jam berangkat pulang = rencana tiba dikurangi menitnya -- untuk kalibrasi
        kecepatan menurut jam (lalu lintas 21:00 bukan lalu lintas 18:00) */
     var Pt = rencanaUntuk(tgl);
@@ -1828,8 +1862,10 @@ el("save").addEventListener("click", function(){
   }
   var carter = bacaCarter();
   if (carter) rec.carter = carter;
+  else if (gabung && lamaR.carter) rec.carter = lamaR.carter;
   if (!rec.dpt && !rec.kmt && !carter){ el("status").textContent="Isi minimal pendapatan, km, atau carter."; el("status").className="status err"; return; }
   var blok = bacaBlok();
+  if (!blok && gabung && lamaR.blok) blok = lamaR.blok;
   if (blok){
     rec.blok = blok;
     if (!rec.trip) rec.trip = jumlahBlok(blok);
@@ -1846,10 +1882,44 @@ el("save").addEventListener("click", function(){
   rec.diubah = new Date().toISOString();   /* untuk penggabungan saat sinkron */
   rows = rows.filter(function(r){ return r.id!==rec.id; }); rows.push(rec); sortRows();
   var tersimpan = lsWrite(rows); renderAll();
-  if (tersimpan){ el("status").textContent="Tersimpan."; el("status").className="status ok"; sinkronNanti(); }
+  if (tersimpan){
+    CATATAN_DARI = tgl;
+    el("status").textContent = (gabung ? "Tersimpan (digabung dengan catatan tanggal ini; kolom kosong memakai angka lama)." : "Tersimpan.") +
+      (rec.mnt > 0 && !rec.pkm ? " Menit pulang belum bisa dipakai: posisi narik terakhir hari itu tidak diketahui." : "");
+    el("status").className="status ok"; sinkronNanti();
+  }
   else { el("status").textContent="GAGAL disimpan di HP ini (penyimpanan penuh atau mode privat?). Catat angkanya di tempat lain sebelum keluar halaman ini."; el("status").className="status err"; }
 });
 F.forEach(function(k){ el(k).addEventListener("input", preview); });
+["ct-jenis", "ct-tarif", "ct-jam", "ct-km", "ct-biaya"].forEach(function(k){ el(k).addEventListener("input", preview); el(k).addEventListener("change", preview); });
+
+/* Tanggal yang sudah punya catatan: isiannya dimuat untuk diubah (dulu form
+   kosong, dan Simpan menghapus km, insentif, blok, carter hari itu). */
+var CATATAN_DARI = null;
+function catatanKosong(){
+  return F.every(function(k){ return k === "tgl" || el(k).value === ""; }) &&
+    ["ct-tarif", "ct-jam", "ct-km", "ct-biaya"].every(function(k){ return el(k).value === ""; }) &&
+    BASE.every(function(b, i){ return el("ob-" + i).value === ""; });
+}
+function resetCatatan(){
+  F.forEach(function(k){ if (k !== "tgl") el(k).value = ""; });
+  ["ct-tarif", "ct-jam", "ct-km", "ct-biaya"].forEach(function(k){ el(k).value = ""; });
+  BASE.forEach(function(b, i){ el("ob-" + i).value = ""; });
+  CATATAN_DARI = null; cekBlok(); preview();
+}
+function isiCatatanDari(r){
+  resetCatatan();
+  F.forEach(function(k){ if (k === "tgl") return; var v = r[k]; if (v != null && v !== "" && !(k !== "cat" && v === 0)) el(k).value = v; });
+  if (r.carter){ el("ct-jenis").value = r.carter.jenis || "setengah"; ["tarif", "jam", "km", "biaya"].forEach(function(k){ if (num(r.carter[k]) > 0) el("ct-" + k).value = r.carter[k]; }); }
+  if (r.blok) BASE.forEach(function(b, i){ if (b.n in r.blok) el("ob-" + i).value = r.blok[b.n]; });
+  CATATAN_DARI = r.id; cekBlok(); preview();
+}
+function muatCatatanTanggal(){
+  var t = el("tgl").value, r = rows.filter(function(x){ return x.id === t; })[0];
+  if (r){ isiCatatanDari(r); el("status").textContent = "Catatan tanggal ini sudah ada \u2014 isiannya dimuat; ubah lalu Simpan."; el("status").className = "status"; }
+  else if (CATATAN_DARI){ resetCatatan(); el("status").textContent = ""; el("status").className = "status"; }
+}
+el("tgl").addEventListener("change", muatCatatanTanggal);
 
 /* ---------- cadangan: salin ke papan klip, pulihkan dari tempelan ---------- */
 function teksCadangan(){
@@ -1888,21 +1958,33 @@ el("pulihkan").addEventListener("click", function(){
   var mulai = t.indexOf("{");
   if (mulai < 0){ setCad("Tidak menemukan data di teks itu.", "err"); return; }
   var data;
-  try { data = JSON.parse(t.slice(mulai)); }
+  /* ambil satu objek JSON utuh (teks chat di sekitarnya diabaikan) */
+  function objekPertama(s, i){
+    var d = 0, str = false, esc2 = false;
+    for (var j = i; j < s.length; j++){
+      var ch = s[j];
+      if (str){ if (esc2) esc2 = false; else if (ch === "\\") esc2 = true; else if (ch === '"') str = false; continue; }
+      if (ch === '"') str = true; else if (ch === "{") d++; else if (ch === "}"){ d--; if (d === 0) return s.slice(i, j + 1); }
+    }
+    return s.slice(i);
+  }
+  try { data = JSON.parse(objekPertama(t, mulai)); }
   catch (e){ setCad("Salinannya tidak lengkap atau rusak. Minta dikirim ulang.", "err"); return; }
   if (!data || !data.harian || !data.harian.length){ setCad("Tidak ada catatan di dalamnya.", "err"); return; }
 
   /* Gabungkan: catatan yang sudah ada di HP ini tidak ditimpa. */
-  var ada = {}; rows.forEach(function(r){ ada[r.id] = true; });
-  var tambah = 0;
-  data.harian.forEach(function(r){ if (r && r.id && !ada[r.id]){ rows.push(r); tambah++; } });
+  var ada = {}; rows.forEach(function(r){ ada[r.id] = r; });
+  var tambah = 0, beda = 0;
+  var inti = function(r){ var c = {}; Object.keys(r).sort().forEach(function(k){ if (k !== "diubah") c[k] = r[k]; }); return JSON.stringify(c); };
+  data.harian.forEach(function(r){ if (!r || !r.id) return; if (!ada[r.id]){ rows.push(r); tambah++; } else if (inti(ada[r.id]) !== inti(r)) beda++; });
   sortRows();
   var pulihOk = lsWrite(rows); renderAll();
   if (!pulihOk){ setCad("Gagal menyimpan di HP ini (penyimpanan penuh atau mode privat?). Coba lagi atau bersihkan penyimpanan HP.", "err"); return; }
   sinkronNanti();
   w.hidden = true; el("cadteks").value = "";
-  setCad(tambah ? (tambah + " hari dipulihkan, total sekarang " + rows.length + " hari.")
-                : "Semua catatan di salinan itu sudah ada di sini.", "ok");
+  setCad((tambah ? (tambah + " hari dipulihkan, total sekarang " + rows.length + " hari.")
+                 : "Semua tanggal di salinan itu sudah ada di sini.") +
+         (beda ? " " + beda + " tanggal di salinan BERBEDA dengan catatan di HP ini dan tidak diambil (yang di HP ini dipakai)." : ""), "ok");
 });
 
 el("p-save").addEventListener("click", function(){
@@ -1984,7 +2066,9 @@ var t = Math.round((now.getHours()+now.getMinutes()/60)*4)/4;
 if (t>=3.5 && t<=23.5) el("n-jam").value = t; else if (t < 3.5) el("n-jam").value = 3.5;   /* dini hari: dari blok pertama */
 /* 23:31-23:59: hitung dari 23:30 (pilihan terakhir), bukan 09:30 bawaan kolom */
 else { el("n-jam").value = 23.5; jamLuar = true; }
-el("tgl").value = iso(now); el("p-tgl").value = iso(now); el("p-tgl").min = iso(now);
+/* Catatan diisi sesudah sampai rumah: sebelum 04:00 itu catatan kemarin */
+el("tgl").value = (now.getHours() < 4) ? iso(new Date(now.getTime() - 864e5)) : iso(now);
+el("p-tgl").value = iso(now); el("p-tgl").min = iso(now);
 
 ["n-jam","n-lok","n-soc","n-dpt","n-pulang","n-tujuan","n-bat","n-filter","n-hujan","n-acara","n-rumah"]
   .forEach(function(id){ el(id).addEventListener("change",runNow); el(id).addEventListener("input",runNow); });
@@ -2309,7 +2393,11 @@ function cekGantiHari(){
   loadPlan();
   muatMulaiHari();
   /* Catatan: tanggal isian ikut hari baru (dulu simpan hari ini menimpa catatan kemarin) */
-  if (el("tgl").value < h) el("tgl").value = h;
+  /* isian Catatan yang belum disimpan tidak dipindah tanggalnya diam-diam */
+  if (el("tgl").value < h && new Date().getHours() >= 4){
+    if (catatanKosong() || CATATAN_DARI){ resetCatatan(); el("tgl").value = h; el("status").textContent = ""; el("status").className = "status"; }
+    else { el("status").textContent = "Tanggal catatan masih " + el("tgl").value + " \u2014 benar? Ganti tanggalnya kalau untuk hari ini."; el("status").className = "status err"; }
+  }
   el("p-tgl").min = h;
   isiKepala();
   el("hari-status").textContent = ""; el("hari-status").className = "status";
@@ -2319,7 +2407,7 @@ function cekGantiHari(){
     el("p-tgl").value = h; el("p-tgl").dispatchEvent(new Event("change", { bubbles:true }));
   }
   terapkanRencanaHariIni();
-  runNow(); runPlan();
+  renderAll(); if (typeof renderSegar === "function") renderSegar();   /* kartu bulan, kalibrasi, kesegaran kalender ikut hari baru */
 }
 setInterval(cekGantiHari, 60000);
 document.addEventListener("visibilitychange", function(){ if (!document.hidden) cekGantiHari(); });
@@ -2327,7 +2415,7 @@ if (EVENTS[iso(now)]) el("n-acara").checked = true;
 /* Fase capture: penibu "manual" harus tercatat sebelum runNow menggambar. */
 el("n-acara").addEventListener("change", function(){ this.dataset.touched = "1"; }, true);
 el("n-hujan").addEventListener("change", function(){ this.dataset.touched = "1"; }, true);
-rows = lsRead(); sortRows(); renderAll(); preview();
+rows = lsRead(); sortRows(); renderAll(); preview(); muatCatatanTanggal();
 /* Pemeriksaan TIDAK berjalan sendiri: di HP ia menghentikan tampilan
    sampai belasan detik, dan halaman terlihat seperti tidak mau terbuka. */
 el("ujijalan").addEventListener("click", function(){

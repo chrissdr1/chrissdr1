@@ -803,7 +803,8 @@ async function main(){
     ok(/4[.,]8/.test(hasil.histText) && /88%/.test(hasil.histText) && /97%/.test(hasil.histText),
        "tabel Riwayat menampilkan rating, tingkat penerimaan, dan penyelesaian", hasil.histText.slice(0, 200));
     /* Boleh kosong: hari lain tanpa data ini tidak error dan tampil "—". */
-    await setField(pf, "tgl", "2026-09-26");
+    await setField(pf, "tgl", "2026-09-26");   /* tanggal baru: form catatan tanggal lain dikosongkan */
+    await setField(pf, "dpt", 300000);
     for (const [k, v] of Object.entries({ rating:"", acc:"", comp:"" })) await setField(pf, k, v);
     await pf.click("#save");
     const kosong = await pf.evaluate(() => JSON.parse(localStorage.getItem("buku-setoran-v1")).find(r => r.id === "2026-09-26"));
@@ -855,7 +856,8 @@ async function main(){
 
     /* Tanpa isian per blok: catatan lama tetap bisa disimpan seperti biasa. */
     await pb.evaluate(() => document.querySelectorAll("#blok-grid input").forEach(i => { i.value = ""; }));
-    await setField(pb, "tgl", "2026-09-23");
+    await setField(pb, "tgl", "2026-09-23");   /* tanggal lain: form dikosongkan, isi lagi */
+    await setField(pb, "dpt", 300000);
     await pb.click("#save");
     const polos = await pb.evaluate(() => JSON.parse(localStorage.getItem("buku-setoran-v1")).find(r => r.id === "2026-09-23"));
     ok(polos && !("blok" in polos) && !("blokZona" in polos), "tanpa isian per blok: tidak ada field blok, tidak ada jejak tanggal lain", JSON.stringify(polos));
@@ -896,7 +898,9 @@ async function main(){
             total += blok[b.n];
             if (t) blokZona[b.n] = tempat;
           });
-          rows.push(opsi.totalSaja ? { id:tgl, jendela:jd, trip:total, dpt:1, kmt:1 } : { id:tgl, blok, blokZona, jendela:jd, trip:0, dpt:1, kmt:1 });
+          /* pendapatan sesuai jumlah order (Belajar memakai pendapatan untuk tingkat bila km berpenumpang kosong) */
+          const dptH = Math.round(total * CALIB.tripKm * CALIB.rpkm);
+          rows.push(opsi.totalSaja ? { id:tgl, jendela:jd, trip:total, dpt:dptH, kmt:1 } : { id:tgl, blok, blokZona, jendela:jd, trip:0, dpt:dptH, kmt:1 });
         }
         return rows;
       }

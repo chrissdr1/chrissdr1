@@ -82,6 +82,8 @@ var Belajar = (function(){
       if (!r || !r.id) return;
       var jd = jendelaDari(r); if (!jd) return;
       var ctx = dayCtx(r.id), zk = (jd.zona && ZONA[jd.zona]) ? jd.zona : "tng";
+      /* hari puasa punya pola jam sendiri: tidak dicampur ke pola hari biasa */
+      if (ctx.ramadan) return;
       var jamB = jamPerBlok(r, jd, ctx);
       var bagian = [];
       BASE.forEach(function(b){
@@ -101,10 +103,22 @@ var Belajar = (function(){
         if (!(tot > 0)) return;
         bagian.forEach(function(x){ x.act = trip * x.pred / tot; });
       }
+      /* Tanpa km berpenumpang, jumlah order tidak bisa dibedakan dari panjang
+         order (34 order pendek = 17 order jauh dengan uang yang sama): tingkat
+         ramainya diambil dari PENDAPATAN hari itu, bentuk pola jam dari order
+         -- dulu hari order pendek menggandakan perkiraan pendapatan. */
+      if (!(num(r.kmp) > 0) && num(r.dpt) > 0){
+        /* ubah jumlah order jadi "setara pendapatan": pendapatan yang dicatat
+           dibagi pendapatan per order perkiraan (km/order x Rp/km) */
+        var sa = 0; bagian.forEach(function(x){ sa += x.act; });
+        var perOrder = (CALIB.tripKm || 8.4) * (CALIB.rpkm || 2900);
+        var fk = (sa > 0 && perOrder > 0) ? num(r.dpt) / (sa * perOrder) : 1;
+        if (fk >= 0.25 && fk <= 4) bagian.forEach(function(x){ x.act = x.act * fk; });
+      }
       H.nHari++;
       bagian.forEach(function(x){
         var act = Math.min(x.act, x.pred * 2 + 1);
-        H.nOrder += x.act; butir.push({ hari:r.id, d:ctx.shapeDay, b:x.b.n, act:act, pred:x.pred, tempat:x.tempat });
+        H.nOrder += act; butir.push({ hari:r.id, d:ctx.shapeDay, b:x.b.n, act:act, pred:x.pred, tempat:x.tempat });
       });
     });
 

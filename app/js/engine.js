@@ -74,6 +74,27 @@ function avgOf(list, pick){
     if (v!=null && isFinite(v) && v>0){ s+=v; n++; } });
   return n?{v:s/n,n:n}:null;
 }
+/* Median nilai yang masuk akal saja (lo..hi). Satu salah ketik (kmp 15
+   bukan 152, kWh isi ulang saja) dulu menggeser rata-rata: Rp 11.708/km,
+   40 km/kWh, lalu seluruh rencana. Minimal 3 hari yang sah. */
+function medianOf(list, pick, lo, hi, minN){
+  var v = [];
+  list.forEach(function(r){ var x = pick(derive(r), r); if (x != null && isFinite(x) && x >= lo && x <= hi) v.push(x); });
+  if (v.length < (minN || 3)) return null;
+  v.sort(function(a, b){ return a - b; });
+  var m = v.length >> 1;
+  return { v:(v.length % 2) ? v[m] : (v[m - 1] + v[m]) / 2, n:v.length };
+}
+/* Batas masuk akal per hari (BYD Atto 1, Grab Jabodetabek). */
+var BATAS_CAL = { rpkm:[1500, 6000], eff:[4.5, 10], tripKm:[2, 40], ins:[0, 400000] };
+function nilaiJanggal(d){
+  var m = [];
+  if (d.util != null && d.util > 100) m.push("km berpenumpang lebih besar dari km total");
+  if (d.rpkm != null && (d.rpkm < BATAS_CAL.rpkm[0] || d.rpkm > BATAS_CAL.rpkm[1])) m.push("Rp per km berpenumpang " + Math.round(d.rpkm).toLocaleString("id-ID"));
+  if (d.eff != null && (d.eff < BATAS_CAL.eff[0] || d.eff > BATAS_CAL.eff[1])) m.push("km per kWh " + d.eff.toFixed(1).replace(".", ",") + " (isi total kWh hari itu, termasuk ngecas di rumah)");
+  if (d.tripKm != null && (d.tripKm < BATAS_CAL.tripKm[0] || d.tripKm > BATAS_CAL.tripKm[1])) m.push("km per order " + d.tripKm.toFixed(1).replace(".", ","));
+  return m;
+}
 /* Calibration used by the whole engine. Falls back to Rute 700K assumptions. */
 /* 26 km/jam itu ANGKA TEBAKAN saya, dan ia menentukan tujuh hal yang paling
    menyangkut keselamatan: berapa lama perjalanan pulang, kapan mulai merapat,
@@ -91,11 +112,14 @@ var KEC_BAWAAN = 26;
 var CALIB = { rpkm:BASE_RPKM, ins:130000, kmkwh:6.7, kecepatan:KEC_BAWAAN, tripKm:BASE_TRIP_KM,
               kecUkur:false, kecN:0, live:false, n:0 };
 function recalibrate(){
-  var recent = rows.slice(0,14);
-  var a = avgOf(recent,function(d){return d.rpkm;});
-  var b = avgOf(recent,function(d){return d.eff;});
-  var c = avgOf(recent,function(d){return d.ins;});
-  var t = avgOf(recent,function(d){return d.tripKm;});
+  /* hari Grab saja (catatan carter saja tidak membuka kalibrasi) */
+  var recent = rows.filter(function(r){ return num(r.dpt) > 0 || num(r.kmt) > 0; }).slice(0,14);
+  var sahKm = function(d){ return !(d.util != null && d.util > 100); };
+  var a = medianOf(recent, function(d){ return sahKm(d) ? d.rpkm : null; }, BATAS_CAL.rpkm[0], BATAS_CAL.rpkm[1]);
+  var b = medianOf(recent, function(d){ return d.eff; }, BATAS_CAL.eff[0], BATAS_CAL.eff[1]);
+  /* insentif 0 yang dicatat itu angka sungguhan (dulu dibuang, tetap Rp 130.000) */
+  var c = medianOf(recent, function(d, r){ return num(r.dpt) > 0 ? d.ins : null; }, BATAS_CAL.ins[0], BATAS_CAL.ins[1]);
+  var t = medianOf(recent, function(d){ return sahKm(d) ? d.tripKm : null; }, BATAS_CAL.tripKm[0], BATAS_CAL.tripKm[1]);
   var enough = recent.length >= 3;
   /* Kecepatan pulang dari hari-hari yang menit pulangnya dicatat. Median,
      bukan rata-rata: satu hari dengan banjir tidak boleh menggeser semuanya.
@@ -127,7 +151,8 @@ function recalibrate(){
     tripKm:(enough && t) ? t.v : BASE_TRIP_KM,
     kecepatan: kec, kecUkur: laju.length > 0, kecN: laju.length,
     live: enough && !!(a||b||c),
-    n: recent.length
+    n: recent.length,
+    dari: { rpkm:!!(enough && a), ins:!!(enough && c), kmkwh:!!(enough && b), tripKm:!!(enough && t) }
   };
   /* Setelah CALIB (tripLen memakai CALIB.tripKm): pola jam/hari/tempat dari catatan. */
   if (typeof Belajar !== "undefined") Belajar.hitung(rows);
