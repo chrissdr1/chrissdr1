@@ -979,7 +979,9 @@ function runPlan(){
     o.soc = MULAI_HARI.soc; socAwalPlan = MULAI_HARI.soc;
   }
   var r = simulate(o);
+  /* istirahat dipotong ke jam sif; yang di luar sif bukan istirahat rencana ini */
   var jedaR = rehatRange(o.rehat);
+  if (jedaR){ jedaR = [Math.max(jedaR[0], o.keluar), Math.min(jedaR[1], o.pulang)]; if (jedaR[1] - jedaR[0] < 0.25) jedaR = null; }
 
   el("p-net").textContent = rp(r.net);
   el("p-net").className = "big "+(r.net>=TARGET_DAY?"ok":(r.net>=TARGET_DAY*0.75?"mid":"bad"));
@@ -1012,9 +1014,15 @@ function runPlan(){
   var nn=[];
   if (ctx.holi) nn.push(catatan("warn","Tanggal merah","<b>"+ctx.holi[0]+".</b> Tidak ada peak pagi; mulai siang, mal\u2013kuliner\u2013bandara sampai malam."));
   if (ctx.eve) nn.push(catatan("good","Besok libur","Sore\u2013malam kejar bandara, Batu Ceper, Terminal Poris."));
-  if (o.keluar>=10.5 && o.keluar<14.5) nn.push(catatan("bad","Mulai siang = jam paling murah","Lebih untung keluar jam 15:00."));
-  if (r.effHours>12) nn.push(catatan("bad","Lewat batas 12 jam","<b>"+r.effHours.toFixed(1)+" jam</b> narik."));
-  else if (r.effHours<=8.4) nn.push(catatan("good","Sesuai aturan 8 jam","Per jam <b>"+rp(r.perHour)+"</b> \u2014 biasanya paling tinggi."));
+  /* hanya kalau memang terbukti dengan hitungan yang sama (dulu klaim tetap,
+     keliru di 390 dari 410 kasus) */
+  if (o.keluar>=10.5 && o.keluar<14.5 && o.pulang > 15.5){
+    var r15 = simulate(Object.assign({}, o, { keluar:15 }));
+    if (r15.net > r.net + 5000) nn.push(catatan("bad","Mulai siang = jam paling murah","Keluar jam 15:00 lebih untung &plusmn;"+rp(r15.net - r.net)+"."));
+  }
+  if (r.effHours>12) nn.push(catatan("bad","Lewat batas 12 jam","<b>"+r.effHours.toFixed(1).replace(".", ",")+" jam</b> narik."));
+  else if (r.effHours<=8.4 && r.net > 0) nn.push(catatan("good","Sesuai aturan 8 jam","Per jam <b>"+rp(r.perHour)+"</b> \u2014 biasanya paling tinggi."));
+  if (!(r.effHours > 0.05)) nn.push(catatan("bad","Tidak ada jam narik","Jam mulai "+hhmm(o.keluar)+" sudah di batas jam pulang hari itu."));
   if (r.sessions) nn.push(catatan(r.sesi.some(function(x){ return x.peak; }) ? "bad" : "", "Ngecas "+r.sessions+"&times;",
     r.sesi.map(function(x){
       return "Jam "+hhmm(x.jam)+": "+pctB(x.dari)+"&rarr;"+pctB(x.ke)+"%, &plusmn;"+Math.round(x.durasi*60)+" menit"+
@@ -1028,7 +1036,8 @@ function runPlan(){
     "Di bawah batas aman "+Math.round(r.floor*100)+"%. Saat itu ambil order pendek, dekat SPKLU.",
     r.socMinKerja >= r.floor - 0.05 ? "Sengaja dibiarkan: satu kali ngecas lagi lebih mahal daripada selisihnya." : "Tambah istirahat untuk ngecas lebih awal, atau berangkat lebih penuh."));
   if (jedaR){
-    var makanPeak = BASE.filter(function(b){ return PEAKS[b.n] && Math.min(b.e, jedaR[1]) - Math.max(b.s, jedaR[0]) > 0.25; });
+    var tanpaPagi = !!ctx.holi || ctx.dow === 0 || ctx.dow === 6;   /* tidak ada peak pagi di hari itu */
+    var makanPeak = BASE.filter(function(b){ return PEAKS[b.n] && !(tanpaPagi && b.n === "Peak pagi") && Math.min(b.e, jedaR[1]) - Math.max(b.s, jedaR[0]) > 0.25; });
     if (makanPeak.length) nn.push(catatan("warn","Istirahat memotong "+makanPeak.map(function(b){ return b.n.toLowerCase(); }).join(" dan "),
       "Istirahat "+hhmm(jedaR[0])+"&ndash;"+hhmm(jedaR[1])+" kena jam termahal. Kalau bisa, geser."));
     var dur = jedaR[1]-jedaR[0], jt = jedaTermurah(o, dur);
@@ -1045,7 +1054,9 @@ function runPlan(){
   if (ctx.dow === 6 && !ctx.holi && o.keluar < 7.5) nn.push(catatan("","Sabtu","Tidak ada peak pagi; saran mulai <b>07:30</b>."));
   if (ctx.dow === 0 && !ctx.holi && o.keluar < 7) nn.push(catatan("","Minggu","Pagi tenang; saran mulai <b>07:00</b>, selesai <b>20:30</b>."));
   if (ctx.dow === 1 && !ctx.holi && o.keluar > 4.75 && o.keluar <= 5.25) nn.push(catatan("","Senin","Peak pagi paling berat; saran berangkat <b>04:45</b>."));
-  if (ctx.gajian) nn.push(catatan("good","Tanggal gajian (25\u20135)","Ramai. Pakai jadwal penuh."));
+  if (ctx.gajian) nn.push(catatan("good","Tanggal gajian (25\u20135)", ctx.holi ? "Ramai; di tanggal merah ramainya siang sampai malam." : "Ramai. Pakai jadwal penuh."));
+  if (ctx.ramadan) nn.push(catatan("","Bulan puasa: pola jam berubah","Jelang buka (&plusmn;15:30&ndash;18:00) paling ramai dan macet; saat buka order turun. <b>Angka di atas belum memperhitungkan ini.</b>"));
+  if (ctx.sekolahLibur) nn.push(catatan("","Libur sekolah","Pagi biasanya lebih lengang; bandara dan mal lebih ramai. <b>Angka di atas belum memperhitungkan ini.</b>"));
   if ((o.zona==="jkt"||o.zona==="mix") && !r.filterOK) nn.push(catatan("bad","Filter tujuan kurang",
     "Ke Jakarta butuh 1 filter per peak untuk pulang bawa penumpang. Dengan "+o.filter+", "+(o.filter ? "peak pagi" : "kedua peak")+" dihitung lebih rendah."));
   if (AKTUAL && AKTUAL.tanggal === dateStr && AKTUAL.dpt > 0){
@@ -1071,11 +1082,22 @@ function runPlan(){
 
   /* Sif terbaik dipilih dari yang SAH: jam efektif > 12 melanggar batas
      pengemudi angkutan umum, jadi tidak boleh dinobatkan sebagai acuan. */
-  renderPeluang("p-peluang", o, LOKMAP.kota, { rencana:true });
+  /* urutan tempat dihitung per tempat mulai dari rumah; untuk daerah selain
+     Tangerang angkanya memakai model lain dari rencana di atas (dulu "terbaik"
+     tanpa Jakarta/bandara sama sekali) -- tidak ditampilkan */
+  if (o.zona === "tng") renderPeluang("p-peluang", o, LOKMAP.kota, { rencana:true });
+  else el("p-peluang").hidden = true;
 
-  var best=-1, res=PRESETS.map(function(p){
-    var rr=simulate({ctx:ctx,keluar:p.k,pulang:p.p,rehat:p.r,zona:o.zona,filter:o.filter,
-      bat:o.bat,rumah:o.rumah,hujan:o.hujan,acara:o.acara});
+  /* pola memakai batas pulang hari itu (Minggu 20:30, lainnya 22:00) dan
+     baterai awal yang sama dengan rencana di atas -- dulu "paling untung"
+     sampai 23:00 lalu "Sebaiknya jangan", dan angka kartu beda dari rencana */
+  var batasHari = (ctx.dow === 0 && !ctx.holi) ? 20.5 : 22;
+  var best=-1, res=PRESETS.map(function(p0){
+    var p = { n:p0.n, k:p0.k, p:Math.min(p0.p, batasHari), r:p0.r };
+    var qq = {ctx:ctx,keluar:p.k,pulang:p.p,rehat:p.r,zona:o.zona,filter:o.filter,
+      bat:o.bat,rumah:o.rumah,hujan:o.hujan,acara:o.acara};
+    if (typeof o.soc === "number") qq.soc = o.soc;
+    var rr=simulate(qq);
     var sah = rr.effHours <= 12;
     if (sah && rr.net>best) best=rr.net; return {p:p,r:rr,sah:sah};
   });
@@ -1092,8 +1114,8 @@ function runPlan(){
   }).join("");
   Array.prototype.forEach.call(el("cmp").querySelectorAll("[data-pola]"), function(b){
     b.addEventListener("click", function(){
-      var p = PRESETS[+b.getAttribute("data-pola")];
-      el("p-keluar").value = p.k; el("p-pulang").value = p.p; setJedaUI(p.r); runPlan();
+      var p = res[+b.getAttribute("data-pola")].p;
+      el("p-keluar").value = p.k; el("p-pulang").value = p.p; setJedaUI(p.r); runPlan(); statusRencana();
       el("p-net").scrollIntoView({ behavior:"smooth", block:"center" });
       el("p-status").textContent = "Pola \u201c" + p.n + "\u201d dipakai. Tekan \u201cPakai rencana ini\u201d kalau mau dipakai hari itu.";
     });
@@ -1107,7 +1129,8 @@ function runPlan(){
   var gap=best-r.net;
   el("p-vs").innerHTML = gap>5000
     ? "Target Rp 515.000 &middot; pola terbaik <b>"+rp(best)+"</b> (+"+rp(gap)+")"
-    : "Target Rp 515.000 &middot; <b>ini pola terbaik</b>" + (r.effHours > 12 ? " (lewat 12 jam)" : "");
+    : r.effHours > 12 ? "Target Rp 515.000 &middot; lewat 12 jam &mdash; pilih pola yang ditandai <b>paling untung</b>"
+    : "Target Rp 515.000 &middot; <b>ini pola terbaik</b>";
 }
 
 /* ---------------- TANYA ----------------
@@ -1675,6 +1698,7 @@ el("tf-hitung").addEventListener("click", function(){
   var c = { tarif:num(el("tf-tarif").value), jam:num(el("tf-jam").value), km:num(el("tf-km").value), biaya:num(el("tf-biaya").value),
             mulai:parseFloat(el("tf-mulai").value) };
   if (!(c.tarif > 0) || !(c.jam > 0)){ out.innerHTML = "Isi tawaran (Rp) dan lama (jam) dulu."; return; }
+  if (String(el("tf-km").value).trim() === ""){ out.innerHTML = "Isi juga kira-kira km carter (untuk listrik)."; el("tf-km").focus(); return; }
   var tgl = el("tf-tgl").value || iso(new Date()), ctx = dayCtx(tgl);
   var o = { ctx:ctx, zona:el("p-zona").value || "tng", filter:parseInt(el("p-filter").value, 10) || 0, bat:parseFloat(el("p-bat").value),
             rumah:false, hujan:false, acara:false };
@@ -1683,9 +1707,9 @@ el("tf-hitung").addEventListener("click", function(){
     ? "<b class=\"up\">Carter lebih untung &plusmn;" + rp(beda) + "</b>"
     : "<b class=\"dn\">Narik lebih untung &plusmn;" + rp(beda) + "</b> (perkiraan)";
   out.innerHTML = vonis + ".<br>" +
-    "Carter: bersih &plusmn;" + rp(h.carter.net) + (h.carter.perJam != null ? " (" + rp(h.carter.perJam) + "/jam)" : "") +
+    "Carter: bersih &plusmn;" + rpT(h.carter.net) + (h.carter.perJam != null ? " (" + rpT(h.carter.perJam) + "/jam)" : "") +
     " setelah listrik &plusmn;" + rp(h.carter.listrik) + (c.biaya ? " dan biaya " + rp(c.biaya) : "") + ".<br>" +
-    "Narik di jam yang sama (" + esc(ctx.name) + " " + hhmm(h.keluar) + "&ndash;" + hhmm(h.pulang) + "): &plusmn;" + rp(h.grab) + ", termasuk bagian insentif." +
+    "Narik di jam yang sama (" + esc(ctx.name) + " " + hhmm(h.keluar) + "&ndash;" + hhmm(h.pulang) + (h.akhirNarik < h.pulang - 0.1 ? "; narik sampai " + hhmm(h.akhirNarik) + " lalu pulang, sesuai batas pulang" : "") + "): &plusmn;" + rpT(h.grab) + ", termasuk bagian insentif." +
     (beda < 30000 ? "<br>Bedanya kecil: carter pasti dibayar, narik bisa lebih atau kurang dari perkiraan." : "") +
     (CALIB.live ? "" : "<br>Perkiraan narik masih angka umum; setelah 3 hari catatan, angka Ibu sendiri yang dipakai.");
 });
@@ -3267,7 +3291,8 @@ function renderPeluang(id, o, L, opsi){
   if (!h || !h.daftar.length){ box.hidden = true; return h; }
   box.hidden = false;
   var basis = h.basis;
-  el(id + "-info").textContent = (h.awal ? "dari " + h.awal.n : "") + " \u00b7 " + Math.round((o.pulang - o.keluar)) + " jam" + (opsi.rencana ? "" : " lagi") + " \u00b7 terbaik \u00b1" + rp(h.daftar[0].net);
+  var jedaInfo = rehatRange(o.rehat), jamInfo = o.pulang - o.keluar - (jedaInfo ? Math.max(0, Math.min(jedaInfo[1], o.pulang) - Math.max(jedaInfo[0], o.keluar)) : 0);
+  el(id + "-info").textContent = (h.awal ? "dari " + h.awal.n : "") + " \u00b7 " + Math.round(jamInfo) + " jam" + (opsi.rencana ? "" : " lagi") + " \u00b7 terbaik \u00b1" + rp(h.daftar[0].net);
   el(id + "-list").innerHTML = h.daftar.map(function(x, i){
     var chips = x.segmen.map(function(sg){
       if (sg.jeda) return '<span class="jeda' + (sg.sesi ? " cas" : "") + '"><b>' + hhmm(sg.s) + "\u2013" + hhmm(sg.e) + "</b>istirahat" + (sg.sesi ? " + ngecas " + pctB(sg.sesi.dari) + "\u2192" + pctB(sg.sesi.ke) + "%" : "") + "</span>";

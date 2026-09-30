@@ -248,12 +248,12 @@ async function main(){
   {
     await page.evaluate(() => document.getElementById("mode-rencana").click());
     const sebelum = await page.evaluate(() => ({ k:el("p-keluar").value, p:el("p-pulang").value, r:el("p-rehat").value }));
-    await page.click('#cmp .pola[data-pola="4"]');   /* Sore-malam 15:00-23:00 tanpa istirahat */
+    await page.click('#cmp .pola[data-pola="4"]');   /* Sore-malam 15:00-23:00 tanpa istirahat, dipotong batas pulang 22:00 */
     const pakai = await page.evaluate(() => ({ k:el("p-keluar").value, p:el("p-pulang").value, r:el("p-rehat").value,
       tag:document.querySelector('#cmp .pola.dipakai') && document.querySelector('#cmp .pola.dipakai').getAttribute("data-pola"),
       net:el("p-net").textContent, asal:el("cmp-asal").textContent, status:el("p-status").textContent,
       lebar:document.getElementById("cmp").scrollWidth <= document.getElementById("cmp").clientWidth + 1 }));
-    ok(pakai.k === "15" && pakai.p === "23" && pakai.r === "none" && pakai.tag === "4" && /Sore/.test(pakai.status) && pakai.lebar,
+    ok(pakai.k === "15" && pakai.p === (new Date().getDay() === 0 ? "20.5" : "22") && pakai.r === "none" && pakai.tag === "4" && /Sore/.test(pakai.status) && pakai.lebar,
        "ketuk kartu pola: rencana di atas memakai jam dan istirahatnya, kartu itu ditandai 'dipakai', tidak perlu digeser ke samping", JSON.stringify({ sebelum, pakai }));
     ok(/Bersih = pendapatan \+ insentif/.test(pakai.asal) && /Rute 700K|catatan Ibu sendiri/.test(pakai.asal) && /12 jam/.test(pakai.asal),
        "'Dari mana angkanya?' menjelaskan sumber tarif, arti bersih/per jam/narik, dan batas 12 jam", pakai.asal);

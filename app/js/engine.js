@@ -11,6 +11,7 @@ function isOff(d){ return HOLI[iso(d)] || d.getDay() === 0 || d.getDay() === 6; 
 /* ---------------- helpers ---------------- */
 function num(v){ var n = parseFloat(v); return isFinite(n) && n >= 0 ? n : 0; }
 function rp(v){ return "Rp " + Math.round(v).toLocaleString("id-ID"); }
+function rpT(v){ return v < 0 ? "&minus;" + rp(-v) : rp(v); }   /* negatif: "−Rp 144.239", bukan "Rp -144.239" */
 function dec(v,d){ return v.toLocaleString("id-ID",{minimumFractionDigits:d,maximumFractionDigits:d}); }
 function hhmm(h){ var m=Math.round(h*60),H=Math.floor(m/60),M=m%60;
   return String(H).padStart(2,"0")+":"+String(M).padStart(2,"0"); }
@@ -782,16 +783,25 @@ function carterBersih(c){
 function bandingCarter(c, o){
   var ct = carterBersih(c), jam = num(c.jam);
   var q = {}; Object.keys(o).forEach(function(k){ q[k] = o[k]; });
-  q.keluar = c.mulai; q.pulang = Math.min(24, c.mulai + jam); q.rehat = "none"; q.stay = true; q.deadKm = 0;
+  /* Narik pembanding tunduk aturan yang sama dengan rencana: batas pulang
+     22:00 (Minggu 20:30) dan perjalanan pulang -- dulu dihitung narik sampai
+     24:00 dan menyarankan menolak carter yang sebenarnya lebih untung */
+  q.keluar = c.mulai; q.pulang = Math.min(24, c.mulai + jam); q.rehat = "none"; q.stay = false; q.deadKm = 0;
   var r = simulate(q);
+  var akhirNarik = r.pieces.filter(function(p){ return !p.jeda; }).reduce(function(a, p){ return Math.max(a, p.e); }, q.keluar);
   return { carter:ct, grab:r.net, grabPerJam:(jam > 0 ? r.net / jam : null), selisih:ct.net - r.net,
-           keluar:q.keluar, pulang:q.pulang, r:r };
+           keluar:q.keluar, pulang:q.pulang, akhirNarik:akhirNarik, r:r };
 }
 
 /* Jeda termurah dengan durasi tertentu di dalam sif: coba tiap 15 menit. */
 function jedaTermurah(o, durasi){
   var best = null;
-  for (var s = Math.ceil(o.keluar * 4) / 4; s + durasi <= o.pulang; s += 0.25){
+  /* hanya di dalam jam narik, sebelum "Waktunya pulang" -- dulu saran
+     istirahat 22:00-22:30 sesudah jam pulang (gratis karena tidak narik) */
+  var q0 = {}; Object.keys(o).forEach(function(k){ q0[k] = o[k]; }); q0.rehat = "none";
+  var r0 = simulate(q0);
+  var akhir = r0.pieces.filter(function(p){ return !p.jeda; }).reduce(function(a, p){ return Math.max(a, p.e); }, o.keluar);
+  for (var s = Math.ceil(o.keluar * 4) / 4; s + durasi <= akhir + 1e-6; s += 0.25){
     var p = {}; Object.keys(o).forEach(function(k){ p[k] = o[k]; });
     p.rehat = [s, s + durasi];
     var r = simulate(p);
@@ -899,7 +909,7 @@ function buildSteps(o, r, opts){
     } else if (L.jeda){
       /* istirahat di rumah hanya kalau simulasi memang memulangkan Ibu (atau
          dekat rumah); selain itu istirahat di sekitar tempat itu */
-      var jedaRumah = L.diRumah != null ? L.diRumah : (!tidakPulang && !(pos && pos.home > 15));
+      var jedaRumah = L.diRumah != null ? L.diRumah : (!tidakPulang && L.w >= 1.5 && !(pos && pos.home > 15));
       def = L.sesi
         ? { b:"Istirahat + ngecas",
             s:(L.sesi.sebelumPindah ? "Ngecas dulu di SPKLU terdekat, baru " + (jedaRumah ? "pulang istirahat" : "istirahat") : jedaRumah ? "Di rumah atau SPKLU langganan" : "SPKLU terdekat, sambil makan") + " &middot; <b>" + pctB(L.sesi.dari) + " &rarr; " + pctB(L.sesi.ke) + "%</b> &middot; &plusmn;" + Math.round(L.sesi.durasi*60) + " menit",
@@ -928,6 +938,9 @@ function buildSteps(o, r, opts){
               k:"Waktu masih longgar. Kerjakan order apa adanya; kalau ada dua pilihan, ambil yang " + arah.ke + ". Jam " + hhmm(mulaiPulang) + " baru mulai pulang bertahap." };
     } else if (noPagi && (nama === "Peak pagi" || nama === "Subuh")){
       def = OFFPAGI;
+    } else if ((ctx.holi || ctx.dow === 0) && (nama === "Pra-peak" || nama === "Peak sore") && !(posP && posP.z === "apt") && !diJktP){
+      /* tanggal merah / Minggu: kantor tutup -- bukan "lobi gedung sebelum bubaran" */
+      def = LIBURSORE;
     } else if (ctx.eve && (nama === "Peak sore" || nama === "Malam")){
       def = EVEPETANG;
     } else if (posP && posP.z === "apt" && STEP_APT[nama]){
@@ -939,6 +952,9 @@ function buildSteps(o, r, opts){
     } else {
       def = STEP[nama];
     }
+    /* ke Jakarta batas berangkat 15:30, tapi ngecas di potongan ini lewat dari
+       situ: jangan suruh berangkat (dulu "berangkat sekarang" + ngecas 40 menit) */
+    if (L.sesi && !L.jeda && typeof STEP_MIX !== "undefined" && def === STEP_MIX["Pra-peak"] && L.s + L.sesi.durasi > 15.5) def = STEP["Pra-peak"];
     /* potongan diawali pindah tempat (urutan): sebutkan perjalanannya --
        dulu Jakarta Timur 20:00 langsung "Mal tutup dan kuliner" di Serpong */
     if (!L.jeda && !tanpaNarik && L.tempat && L.pindahKm > 3 && L.pindahJam > 0.1 && def && def.b){
@@ -1004,14 +1020,14 @@ function buildSteps(o, r, opts){
       k:opts.stay ? "" : "Jam mulai pulang = rencana pulang dikurangi " + Math.round(jamTempuh*60) + " menit perjalanan" + (jamSibuk(o.pulang - 0.5) ? " (jam macet)" : "") +
                          " plus cadangan 15 menit; batas " + hhmm(batas) + " tidak pernah dilewati." +
                          (perluCas ? " Ngecas malam ini, bukan besok pagi: peak pagi besok mulai 05:15." : ""),
-      d:opts.stay ? "" : "listrik pulang &minus;" + rp(listrikPulang) + " &middot; sampai rumah &plusmn;" + socTibaPct + "%",
+      d:opts.stay ? "" : "listrik pulang &minus;" + rp(r.kmHome / CALIB.kmkwh * TARIF_KWH) + (r.deadKm > 0.5 ? " (+ km kosong pagi &minus;" + rp(r.deadKm / CALIB.kmkwh * TARIF_KWH) + ")" : "") + " &middot; sampai rumah &plusmn;" + socTibaPct + "%",
       v:opts.stay ? "&mdash;" : "&minus;" + rp(listrikPulang), cum:rp(cum), cls:"home",
       blok:"Pulang", label:"Pulang", peak:false });
   }
   /* Rekap: total sampai sini bertemu angka bersih. */
   var potongan = r.feeCharge + r.parkir;
   out.push({ t:"rekap", dur:"total",
-    b:"Bersih hari ini " + rp(cum + r.insentif - potongan + (opts.cum || 0) * 0),
+    b:(ctx.d && iso(ctx.d) !== iso(new Date()) ? "Bersih hari itu " : "Bersih hari ini ") + rp(cum + r.insentif - potongan + (opts.cum || 0) * 0),
     s:"+ insentif " + rp(r.insentif) + (r.feeCharge ? " &minus; " + r.sessions + "&times; ngecas " + rp(r.feeCharge) : "") + (r.parkir ? " &minus; parkir " + rp(r.parkir) : ""),
     i:"Belum dipotong cicilan, asuransi, servis, ban.",
     k:"Insentif dihitung sesuai jam kerja hari ini: " + r.effHours.toFixed(1) + " jam narik" + (o.jamSebelum ? " + " + o.jamSebelum.toFixed(1) + " jam sebelumnya" : "") + " dari 10,5 jam penuh.",
@@ -1021,6 +1037,9 @@ function buildSteps(o, r, opts){
   return out;
 }
 
+var LIBURSORE = { b:"Mal, kuliner, dan bandara", s:"Summarecon Serpong &middot; AEON BSD &middot; Supermal Karawaci &middot; Tangcity &middot; kedatangan bandara",
+  i:"Hari libur: kantor tutup, orang keluar ke mal dan tempat makan.",
+  k:"Tanggal merah dan Minggu tidak ada bubaran kantor; ramainya di mal, kuliner, dan bandara." };
 var ISTIRAHAT_SINI = { b:"Istirahat di sekitar sini", s:"Makan, parkir, tidur sebentar",
   i:"Rumah terlalu jauh untuk bolak-balik di jam istirahat ini.",
   k:"Pulang lalu balik lagi memakan hampir seluruh jam istirahat dan baterai; lebih hemat istirahat di dekat sini." };
