@@ -23,7 +23,9 @@ var Baterai = (function(){
     if (!D || D.date !== hariIni() || !D.jangkar || !D.jangkar.length) D = null;
     return D;
   }
-  function simpan(){ try { if (D) localStorage.setItem(LS, JSON.stringify(D)); } catch (e) {} }
+  /* simpanOk: tulisan terakhir berhasil? (penyimpanan penuh -> app memberi tahu Ibu) */
+  var simpanOk = true;
+  function simpan(){ try { if (D) localStorage.setItem(LS, JSON.stringify(D)); simpanOk = true; } catch (e) { simpanOk = false; } }
 
   /* Jangkar pertama hari ini (menghapus jejak sebelumnya). */
   function mulai(jam, soc, sumber){
@@ -110,6 +112,6 @@ var Baterai = (function(){
   }
   function hapus(){ D = null; try { localStorage.removeItem(LS); } catch (e) {} }
 
-  return { muat:muat, mulai:mulai, jangkar:jangkar, terakhir:terakhir, catatFix:catatFix,
+  return { tersimpan:function(){ return simpanOk; }, muat:muat, mulai:mulai, jangkar:jangkar, terakhir:terakhir, catatFix:catatFix,
            kmModel:kmModel, perkiraan:perkiraan, teks:teks, hapus:hapus, LS:LS };
 })();

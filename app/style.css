@@ -9,6 +9,7 @@ img{max-width:100%}
   --signal:#8F5A05; --signal-soft:#F6EAD2;
   --alert:#9E2A1E; --alert-soft:#F6DFDB;
   --t-hi:#1A56C4; --t-mid:#6E8FCF; --t-lo:#B9C4D8; --t-off:#D3DBE7;
+  --t-hi-ink:#FFFFFF; --t-mid-ink:#0B1220; --t-lo-ink:#0B1220;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
@@ -19,6 +20,7 @@ img{max-width:100%}
     --signal:#E5B160; --signal-soft:#2C2314;
     --alert:#F08A7A; --alert-soft:#331A15;
     --t-hi:#6FA1FF; --t-mid:#4A6FB8; --t-lo:#55627A; --t-off:#26324A;
+    --t-hi-ink:#0B1220; --t-mid-ink:#FFFFFF; --t-lo-ink:#FFFFFF;
   }
 }
 :root[data-theme="dark"]{
@@ -29,6 +31,7 @@ img{max-width:100%}
   --signal:#E5B160; --signal-soft:#2C2314;
   --alert:#F08A7A; --alert-soft:#331A15;
   --t-hi:#6FA1FF; --t-mid:#4A6FB8; --t-lo:#55627A; --t-off:#26324A;
+  --t-hi-ink:#0B1220; --t-mid-ink:#FFFFFF; --t-lo-ink:#FFFFFF;
 }
 *{box-sizing:border-box}
 body{background:var(--ground); color:var(--ink);
@@ -278,6 +281,11 @@ button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
 .note b{color:var(--ink)}
 .note .tag{font-family:"IBM Plex Mono",monospace; font-size:11px; font-weight:600;
   letter-spacing:.08em; text-transform:uppercase; opacity:.85; white-space:nowrap; padding-top:2px}
+/* layar sempit: judul panjang tidak mendorong isi keluar layar (dulu halaman
+   bergeser ke samping 389px di layar 360px) -- judul turun di atas isi */
+.note{flex-wrap:wrap; min-width:0}
+.note > span:not(.tag){flex:1 1 170px; min-width:0; overflow-wrap:anywhere}
+.note .tag{max-width:100%; white-space:normal}
 
 .cal{display:grid; grid-template-columns:repeat(auto-fit,minmax(164px,1fr)); gap:12px}
 .tile{background:var(--surface); border:1px solid var(--line); border-radius:4px; padding:14px 15px;
@@ -312,6 +320,8 @@ button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
 .tblwrap{overflow-x:auto; border:1px solid var(--line); border-radius:4px; background:var(--surface)}
 table{border-collapse:collapse; width:100%; min-width:560px; font-size:13.5px}
 th,td{text-align:right; padding:9px 12px; border-bottom:1px solid var(--line); white-space:nowrap}
+/* catatan panjang di Riwayat dipotong (lengkap di title), kolom Bersih tetap terlihat */
+.hist-cat{color:var(--muted); display:inline-block; max-width:18ch; overflow:hidden; text-overflow:ellipsis; vertical-align:bottom}
 th:first-child,td:first-child{text-align:left}
 thead th{font-family:"IBM Plex Mono",monospace; font-size:10px; letter-spacing:.1em;
   text-transform:uppercase; color:var(--muted); font-weight:600; background:var(--surface-2);
@@ -339,7 +349,7 @@ tr.best td{background:var(--accent-soft)}
   margin-top:16px}
 .seg{position:relative; min-width:0}
 .seg span{position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-  font-family:"IBM Plex Mono",monospace; font-size:9.5px; font-weight:600; color:#fff; opacity:.92;
+  font-family:"IBM Plex Mono",monospace; font-size:9.5px; font-weight:600; color:inherit;
   overflow:hidden; white-space:nowrap}
 .seg.off span{color:var(--muted)}
 /* Label sumbu ditaruh MUTLAK menurut waktunya. Dulu space-between, yang
@@ -360,7 +370,8 @@ tr.best td{background:var(--accent-soft)}
 /* tanya */
 .chat{display:flex; flex-direction:column; gap:11px; min-height:120px; margin-bottom:14px}
 .bubble{max-width:86%; padding:11px 14px; border-radius:10px; font-size:14.3px; line-height:1.6;
-  white-space:pre-wrap}
+  white-space:pre-wrap; overflow-wrap:anywhere; min-width:0}
+.ai-out{overflow-wrap:anywhere}
 .bubble.me{align-self:flex-end; background:var(--accent); color:var(--accent-ink);
   border-bottom-right-radius:3px}
 .bubble.ai{align-self:flex-start; background:var(--surface); border:1px solid var(--line);
@@ -491,6 +502,7 @@ a.go{text-decoration:none; display:inline-block; line-height:1.3; font-family:"I
   font:inherit; color:var(--ink); font-size:15px}
 .statusbar b{font-family:"IBM Plex Mono",monospace; font-weight:600}
 .statusbar span{white-space:nowrap}
+.statusbar span.sb-tempat{min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis}
 .statusbar em{font-style:normal; color:var(--muted); font-size:12px; margin-left:auto}
 .statusbar:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
 details.lipat{margin-top:12px}

@@ -1039,7 +1039,7 @@ function buildSteps(o, r, opts){
       if (L.sesi.luber > 0.05) kenapa += (kenapa ? " " : "") + "Ngecas ini " + Math.round(L.sesi.luber*60) + " menit lebih lama dari sisa " + labelBlok(nama).toLowerCase() + "; sisanya masuk jam berikutnya.";
       if (L.sesi.peak) kenapa += (kenapa ? " " : "") + "Terpaksa ngecas di jam peak (" + labelBlok(nama).toLowerCase() + ") karena baterai tidak cukup sampai jam murah berikutnya.";
     }
-    out.push({ t:hhmm(L.s) + "&ndash;" + hhmm(L.e), dur:L.jeda ? "istirahat" : L.w.toFixed(1) + " jam",
+    out.push({ t:hhmm(L.s) + "&ndash;" + hhmm(L.e), dur:L.jeda ? "istirahat" : L.w.toFixed(1).replace(".", ",") + " jam",
       b:(charge && !L.jeda && !tanpaNarik && !/[Nn]gecas|[Cc]olok/.test(def.b)) ? def.b + " + ngecas" : def.b,
       s:(charge && !L.jeda) ? def.s + sesiTeks : def.s,
       i:def.i + (charge && !L.jeda && L.sesi.peak ? " <b>Terpaksa di jam peak</b> &mdash; besok berangkat dengan baterai lebih penuh." : ""),
@@ -1084,7 +1084,7 @@ function buildSteps(o, r, opts){
     b:(ctx.d && iso(ctx.d) !== iso(new Date()) ? "Bersih hari itu " : "Bersih hari ini ") + rp(cum + r.insentif - potongan + (opts.cum || 0) * 0),
     s:"+ insentif " + rp(r.insentif) + (r.feeCharge ? " &minus; " + r.sessions + "&times; ngecas " + rp(r.feeCharge) : "") + (r.parkir ? " &minus; parkir " + rp(r.parkir) : ""),
     i:"Belum dipotong cicilan, asuransi, servis, ban.",
-    k:"Insentif dihitung sesuai jam kerja hari ini: " + r.effHours.toFixed(1) + " jam narik" + (o.jamSebelum ? " + " + o.jamSebelum.toFixed(1) + " jam sebelumnya" : "") + " dari 10,5 jam penuh.",
+    k:"Insentif dihitung sesuai jam kerja hari ini: " + r.effHours.toFixed(1).replace(".", ",") + " jam narik" + (o.jamSebelum ? " + " + o.jamSebelum.toFixed(1).replace(".", ",") + " jam sebelumnya" : "") + " dari 10,5 jam penuh.",
     d:"&asymp; " + Math.round(r.trips) + " order &middot; " + Math.round(r.paidKm) + " km berpenumpang dari " + Math.round(r.kmTotal) + " km" + (r.trips > 0 ? " &middot; Rp " + Math.round(r.rpOrder).toLocaleString("id-ID") + "/order" : ""),
     v:rp(r.insentif - potongan), cum:rp(cum + r.insentif - potongan), cls:"rekap",
     blok:"Rekap", label:"Rekap", peak:false });
@@ -1269,6 +1269,12 @@ function adviseInti(blk, L, o){
       r:"Puri &middot; Kebon Jeruk &middot; Slipi &rarr; Sudirman",
       p:"Tarif tertinggi hari ini, mobil listrik bebas ganjil-genap &mdash; sampai &plusmn;09:00, lalu pasang filter pulang.",
       kenapa:"Saat pesaing tersaring ganjil-genap, Sudirman, Rasuna Said, dan Kuningan terbuka untuk Ibu. Lewat 09:00 tarif Jakarta turun; filter tujuan membuat pulang tetap dibayar."};
+    /* tempat Tangerang lain (Ciledug, Bintaro, Cikupa, Cisauk ...): dulu
+       jatuh ke kartu antre bandara "jangan pulang kosong 23 km" */
+    if (L.z==="tng") return {k:"good",h:"Narik di sini, order ke arah Jakarta",
+      r:"Perumahan &amp; stasiun terdekat &middot; "+Math.round(L.home)+" km ke rumah",
+      p:"Jam berangkat kerja: tunggu di dekat perumahan atau stasiun, jangan muter. Dua order? Pilih yang ke Jakarta atau ke arah rumah.",
+      kenapa:"Pagi hari orang berangkat kerja dari perumahan ke Jakarta; order dari sini panjang tanpa perlu ke bandara."};
     return {k:"warn",h:"Antre bandara, atau keluar sambil online",
       r:"Antre &le; 45 menit &middot; kalau lebih: keluar lewat Batu Ceper",
       p:"Antre &le;45 menit, oke; lebih lama, keluar lewat Batu Ceper sambil online &mdash; jangan pulang kosong 23 km.",
@@ -1464,7 +1470,7 @@ function spkluTeks(list){
   if (!list || !list.length) return "";
   return list.map(function(x){
     var s = (typeof SpkluTT !== "undefined") ? SpkluTT.untukNama(x.nama) : null;
-    return "<b>" + x.nama + "</b> " + x.km + " km" + (s ? " (" + escT(SpkluTT.ringkasColokan(s)) + "; " + SpkluTT.teksCocok(s) + ")" : "");
+    return "<b>" + x.nama + "</b> " + String(x.km).replace(".", ",") + " km" + (s ? " (" + escT(SpkluTT.ringkasColokan(s)) + "; " + SpkluTT.teksCocok(s) + ")" : "");
   }).join(" &middot; ");
 }
 /* SPKLU cepat (CCS2) terdekat menurut TomTom, bila tidak satu pun dari
@@ -1634,8 +1640,8 @@ var ATURAN = [
   ["sesi ngecas tidak di peak kecuali terpaksa", function(s, k){
     return !(k.sesi || []).some(function(x){ return x.peak && !x.terpaksa; }); }],
   ["tidak ada potongan di bawah 25 menit", function(s){
-    return !s.some(function(x){ var m=/^([\d.]+) jam$/.exec(x.dur);
-      return m && parseFloat(m[1]) < 0.4; }); }],
+    return !s.some(function(x){ var m=/^([\d.,]+) jam$/.exec(x.dur);
+      return m && parseFloat(m[1].replace(",", ".")) < 0.4; }); }],
   /* Aturan 9 — instruksi mengisi daya hanya boleh muncul di langkah yang
      memang ditandai sebagai sesi ngecas. */
   ["perintah ngecas hanya di langkah ngecas", function(s){
@@ -1661,7 +1667,7 @@ var ATURAN = [
      tidak hilang dan tidak dihitung dua kali. */
   ["jam langkah kerja sama dengan jam efektif + jam ngecas", function(s, k){
     if (k.effHours == null) return true;
-    var jam = 0; s.forEach(function(x){ var m=/^([\d.]+) jam$/.exec(x.dur); if (m) jam += parseFloat(m[1]); });
+    var jam = 0; s.forEach(function(x){ var m=/^([\d.,]+) jam$/.exec(x.dur); if (m) jam += parseFloat(m[1].replace(",", ".")); });
     /* jam ngecas (termasuk luberan) dan km kosong keluar dari jam langkah kerja */
     return Math.abs(jam - (k.effHours + k.chargeHours + (k.deadJam || 0))) < 0.06 + 0.05 * s.length; }],
   /* Aturan 10 — tidak boleh ada lubang waktu antar langkah, dan tidak boleh

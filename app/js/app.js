@@ -131,7 +131,7 @@ function renderStepsRingkas(node, list, title){
   renderSteps(node, tampil, title);
   if (sisa > 0 || stepsSemua){
     node.innerHTML += '<button type="button" class="linkbtn" id="steps-toggle">' +
-      (stepsSemua ? "Tampilkan langkah berikutnya saja" : "Lihat semua " + list.length + " langkah sampai pulang") + "</button>";
+      (stepsSemua ? "Tampilkan langkah berikutnya saja" : "Lihat semua " + list.length + " langkah" + (/sampai pulang/.test(title) ? " sampai pulang" : "")) + "</button>";
   }
   var st = el("steps-toggle");
   if (st) st.addEventListener("click", function(){ stepsSemua = !stepsSemua; runNow(); });
@@ -265,7 +265,9 @@ function currentLok(){
         if (!isFinite(la) || !isFinite(lo)){ la = null; lo = null; }
       } else if (r.lat != null && r.lon != null){ la = r.lat; lo = r.lon; }
       else if (r.terukur){ var kc = koordinatKecamatan(r.nama); if (kc){ la = kc.lat; lo = kc.lon; } }
-      var hasil = { id:v, n:r.nama, home:r.km, res:Math.round(kmAman/2+15),
+      /* nama ketikan / jawaban Claude tanpa tanda HTML: mesin memasangnya ke
+         innerHTML di banyak tempat (dulu "<img onerror=...>" dijalankan) */
+      var hasil = { id:v, n:String(r.nama || "").replace(/[<>"'`&]/g, "").trim() || "Tempat ketikan", home:r.km, res:Math.round(kmAman/2+15),
                z: r.zPaksa || a.z,
                luar:r.km>10?1:0, jauh:r.km>34?1:0, anchor:a.n, perkiraan:!r.terukur };
       if (la != null){ hasil.lat = la; hasil.lon = lo; }
@@ -432,7 +434,7 @@ function deteksiLokasi(otomatis){
     if (best && bestD <= radius){
       renderLok(best.id);
       setLokSumber("auto");
-      setGpsHint("Terdeteksi di " + best.n + " · " + bestD.toFixed(1) + " km dari titiknya" +
+      setGpsHint("Terdeteksi di " + best.n + " · " + bestD.toFixed(1).replace(".", ",") + " km dari titiknya" +
                  akurasi + " · jarak terukur peta", "ok");
       runNow(); return;
     }
@@ -467,7 +469,7 @@ function deteksiLokasi(otomatis){
         setLokSumber("gagal");
         var pakai = currentLok();
         setGpsHint("Lokasi belum terbaca — sementara memakai " + pakai.n +
-                   ". Tekan “Lokasi saya”, atau pilih sendiri di atas.");
+                   ". Tekan “Cari posisi”, atau pilih sendiri di atas.");
       }
       return;
     }
@@ -651,7 +653,7 @@ function savePlan(p){
   var batas = iso(new Date(Date.now() - 14 * 864e5));
   Object.keys(RENCANA).forEach(function(k){ if (k < batas) delete RENCANA[k]; });
   PLAN = RENCANA[iso(new Date())] || null;
-  try { localStorage.setItem(LSP_HARI, JSON.stringify(RENCANA)); localStorage.setItem(LSP, JSON.stringify(p)); } catch (e) {}
+  try { localStorage.setItem(LSP_HARI, JSON.stringify(RENCANA)); localStorage.setItem(LSP, JSON.stringify(p)); return true; } catch (e) { return false; }
 }
 
 function renderPlanCheck(nowT, dpt, lokZ){
@@ -851,7 +853,7 @@ function runNow(){
     bw.innerHTML = '<span class="tag">Ngecas '+r.sessions+'&times;</span><span><b>Ngecas jam '+hhmm(s1.jam)+", "+
       pctB(s1.dari)+"&rarr;"+pctB(s1.ke)+"%, &plusmn;"+Math.round(s1.durasi*60)+" menit</b>"+
       (s1.diJeda ? " (saat istirahat)" : (s1.peak ? " &mdash; <b>terpaksa di jam peak</b>" : ""))+
-      ". Baterai cukup "+Math.round(usableKm)+" km, sampai pulang perlu "+Math.round(butuh)+" km." +
+      ". Baterai cukup "+Math.round(usableKm)+" km, "+(o.stay ? "sampai selesai narik" : "sampai pulang")+" perlu "+Math.round(butuh)+" km." +
       (spkluTeks(spkluUntuk(L)) ? '<details class="kenapa"><summary>SPKLU terdekat</summary><div>' + spkluTeks(spkluUntuk(L)) +
         (typeof SpkluTT !== "undefined" && SpkluTT.status() ? " (jarak jalan; colokan dari TomTom)." : " (jarak jalan; jenis colokan belum dicek &mdash; isi kunci TomTom untuk melihatnya).") +
         (spkluCepatTeks(L, spkluUntuk(L)) ? "<br>" + spkluCepatTeks(L, spkluUntuk(L)) : "") + "</div></details>" : "") + "</span>";
@@ -895,7 +897,11 @@ function runNow(){
 
   var langkah = buildSteps(o, r,
     { cum:dpt - listrikSejak, markNow:true, kmHome:kmProtokol, stay:stay, L:L, verdict:v });
-  renderStepsRingkas(el("n-steps"), langkah, "Langkah sampai pulang");
+  /* "Tidak pulang": tidak ada "sampai pulang" di judul mana pun */
+  var sampaiTeks = stay ? "sampai " + hhmm(o.pulang) : "sampai pulang";
+  renderStepsRingkas(el("n-steps"), langkah, "Langkah " + sampaiTeks);
+  if (el("proy-judul")) el("proy-judul").textContent = "Perkiraan bersih " + sampaiTeks;
+  if (el("peluang-judul")) el("peluang-judul").textContent = "Urutan tempat " + sampaiTeks;
   catatProyeksi(dateStr, proyeksi);
   SEKARANG = { v:v, langkah:langkah, proyeksi:proyeksi, sisa:sisa, gap:gap,
                insentif:insentifHarian, blok:blk, r:r, L:L, o:o,
@@ -1000,7 +1006,7 @@ function runNow(){
 /* Baris status untuk lirikan 3 detik; ketuk untuk membuka panel masukan. */
 function renderStatusBar(o, L, soc, dpt){
   var b = el("statusbar"); if (!b) return;
-  b.innerHTML = "<span><b>" + hhmm(o.keluar) + "</b></span><span>" + esc(L.n) + "</span><span>Baterai <b>" + soc + "%</b></span>" +
+  b.innerHTML = "<span><b>" + hhmm(o.keluar) + "</b></span><span class=\"sb-tempat\">" + esc(L.n) + "</span><span>Baterai <b>" + soc + "%</b></span>" +
     (dpt > 0 ? "<span>Sudah dapat <b>" + rp(dpt) + "</b></span>" : "") + "<span>Pulang <b>" + hhmm(o.pulang) + "</b></span><em>ubah \u25BE</em>";
 }
 
@@ -1011,6 +1017,11 @@ function segColor(rate,on){
   if (rate>=40000) return "var(--t-hi)";
   if (rate>=28000) return "var(--t-mid)";
   return "var(--t-lo)";
+}
+/* warna tulisan yang terbaca di atas warna blok (dulu putih di atas biru muda: 1,8:1) */
+function segInk(rate,on){
+  if (!on) return "var(--muted)";
+  return rate>=40000 ? "var(--t-hi-ink)" : rate>=28000 ? "var(--t-mid-ink)" : "var(--t-lo-ink)";
 }
 function runPlan(){
   var dateStr = el("p-tgl").value || iso(new Date());
@@ -1036,15 +1047,18 @@ function runPlan(){
   el("p-bar").style.width = Math.max(0,Math.min(100,(r.net/TARGET_DAY)*100)).toFixed(1)+"%";
 
   var from=3.5,to=24,span=to-from,h="";
+  /* label = nama yang dipakai di tempat lain (labelBlok), dan hanya kalau
+     muat di lebarnya (dulu "Subuł", "i ak", "a-peak" terpotong) */
+  var lebarTl = el("p-tl").clientWidth || Math.min(window.innerWidth || 360, 720) - 40;
   r.segs.forEach(function(s){
-    var w=((s.e-s.s)/span)*100, lbl=(s.e-s.s)>=1.4?s.n:"";
+    var w=((s.e-s.s)/span)*100, nama=labelBlok(s.n), lbl=(nama.length*6.2+6 <= w/100*lebarTl)?nama:"";
     h+='<div class="seg'+(s.on?"":" off")+'" style="width:'+w.toFixed(2)+"%;background:"+
-       segColor(s.rate,s.on)+'"><span>'+lbl+"</span></div>";
+       segColor(s.rate,s.on)+";color:"+segInk(s.rate,s.on)+'"><span>'+esc(lbl)+"</span></div>";
   });
   el("p-tl").innerHTML=h;
 
   el("p-side").innerHTML = [
-    ["Jam efektif", r.effHours.toFixed(1)+" j"], ["Per jam kerja", rp(r.perHour)],
+    ["Jam efektif", r.effHours.toFixed(1).replace(".", ",")+" j"], ["Per jam kerja", rp(r.perHour)],
     ["&asymp; Order", Math.round(r.trips)+" &middot; Rp "+Math.round(r.rpOrder).toLocaleString("id-ID")+"/order"],
     ["Km berbayar", Math.round(r.paidKm)+" dari "+Math.round(r.kmTotal)+" km"],
     ["Listrik", dec(r.kwh,1)+" kWh &middot; "+rp(r.listrik)],
@@ -1098,7 +1112,11 @@ function runPlan(){
       "Aturan lalu lintas: istirahat 30 menit tiap 4 jam mengemudi."));
   }
   var batasPulang = (ctx.dow === 0 && !ctx.holi) ? 20.5 : 22;
-  if (o.pulang > batasPulang + 0.01) nn.push(catatan("bad","Pulang "+hhmm(o.pulang)+" lewat batas "+hhmm(batasPulang),"Sebaiknya jangan."+(batasPulang === 20.5 ? " Senin pagi harus segar." : "")));
+  /* batas = jam paling lambat MULAI pulang (sama dengan simulate, langkah, dan
+     "Kalau lanjut"); dulu jam TIBA 22:30 dibilang lewat batas padahal langkah
+     dan saran lanjut di tab Sedang narik menyarankan persis itu */
+  var jpBatas = jamMulaiPulang(o, null);
+  if (o.pulang - jpBatas > batasPulang + 0.01) nn.push(catatan("bad","Pulang "+hhmm(o.pulang)+" lewat batas "+hhmm(batasPulang),"Narik paling lambat sampai "+hhmm(batasPulang)+", lalu pulang (tiba &plusmn;"+hhmm(batasPulang + jpBatas)+"). Sebaiknya jangan lebih."+(batasPulang === 20.5 ? " Senin pagi harus segar." : "")));
   if (ctx.dow === 6 && !ctx.holi && o.keluar < 7.5) nn.push(catatan("","Sabtu","Tidak ada peak pagi; saran mulai <b>07:30</b>."));
   if (ctx.dow === 0 && !ctx.holi && o.keluar < 7) nn.push(catatan("","Minggu","Pagi tenang; saran mulai <b>07:00</b>, selesai <b>20:30</b>."));
   if (ctx.dow === 1 && !ctx.holi && o.keluar > 4.75 && o.keluar <= 5.25) nn.push(catatan("","Senin","Peak pagi paling berat; saran berangkat <b>04:45</b>."));
@@ -1245,6 +1263,11 @@ function muatChat(){
 function simpanChat(){
   try { localStorage.setItem(LSC, JSON.stringify(CHAT.slice(-40))); } catch (e) {}
 }
+/* Jawaban Claude: aman di-escape dulu, lalu **tebal** jadi tebal dan
+   "- " di awal baris jadi titik (dulu bintang dan strip tampil apa adanya). */
+function teksAI(t){
+  return esc(String(t == null ? "" : t)).replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>").replace(/(^|\n)\s*[-*]\s+/g, "$1\u2022 ");
+}
 function renderChat(){
   var n = el("chatlog");
   if (!CHAT.length){
@@ -1252,7 +1275,7 @@ function renderChat(){
   } else {
     n.innerHTML = CHAT.map(function(m){
       return '<div class="bubble '+(m.role==="user"?"me":"ai")+'">'+
-             String(m.content).replace(/&/g,"&amp;").replace(/</g,"&lt;")+"</div>";
+             (m.role==="user" ? esc(String(m.content)) : teksAI(m.content))+"</div>";
     }).join("");
     n.scrollTop = n.scrollHeight;
   }
@@ -1559,9 +1582,11 @@ function kirimChat(){
     el("tanyastatus").textContent = "Belum tersambung";
     CHAT.push({role:"user", content:q});
     CHAT.push({role:"assistant", content:"Saya belum tersambung ke Claude di HP ini. "+
-      "Isi kunci API sekali di bagian \"Sambungan ke Claude\" di bawah, lalu tanyakan lagi."});
+      "Isi kunci API sekali di bagian \"Pengaturan anak \u203a Sambungan ke Claude\" di bawah (minta tolong anak), lalu tanyakan lagi."});
     el("chatinput").value = "";
     renderChat(); simpanChat();
+    /* bagiannya ada di dalam "Pengaturan anak" yang terlipat: buka dulu (dulu gulir tidak ke mana-mana) */
+    var pa = el("pengaturan-anak"); if (pa) pa.open = true;
     var pnl = el("ai-panel"); if (pnl) pnl.scrollIntoView({behavior:"smooth", block:"start"});
     return;
   }
@@ -1856,12 +1881,17 @@ function weekMonth(){
       cls+"\">"+rp(need)+"</b> per hari"+(cls==="up"?" &mdash; Ibu sedang unggul":(cls==="dn"?" &mdash; kejar di hari kuat":"")); }
   el("pace").innerHTML=msg;
 }
+/* 30 hari terbaru; sisanya lewat tombol (dulu yang lebih lama tidak bisa dilihat) */
+var HIST_BATAS = 30;
 function renderHist(){
-  el("histcount").textContent = rows.length ? rows.length+" hari tercatat" : "";
+  var nTampil = Math.min(rows.length, HIST_BATAS);
+  el("histcount").textContent = !rows.length ? "" : rows.length > nTampil ? nTampil + " dari " + rows.length + " hari tercatat" : rows.length + " hari tercatat";
   el("histempty").style.display = rows.length ? "none" : "block";
-  el("hist").innerHTML = rows.slice(0,30).map(function(r){
+  var lagi = el("hist-lagi");
+  if (lagi){ lagi.hidden = rows.length <= nTampil; lagi.textContent = "Lihat " + Math.min(30, rows.length - nTampil) + " hari lebih lama"; }
+  el("hist").innerHTML = rows.slice(0,HIST_BATAS).map(function(r){
     var d=derive(r), dt=new Date(r.id+"T00:00:00"), hd=HOLI[r.id];
-    return "<tr><td class=\"n\">"+r.id+(r.cat?' <span style="color:var(--muted)">· '+esc(r.cat)+"</span>":"")+
+    return "<tr><td class=\"n\">"+r.id+(r.cat?' <span class="hist-cat" title="'+esc(r.cat)+'">· '+esc(r.cat)+"</span>":"")+
       (r.carter&&r.carter.tarif>0?' <span style="color:var(--muted)">· carter '+rp(carterBersih(r.carter).net)+"</span>":"")+
       "</td><td>"+DAYNAME[dt.getDay()].slice(0,3)+(hd?" ●":"")+"</td><td>"+(num(r.jam)||"—")+
       "</td><td>"+(num(r.trip)||"—")+"</td><td>"+(num(r.kmt)||"—")+"</td><td>"+
@@ -1871,8 +1901,19 @@ function renderHist(){
       "</td><td>"+(num(r.comp)>0?Math.round(num(r.comp))+"%":"—")+
       "</td><td class=\"n\">"+rp(bersihHari(r))+"</td></tr>";
   }).join("");
-  el("ask").disabled = !(sampler && rows.length>=3);
+  aturTombolSaran();
 }
+/* "Minta saran" mati: sebut alasannya (dulu mati tanpa kabar, judulnya
+   "Butuh minimal 3 hari" padahal sudah 5 hari -- yang kurang kuncinya) */
+var ALASAN_SARAN = /^Butuh (kunci Claude|minimal 3 hari)/;
+function aturTombolSaran(){
+  var b = el("ask"), st = el("aistatus"); b.disabled = !(sampler && rows.length >= 3);
+  var alasan = !sampler ? "Butuh kunci Claude (Pengaturan anak \u203a Sambungan ke Claude)." :
+               rows.length < 3 ? "Butuh minimal 3 hari tercatat (baru " + rows.length + ")." : "";
+  if (alasan){ st.textContent = alasan; st.className = "status"; }
+  else if (ALASAN_SARAN.test(st.textContent)) st.textContent = "";
+}
+el("hist-lagi").addEventListener("click", function(){ HIST_BATAS += 30; renderHist(); });
 function petunjukMenit(){
   var e = el("mnthint"); if (!e) return;
   var tgl = el("tgl").value || iso(new Date());
@@ -2038,7 +2079,7 @@ el("p-save").addEventListener("click", function(){
   var tglP = el("p-tgl").value || iso(new Date());
   /* tanggal yang sudah lewat tidak disimpan (dulu tersimpan dan menimpa rencana hari ini) */
   if (tglP < iso(new Date())){ el("p-status").textContent = "Tanggal " + tglP + " sudah lewat — pilih hari ini atau nanti."; el("p-status").className = "status err"; return; }
-  savePlan({ date: tglP,
+  var simpanOk = savePlan({ date: tglP,
     keluar:parseFloat(el("p-keluar").value), pulang:parseFloat(el("p-pulang").value),
     rehat:rehatDariUI(), zona:el("p-zona").value,
     filter:parseInt(el("p-filter").value,10), bat:parseFloat(el("p-bat").value),
@@ -2059,6 +2100,8 @@ el("p-save").addEventListener("click", function(){
     ? 'Tersimpan. &ldquo;Sedang narik&rdquo; ikut rencana ini. <button type="button" class="linkbtn" id="p-ke-narik">Lihat &rsaquo;</button>'
     : "Tersimpan untuk " + esc(tglP) + ".";
   el("p-status").className = "status ok";
+  /* penyimpanan HP penuh / mode privat: jangan bilang tersimpan (dulu hilang saat dibuka ulang) */
+  if (!simpanOk){ el("p-status").textContent = "Dipakai sekarang, tapi GAGAL disimpan di HP ini (penyimpanan penuh atau mode privat?) — rencana hilang kalau aplikasi ditutup."; el("p-status").className = "status err"; }
   var kn = el("p-ke-narik"); if (kn) kn.addEventListener("click", function(){ setMode("narik", true); window.scrollTo(0, 0); });
   runNow();
 });
@@ -2122,7 +2165,7 @@ el("p-tgl").value = iso(now); el("p-tgl").min = iso(now);
 el("n-lok").addEventListener("change", function(){
   if (this.value === "__lain"){
     el("ketikwrap").hidden = false;
-    setHint("Ketik nama daerah, lalu tekan Petakan");
+    setHint("Ketik nama daerah, lalu tekan Cari");
     el("n-ketik").focus();
   } else {
     lastLok = this.value;
@@ -2179,7 +2222,7 @@ el("n-gpsauto").addEventListener("change", function(){
   try { localStorage.setItem("gps-otomatis", this.checked ? "1" : "0"); } catch (e) {}
   if (this.checked){ gpsTerakhir = 0; pasangGpsOtomatis(); }
   else { hentikanOdometer(); setLokSumber("manual");
-    setGpsHint("Deteksi otomatis dimatikan. Tekan Lokasi saya kalau perlu."); }
+    setGpsHint("Deteksi otomatis dimatikan. Tekan Cari posisi kalau perlu."); }
 });
 tandaiLok();
 if (gpsOtomatisAktif()) setGpsHint("Memeriksa lokasi…");
@@ -2371,7 +2414,8 @@ muatChat(); renderChat();
   }
   terapkan(baca());
   el("tema-btn").addEventListener("click", function(){
-    var skrg = baca(), i = (URUT.indexOf(skrg) + 1) % URUT.length, baru = URUT[i];
+    /* dari tema yang sedang terpasang (dulu dari penyimpanan: penyimpanan penuh = macet di Terang) */
+    var skrg = document.documentElement.dataset.theme || "", i = (URUT.indexOf(skrg) + 1) % URUT.length, baru = URUT[i];
     simpan(baru); terapkan(baru);
   });
 })();
@@ -2625,7 +2669,7 @@ function setAiStatus(t, cls){ var s = el("ai-status"); s.textContent = t; s.clas
 function pasangAI(){
   AI.connect().then(function(ns){
     sampler = ns || null;
-    el("ask").disabled = !(sampler && rows.length >= 3);
+    aturTombolSaran();
     tandaiAI();
     briefingOtomatis();
     if (sampler && sampler.sumber === "api" && Acara.perluSegar() && navigator.onLine !== false)
@@ -2637,7 +2681,7 @@ el("ai-save").addEventListener("click", function(){
   if (!k){ setAiStatus("Tempel kuncinya dulu.", "err"); return; }
   AI.setKey(k); el("ai-key").value = "";
   setAiStatus("Memeriksa kunci…");
-  AI.uji().then(function(){ setAiStatus("Tersambung. Tab Tanya dan Analisa sudah bisa dipakai.", "ok"); pasangAI(); },
+  AI.uji().then(function(){ setAiStatus("Tersambung. Tanya dan Minta saran (tab Catatan) sudah bisa dipakai.", "ok"); pasangAI(); },
     function(err){
       var c = err && err.code;
       setAiStatus(c === "unauthorized" ? "Kunci ditolak Anthropic. Periksa lagi, lalu simpan ulang." :
@@ -2656,7 +2700,7 @@ el("ai-test").addEventListener("click", function(){
                   c === "offline" ? "Tidak ada sambungan internet." : "Gagal (" + c + ").", "err"); });
 });
 el("ai-clear").addEventListener("click", function(){
-  AI.setKey(""); sampler = null; el("ask").disabled = true;
+  AI.setKey(""); sampler = null; aturTombolSaran();
   setAiStatus("Kunci dihapus dari HP ini."); tandaiAI();
 });
 pasangAI();
@@ -2718,7 +2762,7 @@ function renderAcara(){
 function setAcaraStatus(t, cls){ var s = el("acara-status"); s.textContent = t; s.className = "status" + (cls ? " " + cls : ""); }
 function segarkanAcara(otomatis){
   if (!sampler || sampler.sumber !== "api"){
-    if (!otomatis) setAcaraStatus("Butuh kunci API: isi di tab Tanya, bagian Sambungan ke Claude.", "err");
+    if (!otomatis) setAcaraStatus("Butuh kunci API: isi di Pengaturan anak \u203a Sambungan ke Claude.", "err");
     return;
   }
   setAcaraStatus("Mencari di web…"); el("acara-segar").disabled = true;
@@ -3070,7 +3114,7 @@ function renderBriefing(b, status){
   n.hidden = false;
   n.innerHTML = '<div class="ai-head"><span class="eyebrow">Saran singkat' + (b ? " &middot; " + b.jam : "") + "</span>" +
     '<button type="button" class="linkbtn" id="briefing-segar">Segarkan</button></div>' +
-    '<div class="ai-out">' + (b ? esc(b.teks) : "") + "</div>" +
+    '<div class="ai-out">' + (b ? teksAI(b.teks) : "") + "</div>" +
     (status ? '<div class="status">' + esc(status) + "</div>" : "");
   var s = el("briefing-segar"); if (s) s.addEventListener("click", function(){
     var kunciSekarang = kunciBriefing(), lamaSekarang = bacaBriefing();
@@ -3205,6 +3249,7 @@ el("cas-selesai").addEventListener("click", function(){
   el("cas-ke").value = "";
   el("hari-status").textContent = "Dicatat " + Math.round(v) + "% jam " + hhmm(jamSekarangTepat()) + ".";
   el("hari-status").className = "status ok";
+  if (!Baterai.tersimpan()){ el("hari-status").textContent = "Dipakai " + Math.round(v) + "% jam " + hhmm(jamSekarangTepat()) + ", tapi GAGAL disimpan di HP ini (penyimpanan penuh?) — hilang kalau aplikasi ditutup."; el("hari-status").className = "status err"; }
   runNow();
 });
 
