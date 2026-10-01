@@ -763,6 +763,10 @@ function runNow(){
   o.soc = soc;   /* rencana ngecas harus memakai daya nyata, bukan 90% */
   o.diRumahAwal = L.home <= 1;
   var stay = el("n-tujuan").value === "stay";
+  /* macet sekarang (kartu Jalan pulang, segar <= 10 menit) ikut menentukan jam
+     mulai pulang di langkah -- tidak saat jam dipilih manual (coba-coba) */
+  var hLive = (!jamManual && !stay) ? liveTerakhir(L) : null;
+  if (hLive && hLive.menit > 0) o.pulangLive = { id:L.id, menit:hLive.menit };
   var kmHome = stay ? 0 : L.home;
   /* Kalau Ibu jauh tapi sifnya masih panjang, perjalanan pulang dari
      luar wilayah sudah selesai jauh sebelum jam pulang — jadi protokol
@@ -930,6 +934,7 @@ function runNow(){
   renderJalan(o, L, false);
   perbaruiRute();
   renderTujuan();
+  cekPerubahan();
 
   var nn=[];
   var URUTAN_NOTE = { bad:0, warn:1, good:3 };   /* default (netral "") = 2 */
@@ -2242,7 +2247,12 @@ el("n-pulang").addEventListener("change", function(){ PULANG_ASLI = null; }, tru
 tandaiJam();
 /* Diperiksa tiap 30 detik: cukup rapat untuk kotak seperempat jam, dan
    tidak melakukan apa pun kalau jamnya belum berpindah. */
-setInterval(function(){ if (!document.hidden) ikutJam(false); }, 30000);
+/* Aplikasi di belakang (Ibu membuka Grab Driver): tetap dihitung tiap menit
+   selama browser masih menjalankannya, supaya "Waktunya jalan pulang" dan
+   baterai kritis tetap bisa menggetarkan HP. Data TomTom/GPS tidak diambil
+   saat di belakang. */
+var latarTik = 0;
+setInterval(function(){ if (!document.hidden) ikutJam(false); else if ((++latarTik % 2) === 0) ikutJam(false); }, 30000);
 /* HP dinyalakan lagi: ganti hari DULU (dulu proyeksi "awal" hari baru
    tercatat dengan "sudah dapat" kemarin), lalu jam; Rencanakan yang terbuka
    malam hari pindah ke besok */
@@ -2644,8 +2654,12 @@ function terapkanCuaca(c){
     if (c.hujan){
       if (!el("n-hujan").dataset.touched) el("n-hujan").checked = true;
       if (!el("p-hujan").dataset.touched && el("p-tgl").value === c.tanggal) el("p-hujan").checked = true;
-      runNow(); runPlan();
+    } else {
+      /* prakiraan berubah jadi tidak hujan: centang otomatis dilepas (yang dicentang Ibu sendiri tetap) */
+      if (!el("n-hujan").dataset.touched) el("n-hujan").checked = false;
+      if (!el("p-hujan").dataset.touched && el("p-tgl").value === c.tanggal) el("p-hujan").checked = false;
     }
+    runNow(); runPlan();
     return;
   }
   n.hidden = false;
@@ -2659,6 +2673,8 @@ function segarkanCuaca(){
 }
 segarkanCuaca();
 document.addEventListener("visibilitychange", function(){ if (!document.hidden) segarkanCuaca(); });
+/* selama aplikasi terbuka seharian: prakiraan diambil ulang tiap jam (dulu hanya saat dibuka) */
+setInterval(function(){ if (!document.hidden) segarkanCuaca(); }, 60 * 60 * 1000);
 window.addEventListener("online", segarkanCuaca);
 el("n-hujan").addEventListener("change", function(){ this.dataset.touched = "1"; });
 el("p-hujan").addEventListener("change", function(){ this.dataset.touched = "1"; });
@@ -3133,13 +3149,165 @@ function renderJalan(o, L, paksa){
     jalanAmbil = 0;
     if (ambilPulang) jalanGagal.pulang = rs[0] ? 0 : jalanGagal.pulang + 1;
     if (ambilKej) jalanGagal.kejadian = rs[1] ? 0 : jalanGagal.kejadian + 1;
-    if (rs.some(Boolean) && SEKARANG) renderJalan(SEKARANG.o, SEKARANG.L, false);
+    /* hitung ulang semuanya: macet sekarang ikut jam pulang di langkah, dan pendeteksi perubahan melihatnya */
+    if (rs.some(Boolean) && SEKARANG) runNow();
     if (ambilPulang && !rs[0] && el("jalan-pulang"))
       el("jalan-pulang").innerHTML = "<p>Jalan pulang belum bisa diambil dari TomTom (tanpa sinyal, jatah hari ini habis, atau Ibu sudah dekat rumah)." +
         (waktunya && !o.stay ? " Dicoba lagi otomatis." : "") + "</p>";
   });
 }
 el("jalan-cek").addEventListener("click", function(){ if (SEKARANG) renderJalan(SEKARANG.o, SEKARANG.L, true); });
+
+/* ---------------- perubahan keadaan ----------------
+   Jalan bisa berubah tanpa Ibu sadari. Tiap hitung ulang (tiap 30 detik,
+   tiap data TomTom/cuaca baru, dan saat aplikasi dibuka lagi) keputusan
+   penting dibandingkan dengan sebelumnya. Yang berubah KARENA KEADAAN --
+   bukan karena Ibu mengubah isian -- muncul di kotak "Berubah", termasuk
+   "sejak Ibu terakhir buka". Tiga hal kritis juga menggetarkan HP dan
+   memberi notifikasi, sekali per kejadian: baterai tidak cukup sampai
+   rumah, waktunya jalan pulang, jalan pulang ditutup/banjir. Tanpa server,
+   aplikasi yang sudah ditutup tidak bisa memberi tahu apa pun. */
+/* kunci penyimpanan ditulis langsung (runNow bisa jalan sebelum baris ini dibaca saat aplikasi dibuka) */
+var KEP_LALU = null;
+/* Jalan pulang sekarang dari TomTom untuk posisi L. Simpanan Lalulintas
+   berumur 10 menit; selagi data baru diambil, angka terakhir (<= 20 menit,
+   titik yang sama) tetap dipakai -- dulu jam pulang di langkah sempat
+   kembali ke "macet biasa" tiap 10 menit dan kotak "Berubah" bolak-balik. */
+var LIVE_TERAKHIR = null;
+function liveTerakhir(L){
+  if (!L || L.lat == null || L.lon == null || typeof Lalulintas === "undefined" || !Lalulintas.pulangSekarangCache) return null;
+  var h = Lalulintas.pulangSekarangCache({ lat:L.lat, lon:L.lon });
+  if (h){ LIVE_TERAKHIR = { id:L.id, h:h }; return h; }
+  return (LIVE_TERAKHIR && LIVE_TERAKHIR.id === L.id && Date.now() - LIVE_TERAKHIR.h.at <= 20 * 60e3) ? LIVE_TERAKHIR.h : null;
+}
+/* "Sejak Ibu terakhir buka": patokannya kapan Ibu terakhir MELIHAT layar
+   (bukan kapan terakhir dihitung -- aplikasi di belakang tetap menghitung).
+   Perubahan selagi tidak dilihat, dan dalam 90 detik pertama sesudah dibuka
+   lagi (data TomTom/cuaca baru datang belakangan), diberi label itu. */
+var SEJAK_BUKA;
+function sejakDilihat(kini, a){
+  var t = bacaLS("terakhir-dilihat", null);
+  if (typeof document !== "undefined" && document.hidden) return t;
+  if (SEJAK_BUKA === undefined){   /* baru dibuka */
+    var dari = (typeof t === "number") ? t : (a && a.waktu) || null;
+    SEJAK_BUKA = (dari && kini - dari > 3 * 60e3 && iso(new Date(dari)) === iso(new Date(kini))) ? { dari:dari, sampai:kini + 90e3 } : null;
+  }
+  return (SEJAK_BUKA && kini <= SEJAK_BUKA.sampai) ? SEJAK_BUKA.dari : null;
+}
+document.addEventListener("visibilitychange", function(){
+  var kini = Date.now();
+  if (document.hidden){ tulisLS("terakhir-dilihat", kini); return; }
+  var t = bacaLS("terakhir-dilihat", null);
+  SEJAK_BUKA = (typeof t === "number" && kini - t > 3 * 60e3) ? { dari:t, sampai:kini + 90e3 } : null;
+});
+window.addEventListener("pagehide", function(){ tulisLS("terakhir-dilihat", Date.now()); });
+function bacaLS(k, d){ try { var v = JSON.parse(localStorage.getItem(k) || "null"); return v == null ? d : v; } catch (e) { return d; } }
+function tulisLS(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+function snapKeputusan(){
+  var S = SEKARANG; if (!S || !S.o || !S.L) return null;
+  var o = S.o, L = S.L, meta = (S.langkah && S.langkah.meta) || {}, kini = jamSekarangTepat(), hari = iso(new Date());
+  var pos = (L.lat != null && L.lon != null) ? { lat:L.lat, lon:L.lon } : null;
+  var h = (!S.stay && pos) ? liveTerakhir(L) : null;
+  var est = h ? Math.round(jamTempuhRumah(L, kini, L.home, tipeDari(o.ctx)) * 60) : null;
+  var cas = (S.r && S.r.sesi || []).filter(function(q){ return q.jam >= kini - 0.05 && !q.ac; })[0] || null;
+  var tutup = [];
+  if (h && pos && typeof Kejadian !== "undefined" && Kejadian.relevan){
+    try { Kejadian.relevan(pos, h.poin, 15, 60 * 60e3).forEach(function(k){ if (k.diRute && (k.kat === 8 || k.kat === 11)) tutup.push({ id:String(k.id || (k.jalan + k.dari)), n:(k.jenis || "Jalan ditutup") + (k.jalan ? " di " + k.jalan : k.dari ? " di " + k.dari : "") }); }); } catch (e) {}
+  }
+  var rekTop = (S.rek && S.rek.daftar || []).filter(function(x){ return !x.diSini && x.selisih >= 25000; })[0] || null;
+  var mp = (!S.stay && typeof meta.mulaiPulang === "number") ? meta.mulaiPulang : null;
+  var jh = (WEATHER && WEATHER.tanggal === hari && WEATHER.hujan && WEATHER.jamHujan) ? WEATHER.jamHujan.filter(function(j){ return j + 1 > kini; }) : [];
+  var pulangIsi = (typeof PULANG_ASLI === "number") ? PULANG_ASLI : o.pulang;
+  return { tgl:hari, jam:kini, waktu:Date.now(),
+    masukan:[L.id, pulangIsi, el("n-tujuan").value, el("n-filter").value, el("n-bat").value, el("n-rumah").checked ? 1 : 0].join("|"),
+    mp:mp, cas:cas ? cas.jam : null, macet:(h && est > 0) ? Math.max(0, h.menit - est) : 0,
+    hujan:jh.length ? jh[0] : null, tujuan:rekTop ? (rekTop.tempat || rekTop).id : "sini", tujuanN:rekTop ? (rekTop.tempat || rekTop).n : "", tujuanRp:rekTop ? rekTop.selisih : 0,
+    kritisBat:!S.stay && L.home > 1 && S.soc < socMinPulang(L.home, o.bat), socMin:socMinPulang(L.home, o.bat), soc:S.soc, tempatN:L.n,
+    harusPulang:mp != null && kini >= mp - 0.02 && kini < o.pulang + 1, tiba:h ? kini + h.menit / 60 : null, pulang:o.pulang, telat:!!(h && kini + h.menit / 60 > o.pulang + 0.05),
+    tutup:tutup };
+}
+/* Perubahan biasa: hanya bila tanggal & isian Ibu sama (pindah tempat sendiri / ubah jam pulang bukan "berubah") */
+function bedaKeputusan(a, b){
+  var out = [];
+  if (!a || !b || a.tgl !== b.tgl || a.masukan !== b.masukan) return out;
+  if (a.mp != null && b.mp != null && Math.abs(b.mp - a.mp) >= 10 / 60)
+    out.push("Mulai pulang jadi <b>" + hhmm(b.mp) + "</b> (tadi " + hhmm(a.mp) + ")" + (b.macet >= 10 ? " &mdash; jalan pulang macet +" + Math.round(b.macet) + " menit" : "") + ".");
+  if ((a.cas == null) !== (b.cas == null) || (a.cas != null && b.cas != null && Math.abs(b.cas - a.cas) >= 0.25))
+    out.push(b.cas == null ? "Tidak perlu ngecas lagi (tadi jam " + hhmm(a.cas) + ")." : a.cas == null ? "Sekarang perlu ngecas jam <b>" + hhmm(b.cas) + "</b>." : "Ngecas jadi jam <b>" + hhmm(b.cas) + "</b> (tadi " + hhmm(a.cas) + ").");
+  if (b.macet >= 10 && b.macet - (a.macet || 0) >= 10) out.push("Jalan pulang lebih macet dari biasanya: <b>+" + Math.round(b.macet) + " menit</b>.");
+  if (a.hujan == null && b.hujan != null) out.push("Hujan diperkirakan mulai &plusmn;<b>" + hhmm(b.hujan) + "</b> &mdash; order biasanya naik, hindari daerah banjir.");
+  if (a.tujuan !== b.tujuan) out.push(b.tujuan === "sini" ? "Saran pindah tempat batal: tetap di sini sekarang lebih untung." : "Saran baru: pindah ke <b>" + esc(b.tujuanN) + "</b> (&plusmn;" + rp(b.tujuanRp) + " lebih banyak).");
+  return out;
+}
+/* Tiga hal kritis: dinilai dari keadaan sekarang, sekali per kejadian per hari */
+function kritisKeputusan(b){
+  var out = [];
+  if (!b) return out;
+  if (b.kritisBat) out.push({ k:"bat", judul:"Baterai tidak cukup sampai rumah", isi:"Sisa ±" + Math.round(b.soc) + "%, pulang dari " + b.tempatN + " butuh ±" + b.socMin + "%. Ngecas dulu." });
+  if (b.harusPulang) out.push({ k:"pulang|" + hhmm(b.mp), judul:"Waktunya jalan pulang",
+    isi:b.tiba != null ? (b.telat ? "Berangkat sekarang pun tiba ±" + hhmm(b.tiba) + ", lewat rencana " + hhmm(b.pulang) + "." : "Berangkat sekarang, tiba ±" + hhmm(b.tiba) + ".") : "Mulai jalan pulang sekarang (rencana tiba " + hhmm(b.pulang) + ")." });
+  b.tutup.forEach(function(t){ out.push({ k:"tutup|" + t.id, judul:"Jalan pulang terganggu", isi:t.n + " di rute pulang. Lihat kartu Jalan pulang." }); });
+  return out;
+}
+function getarAktif(){ return bacaLS("peringatan-getar", true) !== false; }
+function peringatkan(item){
+  if (getarAktif() && navigator.vibrate) { try { navigator.vibrate([300, 150, 300]); } catch (e) {} }
+  if (typeof Notification !== "undefined" && Notification.permission === "granted"){
+    var opsi = { body:item.isi, tag:item.k.split("|")[0], renotify:true, icon:"icons/icon-192.png", badge:"icons/icon-192.png" };
+    var biasa = function(){ try { new Notification(item.judul, opsi); } catch (e) {} };
+    /* lewat service worker kalau terpasang (wajib di Android); kalau belum, notifikasi biasa */
+    if (navigator.serviceWorker && navigator.serviceWorker.getRegistration)
+      navigator.serviceWorker.getRegistration().then(function(reg){ if (reg && reg.showNotification) return reg.showNotification(item.judul, opsi); biasa(); })["catch"](biasa);
+    else biasa();
+  }
+}
+function cekPerubahan(){
+  if (jamManual) return;   /* jam coba-coba: bukan keadaan sungguhan */
+  var b = snapKeputusan(); if (!b) return;
+  var hari = b.tgl, a = KEP_LALU;
+  if (!a) a = bacaLS("keputusan-terakhir", null);   /* dibuka lagi: bandingkan dengan keadaan terakhir yang tersimpan */
+  var sejak = sejakDilihat(b.waktu, a);
+  var daftar = bacaLS("perubahan-hari", null);
+  if (!daftar || daftar.tgl !== hari) daftar = { tgl:hari, item:[] };
+  var label = sejak ? "Sejak Ibu terakhir buka (" + hhmm(new Date(sejak).getHours() + new Date(sejak).getMinutes() / 60) + "): " : "";
+  var baru = bedaKeputusan(a, b).map(function(t){ return { t:label + t, jam:b.jam }; });
+  var terkirim = bacaLS("peringatan-terkirim", null);
+  if (!terkirim || terkirim.tgl !== hari) terkirim = { tgl:hari, k:{} };
+  kritisKeputusan(b).forEach(function(x){
+    if (terkirim.k[x.k]) return;
+    terkirim.k[x.k] = b.waktu;
+    baru.push({ t:"<b>" + x.judul + ".</b> " + esc(x.isi), jam:b.jam, kritis:1 });
+    peringatkan(x);
+  });
+  tulisLS("peringatan-terkirim", terkirim);
+  if (baru.length){ daftar.item = baru.reverse().concat(daftar.item).slice(0, 6); tulisLS("perubahan-hari", daftar); }
+  KEP_LALU = b; tulisLS("keputusan-terakhir", b);
+  renderPerubahan(daftar);
+}
+function renderPerubahan(daftar){
+  var n = el("perubahan"); if (!n) return;
+  daftar = daftar || bacaLS("perubahan-hari", null);
+  if (!daftar || daftar.tgl !== iso(new Date()) || !daftar.item.length){ n.hidden = true; return; }
+  var adaKritis = daftar.item.some(function(x){ return x.kritis; });
+  var izin = (typeof Notification !== "undefined" && Notification.permission === "default" && adaKritis);
+  n.hidden = false; n.className = "flag perubahan" + (adaKritis ? " bad" : " warn");
+  n.innerHTML = '<span class="tag">Berubah</span><span><ul class="ubah-list">' + daftar.item.map(function(x){
+      return "<li" + (x.kritis ? ' class="kritis"' : "") + "><em>" + hhmm(x.jam) + "</em> " + x.t + "</li>"; }).join("") + "</ul>" +
+    '<button type="button" class="linkbtn" id="perubahan-oke">Oke, mengerti</button>' +
+    (izin ? ' &middot; <button type="button" class="linkbtn" id="perubahan-izin">Izinkan notifikasi HP</button>' : "") + "</span>";
+  el("perubahan-oke").addEventListener("click", function(){ tulisLS("perubahan-hari", { tgl:iso(new Date()), item:[] }); n.hidden = true; });
+  var iz = el("perubahan-izin"); if (iz) iz.addEventListener("click", mintaIzinNotif);
+}
+function mintaIzinNotif(){
+  if (typeof Notification === "undefined"){ el("izin-status").textContent = "HP/browser ini tidak mendukung notifikasi."; return; }
+  Promise.resolve(Notification.requestPermission()).then(function(p){
+    el("izin-status").textContent = p === "granted" ? "Notifikasi diizinkan." : p === "denied" ? "Notifikasi ditolak; ubah di pengaturan browser." : "";
+    renderPerubahan();
+  });
+}
+el("izin-notif").addEventListener("click", mintaIzinNotif);
+el("peringatan-getar").checked = getarAktif();
+el("peringatan-getar").addEventListener("change", function(){ tulisLS("peringatan-getar", this.checked); });
 document.addEventListener("visibilitychange", function(){
   if (!document.hidden && SEKARANG){ lalulintasOtomatis(SEKARANG.o, SEKARANG.L); renderJalan(SEKARANG.o, SEKARANG.L, false); }
 });

@@ -147,6 +147,7 @@
   </div>
 
   <div class="plancheck" id="plancheck" hidden></div>
+  <div class="flag warn perubahan" id="perubahan" hidden role="status" aria-live="polite"></div>
   <div class="batwarn" id="batwarn" hidden></div>
   <div class="verdict" id="verdict"></div>
 
@@ -446,6 +447,14 @@
 
 <details class="lipat" id="pengaturan-anak">
   <summary>Pengaturan anak <span class="eyebrow">kunci, sinkron, peta macet, pemeriksaan</span></summary>
+<section id="peringatan-panel">
+  <div class="sec-head"><h3>Peringatan di HP</h3></div>
+  <div class="panel">
+    <p style="font-size:13px;color:var(--ink-2);max-width:66ch">Hanya tiga hal penting yang menggetarkan HP: baterai tidak cukup sampai rumah, waktunya jalan pulang, dan jalan pulang ditutup/banjir. Perubahan lain hanya muncul di kotak &ldquo;Berubah&rdquo; saat aplikasi dibuka. Peringatan hanya jalan selama aplikasi terbuka atau baru ditinggal; aplikasi yang sudah ditutup tidak bisa memberi tahu.</p>
+    <label class="chk"><input type="checkbox" id="peringatan-getar" checked> Getar untuk hal penting</label>
+    <div class="row" style="margin-top:8px"><button type="button" class="go ghost" id="izin-notif">Izinkan notifikasi</button><span class="status" id="izin-status"></span></div>
+  </div>
+</section>
 <section id="sk-panel">
   <div class="sec-head"><h3>Sinkron catatan ke GitHub</h3></div>
   <div class="panel">

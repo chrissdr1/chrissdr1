@@ -2479,6 +2479,79 @@ async function main(){
     await c26.close();
   }
 
+
+  console.log("27. Keadaan jalan berubah: kotak 'Berubah', getar/notifikasi untuk hal kritis, macet sekarang di jam pulang langkah");
+  {
+    const c27 = await browser.newContext({ locale:"id-ID", timezoneId:"Asia/Jakarta", serviceWorkers:"block" });
+    const p27 = await c27.newPage(); const err27 = []; p27.on("pageerror", e => err27.push(e.message));
+    await p27.clock.setFixedTime(new Date("2026-10-13T19:00:00+07:00"));
+    let menit27 = 45;
+    await p27.route(/^https?:\/\/(?!127\.0\.0\.1)(?!api\.tomtom\.com)/, r => r.abort());
+    await p27.route("**/api.tomtom.com/**", r => {
+      if (/routing/.test(r.request().url())) return r.fulfill({ status:200, contentType:"application/json", body:JSON.stringify({ routes:[{ summary:{ travelTimeInSeconds:menit27 * 60,
+        noTrafficTravelTimeInSeconds:1800, historicTrafficTravelTimeInSeconds:2700, lengthInMeters:9000, trafficDelayInSeconds:(menit27 - 30) * 60 }, legs:[{ points:[{ latitude:-6.21, longitude:106.65 }, { latitude:-6.1973, longitude:106.6362 }] }], sections:[] }] }) });
+      return r.fulfill({ status:200, contentType:"application/json", body:JSON.stringify({ incidents:[] }) });
+    });
+    await p27.addInitScript(() => { window.__getar = 0; navigator.vibrate = () => { window.__getar++; return true; }; window.__notif = [];
+      window.Notification = class { static get permission(){ return "granted"; } static requestPermission(){ return Promise.resolve("granted"); } constructor(t, o){ window.__notif.push(t + ": " + (o && o.body)); } }; });
+    await p27.goto(url + "index.html?tanpa-mulai", { waitUntil:"load" });
+    await p27.waitForFunction(() => document.querySelector("#n-steps .step"));
+    const lihat = () => p27.evaluate(() => ({ ubah:(!document.getElementById("perubahan") || document.getElementById("perubahan").hidden) ? "" : document.getElementById("perubahan").innerText.replace(/\s+/g, " "), getar:window.__getar, notif:window.__notif.slice(),
+      mp:SEKARANG.langkah.meta.mulaiPulang, kartu:el("jalan-pulang").textContent }));
+    /* maju ke jam w; tunggu jawaban TomTom (jalan pulang sekarang) sebelum membaca */
+    const maju = async (w) => { await p27.clock.setFixedTime(new Date(w)); await p27.evaluate(() => ikutJam(false));
+      await p27.waitForFunction(() => !!Lalulintas.pulangSekarangCache({ lat:SEKARANG.L.lat, lon:SEKARANG.L.lon }), null, { timeout:5000 }).catch(() => {});
+      await p27.evaluate(() => runNow()); };
+    /* Karawaci (9 km), pulang 21:30: macet sekarang masuk jam mulai pulang langkah saat tinggal <= 1 jam */
+    await p27.evaluate(() => { Peta.setKunciTomTom("kunci-uji"); const s = el("n-lok"); s.value = "karawaci"; s.dispatchEvent(new Event("change", { bubbles:true }));
+      el("n-soc").value = 80; el("n-soc").dataset.touched = "1"; el("n-pulang").value = "21.5"; runNow(); });
+    await maju("2026-10-13T20:00:00+07:00");
+    const a = await lihat();
+    menit27 = 60;
+    await maju("2026-10-13T20:11:00+07:00");   /* simpanan 10 menit habis: diambil ulang, macet naik */
+    const m2 = await lihat();
+    ok(Math.abs(a.mp - (21.5 - 45 / 60 - 0.25)) < 0.02 && Math.abs(m2.mp - (21.5 - 60 / 60 - 0.25)) < 0.02 && /sama dengan langkah/.test(m2.kartu),
+       "macet sekarang dari TomTom ikut jam mulai pulang di langkah (45 -> 60 menit: 20:30 -> 20:15); kartu dan langkah sama", JSON.stringify({ a:a.mp, b:m2.mp, kartu:m2.kartu.slice(0, 260) }));
+    ok(/Mulai pulang jadi 20:15 \(tadi 20:30\)/.test(m2.ubah) && !/jadi 21:00/.test(m2.ubah) && m2.getar === 0,
+       "kotak 'Berubah': jam mulai pulang maju karena macet; tidak bolak-balik ke 21:00 saat data TomTom diambil ulang; belum getar", m2.ubah);
+    await p27.clock.setFixedTime(new Date("2026-10-13T20:16:00+07:00")); await p27.evaluate(() => { ikutJam(false); runNow(); });
+    await p27.waitForFunction(() => window.__notif.length >= 1, null, { timeout:3000 }).catch(() => {});
+    const b2 = await lihat();
+    ok(/Waktunya jalan pulang/.test(b2.ubah) && b2.getar === 1 && b2.notif.length === 1 && /Waktunya jalan pulang/.test(b2.notif[0]),
+       "waktunya jalan pulang: HP bergetar + notifikasi, sekali", JSON.stringify({ getar:b2.getar, notif:b2.notif }));
+    await p27.evaluate(() => runNow());
+    const c3 = await lihat();
+    await p27.evaluate(() => { el("n-soc").value = 6; el("n-soc").dataset.touched = "1"; runNow(); });
+    await p27.waitForFunction(() => window.__notif.length >= 2, null, { timeout:3000 }).catch(() => {});
+    const d = await lihat();
+    ok(c3.getar === 1 && d.getar === 2 && /Baterai tidak cukup sampai rumah/.test(d.ubah) && d.notif.length === 2,
+       "hitung ulang tidak menggetarkan lagi; baterai tidak cukup sampai rumah = peringatan kedua", JSON.stringify({ c:c3.getar, d:d.getar, notif:d.notif }));
+    /* jalan ditutup di rute pulang: peringatan ketiga */
+    const tt = await p27.evaluate(() => { Kejadian.relevan = () => [{ id:"t1", kat:8, jenis:"Jalan ditutup", jalan:"Jl. Imam Bonjol", dari:"", diRute:true, jarak:2 }]; runNow(); runNow();
+      return { ubah:(document.getElementById("perubahan") || { innerText:"" }).innerText.replace(/\s+/g, " "), getar:window.__getar }; });
+    await p27.waitForFunction(() => window.__notif.length >= 3, null, { timeout:3000 }).catch(() => {});   /* notifikasi lewat promise (getRegistration) */
+    tt.notif = await p27.evaluate(() => window.__notif.slice());
+    ok(/Jalan pulang terganggu/.test(tt.ubah) && /Jl\. Imam Bonjol/.test(tt.ubah) && tt.getar === 3 && tt.notif.length === 3, "jalan ditutup di rute pulang: getar + notifikasi sekali", JSON.stringify(tt));
+    const sebelum = (await lihat()).ubah;
+    await p27.evaluate(() => { el("n-pulang").value = "22"; el("n-pulang").dispatchEvent(new Event("change")); runNow(); });
+    ok((await lihat()).ubah === sebelum, "Ibu mengubah jam pulang sendiri: tidak dilaporkan sebagai 'berubah'", "");
+    ok(!err27.length, "bagian 27 tanpa galat halaman", err27.join(" | "));
+    await c27.close();
+    /* dibuka lagi: "sejak Ibu terakhir buka" -- prakiraan hujan baru */
+    const c28 = await browser.newContext({ locale:"id-ID", timezoneId:"Asia/Jakarta", serviceWorkers:"block" });
+    const q = await c28.newPage(); await q.clock.setFixedTime(new Date("2026-10-13T12:00:00+07:00"));
+    await q.route(/^https?:\/\/(?!127\.0\.0\.1)/, r => r.abort());
+    await q.goto(url + "index.html?tanpa-mulai", { waitUntil:"load" }); await q.waitForFunction(() => document.querySelector("#n-steps .step"));
+    await q.evaluate(() => localStorage.setItem("cuaca-openmeteo", JSON.stringify({ tanggal:"2026-10-13", hujan:true, jam:"15:00-17:00", ringkas:"uji", sumber:"Open-Meteo", diambil:"2026-10-13T05:20:00.000Z", jamHujan:[15, 16], perJam:[] })));
+    await q.goto("about:blank");   /* Ibu meninggalkan aplikasi jam 12:00 */
+    await q.clock.setFixedTime(new Date("2026-10-13T12:30:00+07:00"));
+    await q.goto(url + "index.html?tanpa-mulai", { waitUntil:"load" }); await q.waitForFunction(() => document.querySelector("#n-steps .step"));
+    await q.waitForFunction(() => document.getElementById("perubahan") && !document.getElementById("perubahan").hidden, null, { timeout:5000 }).catch(() => {});
+    const f = await q.evaluate(() => (!document.getElementById("perubahan") || document.getElementById("perubahan").hidden) ? "" : document.getElementById("perubahan").innerText.replace(/\s+/g, " "));
+    ok(/Sejak Ibu terakhir buka \(12:00\)/.test(f) && /Hujan diperkirakan mulai ±15:00/.test(f), "dibuka lagi 12:30: 'Sejak Ibu terakhir buka (12:00): hujan diperkirakan mulai 15:00'", f);
+    await c28.close();
+  }
+
   await browser.close(); srv.close();
   console.log(`\n${passed} lolos, ${failed} gagal`);
   process.exit(failed ? 1 : 0);

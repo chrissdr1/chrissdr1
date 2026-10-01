@@ -449,6 +449,15 @@ function jamMulaiPulang(o, tempat){
          : (typeof o.kmHome === "number") ? o.kmHome : ZONA[o.zona].pulang;
   if (!(km > 0)) return 0;
   var L = tempat || o.tempatPulang || null, j = o.pulang - 0.5;
+  /* Macet SEKARANG dari TomTom (kartu Jalan pulang), bila Ibu pulang dari
+     titik itu dan jam mulai pulangnya tinggal <= 1 jam lagi: langkah dan
+     kartu memakai jam yang sama (dulu langkah memakai macet biasa, kartu
+     memakai macet sekarang -- dua jam pulang berbeda di satu layar). */
+  var lv = o.pulangLive;
+  if (lv && lv.menit > 0 && (!tempat || tempat.id === lv.id) && typeof o.keluar === "number"){
+    var tl = lv.menit / 60;
+    if (o.pulang - tl - 0.25 - o.keluar <= 1) return Math.max(0.5, tl * (o.kaliMacet || 1) + 0.25);
+  }
   var tp = tipeDari(o.ctx);
   var t = L ? jamTempuhRumah(L, j, km, tp) : km / CALIB.kecepatan * faktorMacet(j, o.zona, tp);
   t *= (o.kaliMacet || 1);   /* uji "macet parah" (rekomendasi.js) */
@@ -966,13 +975,16 @@ function buildSteps(o, r, opts){
     var km = (typeof opts.kmHome === "number") ? opts.kmHome : r.kmHome, pp = pos;
     if (o.tempatAkhir && !opts.stay){ pp = o.tempatAkhir; km = Math.max(o.tempatAkhir.home, 6); }
     var jt = pp ? jamTempuhRumah(pp, o.pulang - 0.5, km, tipeDari(ctx)) : km / CALIB.kecepatan * faktorMacet(o.pulang - 0.5, o.zona, tipeDari(ctx));
+    /* macet SEKARANG (TomTom), sama dengan jamMulaiPulang: pulang dari titik ini dalam <= 1 jam */
+    var lv = o.pulangLive, pakaiLive = function(dari){ return lv && lv.menit > 0 && dari && dari.id === lv.id && o.pulang - lv.menit / 60 - 0.25 - o.keluar <= 1; };
+    if (pakaiLive(pp)) jt = lv.menit / 60;
     var bt = batasMalam(ctx);
     var m = Math.min(o.pulang - Math.max(0.5, jt + 0.25), bt);
     if (!tidakPulang && !r.pieces.some(adaJamNarik)){
       /* pulang sekarang dari posisi SEKARANG, dengan jarak sebenarnya (dulu di
          rumah pun "6 km ±11 menit") */
       m = o.keluar;
-      if (pos && typeof pos.home === "number"){ pp = pos; km = pos.home; jt = km <= 1 ? 0 : jamTempuhRumah(pos, o.keluar, km, tipeDari(ctx)); }
+      if (pos && typeof pos.home === "number"){ pp = pos; km = pos.home; jt = km <= 1 ? 0 : (lv && lv.menit > 0 && pos.id === lv.id) ? lv.menit / 60 : jamTempuhRumah(pos, o.keluar, km, tipeDari(ctx)); }
     }
     /* potongan terakhir hanya perjalanan pindah yang lebih lama dari
        potongannya: pulang dimulai sesudah sampai (dulu "±30 menit" untuk 64

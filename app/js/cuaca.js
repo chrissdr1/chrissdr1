@@ -5,13 +5,13 @@
 
    Hasilnya berbentuk sama dengan CUACA di data.js, jadi terapkanCuaca() di
    app.js tidak perlu tahu dari mana datangnya, ditambah perJam (peluang dan
-   curah tiap jam) untuk pita 24 jam di kotak cuaca. Disimpan 3 jam di HP
+   curah tiap jam) untuk pita 24 jam di kotak cuaca. Disimpan 1 jam di HP
    supaya tidak memanggil ulang tiap pindah tab. Kalau internet tidak ada,
    kembali ke CUACA bawaan, dan kotak cuaca mengatakannya. */
 "use strict";
 
 var Cuaca = (function(){
-  var LS = "cuaca-openmeteo", UMUR_MAKS = 3 * 3600 * 1000;
+  var LS = "cuaca-openmeteo", UMUR_MAKS = 1 * 3600 * 1000;   /* 1 jam: hujan yang berubah siang hari ikut terlihat */
   var TITIK = { lat:-6.1973, lon:106.6362, nama:"Modernland" };
   var URL_ = "https://api.open-meteo.com/v1/forecast?latitude=" + TITIK.lat + "&longitude=" + TITIK.lon +
              "&hourly=precipitation_probability,precipitation&timezone=Asia%2FJakarta&forecast_days=1";
