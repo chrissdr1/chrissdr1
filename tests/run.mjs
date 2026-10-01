@@ -493,6 +493,9 @@ async function main(){
      "toggle tema: kembali ke otomatis (ikut sistem terang)", JSON.stringify(kembaliOtomatis));
   await page.evaluate(() => { try { localStorage.removeItem("tema-warna"); } catch (e) {} });
   for (const [k, v] of Object.entries({ "n-jam":9.5, "n-lok":"karawaci", "n-soc":65, "n-dpt":0, "n-pulang":21.5, "n-filter":2, "n-bat":30.08, "n-tujuan":"rumah" })) await setField(page, k, v);
+  /* baterai dipatok 65% (diketik Ibu): ketikan jadi jangkar dan ikut turun ke jam
+     09:30 yang dipilih -- hasilnya bergantung jam nyata saat tes dijalankan */
+  await page.evaluate(() => { el("n-soc").value = 65; el("n-soc").dataset.touched = "1"; runNow(); });
   const rk = await page.evaluate(() => {
     const d = SEKARANG.rek.daftar;
     const urut = d.every((x, i) => i === 0 || d[i - 1].sisa >= x.sisa);
@@ -990,7 +993,13 @@ async function main(){
 
   console.log("17. Ukur macet otomatis (TomTom tiruan): jatah, galat, dan pemakaian di mesin");
   {
-    const pu = await ctx.newPage();
+    /* konteks sendiri dengan tanggal tetap (pertengahan bulan): jatah bulanan
+       & jam yang diukur bergantung tanggal -- dulu gagal tiap tanggal 1. Jam
+       palsu Playwright berlaku untuk seluruh konteks, jadi tidak boleh di
+       konteks bersama. */
+    const ctx17 = await browser.newContext({ locale:"id-ID", timezoneId:"Asia/Jakarta", serviceWorkers:"block" });
+    const pu = await ctx17.newPage();
+    await pu.clock.setFixedTime(new Date("2026-10-14T10:00:00+07:00"));
     let nMinta = 0, nLive = 0, contohUrl = [], mode = "ok";
     /* TomTom tiruan: waktu = jarak lurus x 1,3 / 50 km/jam, dikali faktor jam
        (sore 2,5x, pagi 2,0x, lainnya 1,4x) -- sengaja beda dari asumsi. */
@@ -1010,7 +1019,7 @@ async function main(){
       r.fulfill({ status:200, contentType:"application/json", body:JSON.stringify({ routes:[{ summary:{ travelTimeInSeconds:t0 * f, noTrafficTravelTimeInSeconds:t0, historicTrafficTravelTimeInSeconds:t0 * f } }] }) });
     };
     await pu.route("**/api.tomtom.com/routing/**", tiruan);
-    await pu.goto(url + "index.html", { waitUntil:"load" });
+    await pu.goto(url + "index.html?tanpa-mulai", { waitUntil:"load" });
     await pu.waitForFunction(() => document.querySelector("#n-steps .step"));
     /* matikan pengukuran otomatis dan macet-langsung otomatis di halaman uji ini:
        jumlah permintaan di bawah harus bisa dihitung persis */
@@ -1169,9 +1178,9 @@ async function main(){
 
     /* dua tab bersamaan (aplikasi terpasang + browser): tidak dobel */
     mode = "ok";
-    const pu2 = await ctx.newPage();
+    const pu2 = await ctx17.newPage();
     await pu2.route("**/api.tomtom.com/routing/**", tiruan);
-    await pu2.goto(url + "index.html", { waitUntil:"networkidle" });
+    await pu2.goto(url + "index.html?tanpa-mulai", { waitUntil:"networkidle" });
     await pu2.evaluate(() => { window.ukurMacet = () => Promise.resolve(); window.lalulintasOtomatis = () => {}; });
     await pu.evaluate(() => { localStorage.removeItem("tomtom-jatah"); UkurMacet.hapus(); });
     const n2 = nMinta, urlDua = new Set();
@@ -1216,7 +1225,7 @@ async function main(){
     ok(/perkiraan umum/.test(fAsumsi), "tanpa pengukuran: kartu berkata macetnya perkiraan umum", fAsumsi);
     ok(asumsi.f === 1.6 && asumsi.fj === 2.2 && asumsi.m === null, "tanpa pengukuran: kembali ke asumsi (1,6x Tangerang, 2,2x Jakarta sore)", JSON.stringify(asumsi));
     await pu.evaluate(() => { Peta.setKunciTomTom(""); localStorage.removeItem("tomtom-jatah"); });
-    await pu.close();
+    await pu.close(); await ctx17.close();
   }
 
   console.log("18. TomTom langsung: jatah bulanan per layanan, jalan pulang sekarang, kejadian di jalan");
@@ -1420,6 +1429,7 @@ async function main(){
   {
     const ctx19 = await browser.newContext({ locale:"id-ID", timezoneId:"Asia/Jakarta", serviceWorkers:"block" });
     const ps = await ctx19.newPage();
+    await ps.clock.setFixedTime(new Date("2026-10-14T10:00:00+07:00"));   /* jatah bulanan "cari" tidak bergantung tanggal nyata */
     const err19 = []; ps.on("pageerror", e => err19.push(e.message));
     await ps.route(/^https?:\/\/(?!127\.0\.0\.1)(?!api\.tomtom\.com\/search)/, r => r.abort());
     let nCari = 0, modeCari = "ok", urlCari = [];
@@ -1485,9 +1495,11 @@ async function main(){
     /* 30 hari: tidak diminta ulang; data lama tidak ditimpa kosong bila gagal */
     const n1 = nCari;
     await ps.evaluate(() => SpkluTT.segarkan(false));
+    const nTidak = nCari - n1;   /* masih segar: tidak ada permintaan */
     modeCari = "403";
     const gagal = await ps.evaluate(async () => { const h = await SpkluTT.segarkan(true); return { h, st:SpkluTT.status() }; });
-    ok(nCari - n1 === 12 && /gagal/.test(gagal.h.alasan) && gagal.st.jumlah === 125,
+    /* jumlah permintaan paksa dibatasi jatah harian "cari" (24, sudah terpakai 13 di atas) -- jadi bukan angka tetap */
+    ok(nTidak === 0 && nCari - n1 >= 1 && nCari - n1 <= 12 && /gagal/.test(gagal.h.alasan) && gagal.st.jumlah === 125,
        "dalam 30 hari tidak diminta ulang; pembaruan yang gagal semua tidak menghapus data lama", JSON.stringify({ n:nCari - n1, gagal }));
     modeCari = "ok";
 
@@ -2397,6 +2409,74 @@ async function main(){
       ok(x.siang.length > 0 && x.siang[0] !== "jkt", "Jakarta Barat jam 11 (tarif Jakarta sudah turun): urutan tempat bergeser ke Tangerang, sama dengan langkah", JSON.stringify(x.siang));
       await b.c.close();
     }
+  }
+
+
+  console.log("26. Data yang dulu tidak ikut menentukan saran: colokan SPKLU, biaya ngecas, jam hujan, banjir, tempat acara");
+  {
+    const c26 = await browser.newContext({ locale:"id-ID", timezoneId:"Asia/Jakarta", serviceWorkers:"block" });
+    const p26 = await c26.newPage(); const err26 = []; p26.on("pageerror", e => err26.push(e.message));
+    await p26.clock.setFixedTime(new Date("2026-10-13T16:00:00+07:00"));
+    await p26.route(/^https?:\/\/(?!127\.0\.0\.1)/, r => r.abort());
+    await p26.goto(url + "index.html?tanpa-mulai", { waitUntil:"load" });
+    await p26.waitForFunction(() => document.querySelector("#n-steps .step"));
+    const x = await p26.evaluate(() => {
+      const ada = n => typeof window[n] === "function";
+      const sim = (tambah, lok, tgl) => { const L = LOKMAP[lok || "kota"]; const o = Object.assign({ ctx:dayCtx(tgl || "2026-10-13"), keluar:10, pulang:21.5, rehat:"none", zona:L.z, filter:2, bat:30.08,
+        rumah:false, hujan:false, acara:false, soc:30, deadKm:0, tempatAwal:L }, tambah || {}); o.urutan = Peluang.urutanTinggal(L, o); const s = simulate(o);
+        return { net:Math.round(s.net), menit:(s.sesi || []).reduce((a, q) => a + q.durasi * 60, 0), nama:(s.sesi || []).map(q => q.spklu && q.spklu.nama).join(","),
+                 blok:Object.fromEntries(s.pieces.filter(q => !q.jeda).map(q => [q.b.n, q.mult])) }; };
+      const out = {};
+      /* SPKLU: tanpa data TomTom / semua dekat hanya AC / terdekat DC 20 kW */
+      const list = spkluUntuk(LOKMAP.kota), st = (nama, kw, t) => { const s = SPKLU.find(z => z[0] === nama); return { id:nama, n:nama, lat:s[2], lon:s[1], col:[{ t, kw }] }; };
+      SpkluTT.hapus(); const tanpa = sim();
+      SpkluTT.hapus(); localStorage.setItem("spklu-tomtom", JSON.stringify({ v:1, at:2, stasiun:list.map(z => st(z.nama, 7.4, "IEC62196Type2CableAttached")).concat([{ id:"cc", n:"SPKLU Cepat Uji", lat:-6.215, lon:106.66, col:[{ t:"IEC62196Type2CCS", kw:50 }] }]) }));
+      const acSaja = sim();
+      SpkluTT.hapus(); localStorage.setItem("spklu-tomtom", JSON.stringify({ v:1, at:3, stasiun:list.map(z => st(z.nama, 20, "IEC62196Type2CCS")) }));
+      const dc20 = sim();
+      SpkluTT.hapus(); localStorage.removeItem("spklu-tomtom");
+      out.spklu = { tanpa, acSaja, dc20 };
+      /* biaya ngecas dari catatan */
+      const simpan = rows;
+      const hari = ["2026-09-21","2026-09-22","2026-09-23","2026-09-24"].map(id => ({ id, jam:10, kmt:200, kmp:130, dpt:390000, kwh:30, trip:15, ins:0, biaya:150000 }));
+      rows = hari.slice(0, 2); recalibrate(); const k2 = CALIB.biayaK || 1, tarif2 = ada("tarifKwh") ? tarifKwh() : TARIF_KWH;
+      rows = hari; recalibrate(); renderCal(); const k4 = CALIB.biayaK || 1, tarif4 = ada("tarifKwh") ? tarifKwh() : TARIF_KWH, info = (el("biaya-info") || {}).textContent || "";
+      rows = simpan; recalibrate(); renderCal();
+      out.biaya = { k2, k4, tarif2, tarif4, info };
+      /* jam hujan */
+      out.hujan = { kering:sim({ keluar:5.25 }).blok, siang:sim({ keluar:5.25, hujan:true, hujanJam:[15, 16] }).blok, seharian:sim({ keluar:5.25, hujan:true }).blok };
+      WEATHER = { tanggal:"2026-10-13", hujan:true, jam:"15:00-17:00", jamHujan:[15, 16] };
+      el("n-hujan").dataset.touched = ""; el("n-hujan").checked = true;
+      const otomatis = ada("jamHujanUntuk") ? jamHujanUntuk("2026-10-13", "n-hujan") : "tidak ada";
+      el("n-hujan").dataset.touched = "1"; const sendiri = ada("jamHujanUntuk") ? jamHujanUntuk("2026-10-13", "n-hujan") : "tidak ada";
+      el("n-hujan").dataset.touched = ""; el("n-hujan").checked = false; WEATHER = null;
+      out.hujanUI = { otomatis, sendiri };
+      /* banjir: hujan sekarang (16:00) -- Jakarta Barat tidak ditawarkan */
+      const o16 = { ctx:dayCtx("2026-10-13"), keluar:16, pulang:21.5, rehat:"none", zona:"tng", filter:2, bat:30.08, rumah:false, hujan:true, hujanJam:[16, 17], acara:false, soc:80, deadKm:0 };
+      const rk = Rekomendasi.hitung(Object.assign({}, o16), LOKMAP.kota, 80, false), rkKering = Rekomendasi.hitung(Object.assign({}, o16, { hujan:false }), LOKMAP.kota, 80, false);
+      out.banjir = { jakbar:rk.daftar.some(z => z.tempat && z.tempat.id === "jakbar"), jakbarKering:rkKering.daftar.some(z => z.tempat && z.tempat.id === "jakbar"), terlewat:rk.terlewat.join("; ") };
+      /* acara: ICE BSD (31-10) menaikkan BSD, bukan Kota; konser Jakarta (17-10) tidak menaikkan Kota */
+      out.acara = { bsdAcara:sim({ soc:90 }, "bsd", "2026-10-31").net, bsdBiasa:sim({ soc:90 }, "bsd", "2026-10-24").net,
+                    kotaAcara:sim({ soc:90 }, "kota", "2026-10-31").net, kotaBiasa:sim({ soc:90 }, "kota", "2026-10-24").net,
+                    kotaKonser:sim({ soc:90 }, "kota", "2026-10-17").net, kotaSabtu:sim({ soc:90 }, "kota", "2026-10-10").net };
+      return out;
+    });
+    const S1 = x.spklu;
+    ok(/SPKLU Cepat Uji/.test(S1.acSaja.nama) && !/SPKLU Cepat Uji/.test(S1.tanpa.nama) && S1.dc20.menit > S1.tanpa.menit * 1.2 && S1.dc20.net < S1.tanpa.net,
+       "SPKLU: dekat hanya AC -> dipilih SPKLU CCS2 terdekat dari TomTom; DC 20 kW -> ngecas lebih lama dan bersih turun; tanpa data TomTom seperti dulu", JSON.stringify(S1));
+    ok(x.biaya.k2 === 1 && x.biaya.k4 > 1.1 && x.biaya.tarif4 > x.biaya.tarif2 && /lebih mahal/.test(x.biaya.info),
+       "biaya ngecas yang Ibu catat (>= 3 hari) menggeser tarif & biaya sesi di rencana, dan disebutkan di Catatan", JSON.stringify(x.biaya));
+    const H = x.hujan;
+    ok(Math.abs(H.siang["Peak pagi"] - H.kering["Peak pagi"]) < 1e-9 && H.siang["Peak sore"] > H.kering["Peak sore"] && H.seharian["Peak pagi"] > H.kering["Peak pagi"],
+       "hujan 15:00-17:00 dari prakiraan: hanya jam itu yang naik (pagi tidak); dicentang sendiri tanpa jam: seharian", JSON.stringify(H));
+    ok(Array.isArray(x.hujanUI.otomatis) && x.hujanUI.otomatis.join() === "15,16" && x.hujanUI.sendiri === null,
+       "kotak Hujan otomatis dari prakiraan membawa jam hujannya; dicentang sendiri = seharian", JSON.stringify(x.hujanUI));
+    ok(!x.banjir.jakbar && x.banjir.jakbarKering && /rawan banjir/.test(x.banjir.terlewat), "sedang hujan: Jakarta Barat (rawan banjir) tidak ditawarkan sebagai tujuan pindah", JSON.stringify(x.banjir));
+    const A = x.acara;
+    ok(A.bsdAcara - A.bsdBiasa > (A.kotaAcara - A.kotaBiasa) + 10000 && A.kotaKonser === A.kotaSabtu,
+       "acara ICE BSD menaikkan BSD jauh lebih dari Kota; konser di Jakarta tidak menaikkan perkiraan di Tangerang", JSON.stringify(A));
+    ok(!err26.length, "bagian 26 tanpa galat halaman", err26.join(" | "));
+    await c26.close();
   }
 
   await browser.close(); srv.close();
