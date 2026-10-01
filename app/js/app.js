@@ -736,6 +736,7 @@ function runNow(){
     bat:parseFloat(el("n-bat").value), rumah:el("n-rumah").checked,
     hujan:el("n-hujan").checked, acara:el("n-acara").checked,
     deadKm:0 };   /* Ibu sudah di posisinya: tidak ada km kosong menuju pangkalan */
+  o.hujanJam = jamHujanUntuk(dateStr, "n-hujan");
   /* Sebelum jam mulai rencana hari ini dan belum mulai: hitung dari jam mulai
      rencana (dulu 04:00-05:15 dihitung kerja, kartu rencana "Belum mulai") */
   var belumMulai = planAktif && !jamManual && o.keluar < PLAN.keluar - 0.01 && !(parseRp(el("n-dpt").value) > 0);
@@ -802,7 +803,7 @@ function runNow(){
   var akhirSejak = jamManual ? Math.min(o.keluar, jamSekarangTepat()) : o.keluar;
   var zonaSejak = planAktif ? PLAN.zona : (MULAI_HARI && MULAI_HARI.zona) || o.zona;
   var kmSejak = (dpt > 0 && akhirSejak > mulaiHari) ? Baterai.kmModel(mulaiHari, akhirSejak, zonaSejak, planAktif ? PLAN.rehat : "none") : 0;
-  var listrikSejak = kmSejak / CALIB.kmkwh * TARIF_KWH;
+  var listrikSejak = kmSejak / CALIB.kmkwh * tarifKwh();
   var proyeksi = dpt - listrikSejak + r.net;
   renderPlanCheck(o.keluar, dpt, L.z);
   AKTUAL = { jam:jamManual ? Math.min(o.keluar, jamSekarangTepat()) : o.keluar, dpt:dpt, lok:L.n, home:Math.round(kmHome*10)/10, z:L.z,
@@ -1039,6 +1040,14 @@ function segInk(rate,on){
   if (!on) return "var(--muted)";
   return rate>=40000 ? "var(--t-hi-ink)" : rate>=28000 ? "var(--t-mid-ink)" : "var(--t-lo-ink)";
 }
+/* Jam hujan dari prakiraan (Open-Meteo) untuk tanggal itu, bila kotak Hujan
+   tercentang OTOMATIS dari prakiraan. Dicentang sendiri oleh Ibu, atau tanpa
+   jam: null = dihitung hujan seharian (seperti dulu). */
+function jamHujanUntuk(tgl, idKotak){
+  var k = el(idKotak);
+  if (!k || !k.checked || k.dataset.touched === "1") return null;
+  return (WEATHER && WEATHER.tanggal === tgl && WEATHER.hujan && WEATHER.jamHujan && WEATHER.jamHujan.length) ? WEATHER.jamHujan.slice() : null;
+}
 function runPlan(){
   var dateStr = el("p-tgl").value || iso(new Date());
   var ctx = dayCtx(dateStr);
@@ -1046,6 +1055,7 @@ function runPlan(){
     rehat:rehatDariUI(), zona:el("p-zona").value, filter:parseInt(el("p-filter").value,10),
     bat:parseFloat(el("p-bat").value), rumah:el("p-rumah").checked,
     hujan:el("p-hujan").checked, acara:el("p-acara").checked };
+  o.hujanJam = jamHujanUntuk(dateStr, "p-hujan");
   if (o.pulang<=o.keluar){ o.pulang=Math.min(24,o.keluar+1); el("p-pulang").value=o.pulang; }
   /* Rencana untuk HARI INI berangkat dari baterai yang Ibu isi di Mulai hari
      (bukan asumsi 90%), asal jam mulainya tidak jauh sebelum isian itu. */
@@ -1855,6 +1865,17 @@ function renderCal(){
     tile("Km bayar / jam", e?dec(e.v,1):"—","ambang <b>15</b> &middot; <b>22</b>",
       e?(e.v>=15?"ok":"low"):"");
   renderBelajar(); renderCarter();
+  /* biaya ngecas: catatan Ibu dibanding asumsi (dipakai mesin bila >= 3 hari) */
+  var bInfo = el("biaya-info");
+  if (bInfo){
+    var nB = recent.filter(function(r){ return num(r.biaya) > 0 && num(r.kwh) > 0; }).length;
+    var kB = CALIB.biayaK || 1, pB = Math.round((kB - 1) * 100);
+    bInfo.innerHTML = CALIB.dari && CALIB.dari.biaya
+      ? "<b>Biaya ngecas dari catatan Ibu</b> (" + CALIB.biayaN + " hari): " + (Math.abs(pB) < 3 ? "sama dengan perkiraan" : (pB > 0 ? pB + "% lebih mahal" : Math.abs(pB) + "% lebih murah") + " dari perkiraan") +
+        " &mdash; jadi tarif &plusmn;" + rp(tarifKwh()) + "/kWh + " + rp(feeSesi()) + " per sesi. Sudah dipakai di rencana dan saran."
+      : "<b>Biaya ngecas:</b> masih perkiraan (" + rp(TARIF_KWH) + "/kWh + " + rp(SESSION_FEE) + " per sesi). Isi &ldquo;Biaya ngecas + parkir&rdquo; dan kWh di catatan" +
+        (nB ? " (baru " + nB + " dari 3 hari)" : "") + " supaya memakai angka Ibu.";
+  }
   if (a){
     var dl=Math.round(((a.v-BASE_RPKM)/BASE_RPKM)*100);
     el("calnote").innerHTML = "Rp per km Ibu <b>"+(dl>=0?dl+"% di atas":Math.abs(dl)+"% di bawah")+

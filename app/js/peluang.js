@@ -46,10 +46,11 @@ var Peluang = (function(){
     return LOKMAP.kota;
   }
 
-  function bolehKe(S, T, p){
+  function bolehKe(S, T, p, o){
     if (p.s >= 20 && T.home > S.home + 1) return false;            /* kompas: malam hanya mendekat ke rumah */
     if (p.s >= 20 && T.z === "jkt") return false;                  /* "jam 20:00 seharusnya sudah tidak di Jakarta" (Rute 700K) */
     if (T.id === "bandara" && S.id !== T.id && p.w < 1) return false; /* antre bandara butuh waktu */
+    if (S.id !== T.id && rawanBanjir(T) && hujanPada(o, p.s)) return false;   /* jam hujan: jangan menuju daerah rawan banjir */
     return true;
   }
 
@@ -71,7 +72,7 @@ var Peluang = (function(){
     var SIANG_JKT = { "Pagi akhir":1, "Siang":1, "Jam mati":1 }, pindahJam = null;
     var u = potongBlok(o).filter(function(p){ return !p.jeda; }).map(function(p){
       if (!o.stay && kini.z === "jkt" && kini.home <= 38 && SIANG_JKT[p.b.n] && !(kini === T && berangkatDariT <= p.s + 0.01)){ kini = LOKMAP.kota; pindahMalam = true; if (pindahJam == null) pindahJam = p.s; }
-      if (!o.stay && !bolehKe(kini, kini, p) && !(kini === T && berangkatDariT <= p.s + 0.01)){ kini = LOKMAP.kota; pindahMalam = true; if (pindahJam == null) pindahJam = p.s; }
+      if (!o.stay && !bolehKe(kini, kini, p, o) && !(kini === T && berangkatDariT <= p.s + 0.01)){ kini = LOKMAP.kota; pindahMalam = true; if (pindahJam == null) pindahJam = p.s; }
       return kini.id;
     });
     u.pindahMalam = pindahMalam; u.pindahJam = pindahJam;
@@ -83,7 +84,7 @@ var Peluang = (function(){
     opsi = opsi || {};
     var lebar = opsi.lebar || 8, banyak = opsi.banyak || 3, maksPindah = opsi.maksPindah == null ? 4 : opsi.maksPindah;
     var ctx = o.ctx, hari = ctx.shapeDay;
-    var extra = (o.hujan ? 1.20 : 1) * ((o.acara && !ctx.ev) ? 1.15 : 1) * (ctx.gajian ? 1.05 : 1);
+    var extra = ((o.acara && !ctx.ev) ? 1.15 : 1) * (ctx.gajian ? 1.05 : 1);   /* hujan & acara kalender: per potongan di taksir */
     var pieces = potongBlok(o), kerja = pieces.filter(function(p){ return !p.jeda; });
     var awal = tempatAwal(L);
     if (!kerja.length) return { daftar:[], basis:null, awal:awal };
@@ -93,11 +94,11 @@ var Peluang = (function(){
     function taksir(S, T, p, jatah){
       var zp = ZONA[T.z], peak = !!PEAKS[p.b.n];
       var pakaiJatah = peak && zp.need && jatah > 0;
-      var m = (peak ? ((pakaiJatah || !zp.need) ? zp.peak : (1 + (zp.peak - 1) * 0.35)) : zp.off) * ctx.mult * extra * bobotTempat(T.id, p.b.n) * Belajar.pengali(hari, p.b.n);
+      var m = (peak ? ((pakaiJatah || !zp.need) ? zp.peak : (1 + (zp.peak - 1) * 0.35)) : zp.off) * ctx.mult * extra * faktorHujan(o, p.s, p.e) * faktorAcara(ctx, T, T.z, p.b.n) * bobotTempat(T.id, p.b.n) * Belajar.pengali(hari, p.b.n);
       var pindahJam = S.id === T.id ? 0 : jamTempuhAntar(S, T, p.s, iso(ctx.d)), pindahKm = S.id === T.id ? 0 : jarakAntar(S, T);
       var jam = Math.max(0, p.w - pindahJam);
       var gross = blockGross(p.b, hari) * m * jam;
-      var listrik = (p.b.km * zp.kmx * jam + pindahKm) / kmkwh * TARIF_KWH;
+      var listrik = (p.b.km * zp.kmx * jam + pindahKm) / kmkwh * tarifKwh();
       return { skor:gross - listrik, pakaiJatah:pakaiJatah, pindah:S.id !== T.id };
     }
 
@@ -112,7 +113,7 @@ var Peluang = (function(){
         var S = (jedaP && istirahatDiRumah(st.akhir, jedaP, o)) ? LOKMAP.kota : st.akhir;
         KANDIDAT.forEach(function(id){
           var T = LOKMAP[id];
-          if (!bolehKe(S, T, p)) return;
+          if (!bolehKe(S, T, p, o)) return;
           var pindah = st.pindah + (S.id === T.id ? 0 : 1);
           if (pindah > maksPindah) return;
           /* satu jatah per grup peak (pagi/sore), bukan per potongan */
@@ -126,7 +127,7 @@ var Peluang = (function(){
       });
       /* hukum jarak pulang pada tahap terakhir supaya urutan yang berakhir jauh tidak menang semu */
       var terakhir = p === kerja[kerja.length - 1];
-      berikut.forEach(function(st){ if (terakhir && !o.stay) st.skor -= st.akhir.home / kmkwh * TARIF_KWH + jamTempuhRumah(st.akhir, o.pulang - 0.5, undefined, tipeDari(ctx)) * 20000; });
+      berikut.forEach(function(st){ if (terakhir && !o.stay) st.skor -= st.akhir.home / kmkwh * tarifKwh() + jamTempuhRumah(st.akhir, o.pulang - 0.5, undefined, tipeDari(ctx)) * 20000; });
       berikut.sort(function(a, b){ return b.skor - a.skor; });
       /* jaga keberagaman: paling banyak 3 urutan dengan tempat akhir yang sama */
       var hitungAkhir = {}, pilih = [];

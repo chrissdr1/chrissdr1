@@ -119,6 +119,18 @@ function nilaiJanggal(d){
 var KEC_BAWAAN = 26;
 var CALIB = { rpkm:BASE_RPKM, ins:130000, kmkwh:6.7, kecepatan:KEC_BAWAAN, tripKm:BASE_TRIP_KM,
               kecUkur:false, kecN:0, live:false, n:0 };
+/* Biaya ngecas yang dipakai mesin: asumsi (tarif SPKLU per kWh + biaya per
+   sesi) dikali CALIB.biayaK -- perbandingan "Biaya ngecas + parkir" yang
+   Ibu catat dengan hitungan asumsi untuk kWh yang sama (dulu catatan biaya
+   hanya mengurangi bersih di Riwayat, rencana tetap memakai asumsi). */
+function tarifKwh(){ return TARIF_KWH * ((CALIB && CALIB.biayaK) || 1); }
+function feeSesi(){ return SESSION_FEE * ((CALIB && CALIB.biayaK) || 1); }
+/* hitungan asumsi biaya ngecas untuk satu hari catatan (kWh, jumlah sesi diperkirakan) */
+function biayaAsumsi(r){
+  var kwh = num(r.kwh), cap = (r.jendela && r.jendela.bat) || 30.08;
+  if (!(kwh > 0)) return null;
+  return kwh * TARIF_KWH + Math.max(1, Math.ceil(kwh / (cap * 0.65))) * SESSION_FEE;
+}
 function recalibrate(){
   /* hari Grab saja (catatan carter saja tidak membuka kalibrasi) */
   var recent = rows.filter(function(r){ return num(r.dpt) > 0 || num(r.kmt) > 0; }).slice(0,14);
@@ -129,6 +141,9 @@ function recalibrate(){
   var c = medianOf(recent, function(d, r){ return num(r.dpt) > 0 ? d.ins : null; }, BATAS_CAL.ins[0], BATAS_CAL.ins[1]);
   var t = medianOf(recent, function(d){ return sahKm(d) ? d.tripKm : null; }, BATAS_CAL.tripKm[0], BATAS_CAL.tripKm[1]);
   var enough = recent.length >= 3;
+  /* biaya ngecas nyata / asumsi: minimal 3 hari yang mencatat biaya dan kWh,
+     dijepit 0,5-2x supaya satu salah ketik tidak merusak rencana */
+  var bk = medianOf(recent, function(d, r){ var m = biayaAsumsi(r); return (m && num(r.biaya) > 0) ? num(r.biaya) / m : null; }, 0.5, 2, 3);
   /* Kecepatan pulang dari hari-hari yang menit pulangnya dicatat. Median,
      bukan rata-rata: satu hari dengan banjir tidak boleh menggeser semuanya.
      Dijepit 12-45 km/jam supaya salah ketik tidak merusak seluruh rencana. */
@@ -158,9 +173,10 @@ function recalibrate(){
     kmkwh:(enough && b) ? b.v : 6.7,
     tripKm:(enough && t) ? t.v : BASE_TRIP_KM,
     kecepatan: kec, kecUkur: laju.length > 0, kecN: laju.length,
-    live: enough && !!(a||b||c),
+    biayaK: bk ? bk.v : 1, biayaN: bk ? bk.n : 0,
+    live: enough && !!(a||b||c||bk),
     n: recent.length,
-    dari: { rpkm:!!(enough && a), ins:!!(enough && c), kmkwh:!!(enough && b), tripKm:!!(enough && t) }
+    dari: { rpkm:!!(enough && a), ins:!!(enough && c), kmkwh:!!(enough && b), tripKm:!!(enough && t), biaya:!!bk }
   };
   /* Setelah CALIB (tripLen memakai CALIB.tripKm): pola jam/hari/tempat dari catatan. */
   if (typeof Belajar !== "undefined") Belajar.hitung(rows);
@@ -171,7 +187,7 @@ function recalibrate(){
 function blockRate(b, hari){
   var base = (SHAPE[hari] && SHAPE[hari][b.n]) ? SHAPE[hari][b.n] : b.r;
   var u = (base + b.km*BASE_E) / (b.km*BASE_RPKM);
-  return Math.max(0, b.km*u*CALIB.rpkm - b.km*(TARIF_KWH/CALIB.kmkwh));
+  return Math.max(0, b.km*u*CALIB.rpkm - b.km*(tarifKwh()/CALIB.kmkwh));
 }
 
 /* ---------------- day context (holiday aware) ---------------- */
@@ -213,8 +229,9 @@ function dayCtx(dateStr){
   /* Jumat sebelum libur yang dimulai Sabtu: pengali Jumat sudah memuat
      efek akhir pekan, jadi hanya +8% (1,15 x 1,18 = 1,36 terlalu tinggi) */
   if (eve) mult *= (evePlus && !eveMulaiLibur ? 1.18 : 1.08);
+  /* acara besar TIDAK lagi menaikkan seluruh hari di semua tempat: lihat
+     faktorAcara (hanya di sekitar tempat acaranya) */
   var ev = EVENTS[dateStr] || null;
-  if (ev) mult *= (ev[2] === "lokal" ? 1.12 : 1.06);
   /* Musim gajian tanggal 25-5 (Rute 700K): permintaan naik di hampir semua blok. */
   var dm = d.getDate(), gajian = dm >= 25 || dm <= 5;
   /* Konteks saja (lihat LIBUR_SEKOLAH di data.js): tidak mengubah mult. */
@@ -226,6 +243,41 @@ function dayCtx(dateStr){
 function batasMalam(ctx){
   if (ctx && typeof ctx.batasMalam === "number") return ctx.batasMalam;
   return (ctx && ctx.dow === 0 && !ctx.holi) ? 20.5 : 22;
+}
+/* Hujan per jam: pengali +20% hanya di jam hujan prakiraan dan satu jam
+   sesudahnya (order masih ramai), sebanding bagian potongan yang kena.
+   o.hujanJam = jam-jam hujan dari prakiraan; tanpa itu (dicentang sendiri)
+   seharian seperti dulu. Dulu hujan 15:00-17:00 menaikkan jam 05:00 juga. */
+function hujanPada(o, jam){
+  if (!o || !o.hujan) return false;
+  if (!o.hujanJam || !o.hujanJam.length) return true;
+  var j = Math.floor(jam + 1e-6); return o.hujanJam.indexOf(j) >= 0 || o.hujanJam.indexOf(j - 1) >= 0;
+}
+function faktorHujan(o, s, e){
+  if (!o || !o.hujan) return 1;
+  if (!o.hujanJam || !o.hujanJam.length) return 1.20;
+  if (!(e > s)) return hujanPada(o, s) ? 1.20 : 1;
+  var kena = 0;
+  for (var t = s; t < e - 1e-6; t += 0.25) if (hujanPada(o, t)) kena += Math.min(0.25, e - t);
+  return 1 + 0.20 * kena / (e - s);
+}
+/* Daerah yang sering banjir saat hujan: tidak disarankan sebagai TUJUAN
+   pindah di jam hujan (dulu hanya disebut di teks cuaca). */
+var RAWAN_BANJIR = { jakbar:1, ciledug:1 };
+function rawanBanjir(T){ return !!(T && RAWAN_BANJIR[T.id]); }
+/* Acara besar dari kalender: pengali hanya di sekitar tempat acaranya.
+   "lokal" = ICE BSD -> BSD/Serpong (+15%), Alam Sutera (+7%); "jkt" -> tempat
+   di Jakarta (+10%). Tanpa tempat (rencana per wilayah): wilayahnya saja,
+   lebih kecil. Jam acara tidak ada di data, jadi tidak ditebak -- tidak
+   berlaku di subuh & peak pagi. Dulu +12%/+6% seharian di SEMUA tempat. */
+var ACARA_TEMPAT = { bsd:1.15, serpong:1.15, alsut:1.07 };
+function faktorAcara(ctx, tempat, zonaKey, blokNama){
+  if (!ctx || !ctx.ev || blokNama === "Subuh" || blokNama === "Peak pagi") return 1;
+  if (ctx.ev[2] === "lokal"){
+    if (tempat && tempat.id) return ACARA_TEMPAT[tempat.id] || 1;
+    return (zonaKey === "tng" || zonaKey === "mix") ? 1.05 : 1;
+  }
+  return zonaKey === "jkt" ? 1.10 : 1;
 }
 function dalamRentang(daftar, tgl){
   if (typeof daftar === "undefined" || !daftar) return null;
@@ -519,7 +571,8 @@ function pilihSesi(pieces, socAwal, floor, ambang, fullSesi, kmPerFrac, deadJam,
         var kmNext = (pieces[i+1] && !pieces[i+1].jeda) ? pieces[i+1].kmH : 0;
         for (var it = 0; it < 3; it++){   /* jam hilang mengurangi km yang dipakai */
           ac = acPaksa || (bolehAC && ke > 0.90);
-          durasi = ac ? (ke - dari) * cap / 7 + 0.25 : fullSesi * (ke - dari) / 0.75 + 0.12;
+          durasi = ac ? (ke - dari) * cap / 7 + 0.25
+                      : fullSesi * (p.spklu ? p.spklu.faktor : 1) * (ke - dari) / 0.75 + 0.12 + (p.spklu ? p.spklu.tambahJam : 0);
           if (p.jeda){ hilang = Math.max(0, durasi - p.w); luber = 0; }
           else { hilang = Math.min(durasi, p.w); luber = Math.max(0, durasi - p.w); }
           /* jam yang tidak dijalani di potongan ini: ngecas, luberan, dan jam terbawa (km kosong / luberan sebelumnya) */
@@ -528,12 +581,12 @@ function pilihSesi(pieces, socAwal, floor, ambang, fullSesi, kmPerFrac, deadJam,
         }
         if (ke < dari + 0.05) return null;   /* sesi tak berguna: kombinasi gugur */
         var tarif = p.jeda ? ((pieces[i+1] && !pieces[i+1].jeda) ? pieces[i+1].rateH : 0) : p.rateH;
-        cost += hilang * tarif + SESSION_FEE;   /* luberan dibebankan saat potongan berikutnya diproses */
+        cost += hilang * tarif + feeSesi();   /* luberan dibebankan saat potongan berikutnya diproses */
         if (!p.jeda && PEAKS[p.b.n]) cost += 1e6;
         if (!p.jeda && p.w < 0.5) cost += 3e5;
         s = { idx:i, jam:p.s, blok:(p.jeda ? "Istirahat" : p.b.n), dari:dari, ke:ke, durasi:durasi,
-              jamHilang:hilang, luber:luber, ac:ac, diJeda:!!p.jeda, biaya:SESSION_FEE, tarifBlok:tarif,
-              peak:!p.jeda && !!PEAKS[p.b.n], terpaksa:false, sebelumPindah:casDulu };
+              jamHilang:hilang, luber:luber, ac:ac, diJeda:!!p.jeda, biaya:feeSesi(), tarifBlok:tarif,
+              peak:!p.jeda && !!PEAKS[p.b.n], terpaksa:false, sebelumPindah:casDulu, spklu:ac ? null : (p.spklu || null) };
         sesi.push(s); soc = ke; si++;
       }
       if (casDulu) pindahkan();
@@ -628,7 +681,8 @@ function simulate(o){
   var adaUrutan = !!(o.urutan && o.urutan.length);
   /* Acara dari kalender sudah masuk di ctx.mult; centang "acara besar" hanya
      untuk acara yang Ibu tandai sendiri. Musim gajian: asumsi +5%. */
-  var extra = (o.hujan ? 1.20 : 1) * ((o.acara && !ctx.ev) ? 1.15 : 1) * (ctx.gajian ? 1.05 : 1);
+  /* hujan & acara kalender per potongan (jam dan tempat): lihat multOf */
+  var extra = ((o.acara && !ctx.ev) ? 1.15 : 1) * (ctx.gajian ? 1.05 : 1);
   function pasangTempat(pcs){
     var sebelum = o.tempatAwal || null, kk = 0;
     pcs.forEach(function(p){
@@ -719,11 +773,13 @@ function simulate(o){
     if ((!adaUrutan && !z.need) || jatah >= 1){ peakOK[g] = true; if (adaUrutan || z.need) jatah--; } else peakOK[g] = false;
   });
   var filterOK = Object.keys(peakOK).every(function(g){ return peakOK[g]; });
-  function multOf(b, zp){
+  function multOf(b, zp, p){
     zp = zp || z;
     var g = b.n === "Peak sore" ? "sore" : "pagi";
     var m = PEAKS[b.n] ? ((peakOK[g] || !zp.need) ? zp.peak : (1 + (zp.peak - 1) * 0.35)) : zp.off;
-    return m * ctx.mult * extra * (typeof Belajar !== "undefined" ? Belajar.pengali(hari, b.n) : 1);
+    var tp = (p && p.tempat) || o.tempatAwal || null;
+    return m * ctx.mult * extra * faktorHujan(o, p ? p.s : b.s, p ? p.e : b.e) * faktorAcara(ctx, tp, tp ? tp.z : o.zona, b.n) *
+      (typeof Belajar !== "undefined" ? Belajar.pengali(hari, b.n) : 1);
   }
 
   var cap = o.bat, kmkwh = CALIB.kmkwh, kmPerFrac = cap * kmkwh;   /* km untuk 100% */
@@ -741,7 +797,7 @@ function simulate(o){
 
   kerja.forEach(function(p){
     var zp = p.zonaT || z, bobot = p.tempat ? bobotTempat(p.tempat.id, p.b.n) : 1;
-    p.mult = multOf(p.b, zp) * bobot;
+    p.mult = multOf(p.b, zp, p) * bobot;
     p.grossH = blockGross(p.b, hari) * p.mult;
     p.rateH = blockRate(p.b, hari) * p.mult;
     p.kmH = p.b.km * zp.kmx;
@@ -757,6 +813,9 @@ function simulate(o){
      kalau SPKLU tak terjangkau, harus) lewat colokan rumah 7 kW -- dulu 1%
      di rumah dihitung "ngecas 1->74% 49 menit" seperti SPKLU cepat. */
   pieces.forEach(function(p, i){ p.acRumah = i === 0 && !p.jeda && !!(o.diRumahAwal && o.rumah && !o.stay); });
+  /* SPKLU yang dipakai di tiap potongan (tempatnya), dengan lama ngecas
+     menurut colokannya (data TomTom); tanpa data: asumsi lama DC cepat */
+  pieces.forEach(function(p){ p.spklu = pilihSpklu(p.tempat || o.tempatAwal || null); });
   var tl = pilihSesi(pieces, socAwal, floor, ambangPulang, fullSesi, kmPerFrac, deadJam, !!o.rumah && !o.stay, cap);   /* tidak pulang = tidak ada colokan rumah */
   var sesi = tl.sesi;
 
@@ -777,14 +836,14 @@ function simulate(o){
   var deadJamPakai = tl.matiPakai;
   var kmPindah = 0; pieces.forEach(function(p){ kmPindah += p.pindahKm || 0; });
   var kmTotal = kmKerja + deadKm + kmHome + kmPindah;
-  var listrik = kmTotal / kmkwh * TARIF_KWH;
+  var listrik = kmTotal / kmkwh * tarifKwh();
   var blockNet = gross - listrik;   /* jam yang hilang sudah tidak ada di gross */
   var jamDinding = Math.max(0.1, (o.pulang - o.keluar) - jedaJam);
   /* Insentif Grab itu target tetap (terkalibrasi dari catatan Ibu), bukan
      tarif: TIDAK ikut pengali hari. Dulu dikali ctx.mult sehingga insentif
      yang sama tampak Rp22 ribu lebih besar di hari Jumat daripada Selasa. */
   var insentif = CALIB.ins * Math.min(1, (effHours + (o.jamSebelum || 0)) / 10.5);
-  var feeCharge = sesi.length * SESSION_FEE;
+  var feeCharge = sesi.length * feeSesi();
   var parkir = jamMal >= 0.5 ? PARKIR : 0;
   var net = blockNet + insentif - feeCharge - parkir;
 
@@ -848,7 +907,7 @@ function simulate(o){
    simulate() menghitung insentif sehari penuh (jamSebelum + jam sisa). */
 function insentifSebelum(o){ return CALIB.ins * Math.min(1, (o.jamSebelum || 0) / 10.5); }
 function carterBersih(c){
-  var listrik = num(c.km) / CALIB.kmkwh * TARIF_KWH;
+  var listrik = num(c.km) / CALIB.kmkwh * tarifKwh();
   var net = num(c.tarif) - num(c.biaya) - listrik;
   return { net:net, listrik:listrik, perJam:(num(c.jam) > 0 ? net / num(c.jam) : null) };
 }
@@ -945,7 +1004,7 @@ function buildSteps(o, r, opts){
     /* Potongan < 3 menit tidak jadi langkah sendiri (dulu "19:58-20:00 · 0.0
        jam"); nilainya tetap masuk kumulatif supaya rekap = angka bersih. */
     if (L.w < 0.05 && !L.sesi){
-      if (!L.jeda) cum += L.grossH * L.jamJalan - ((L.kmH * L.jamJalan + (L.pindahKm || 0)) / CALIB.kmkwh) * TARIF_KWH;
+      if (!L.jeda) cum += L.grossH * L.jamJalan - ((L.kmH * L.jamJalan + (L.pindahKm || 0)) / CALIB.kmkwh) * tarifKwh();
       return;
     }
     /* "narik" yang seluruhnya habis untuk pindah / ngecas: langkahnya bilang
@@ -976,7 +1035,7 @@ function buildSteps(o, r, opts){
       def = { b:"Colok di rumah", s:"Colokan rumah (&plusmn;7 kW)", i:"Isi sampai &plusmn;" + pctB(L.sesi.ke) + "%, baru berangkat.",
               k:"Baterai terlalu rendah untuk sampai SPKLU dengan aman; colokan rumah pelan tapi pasti." };
     } else if (tanpaNarik && L.sesi){
-      def = { b:"Ngecas", s:"SPKLU terdekat", i:"Isi secukupnya untuk sisa hari dan perjalanan pulang.",
+      def = { b:"Ngecas", s:(L.sesi.spklu && L.sesi.spklu.nama ? "SPKLU" + teksSpkluSesi(L.sesi) : "SPKLU terdekat"), i:"Isi secukupnya untuk sisa hari dan perjalanan pulang.",
               k:"Waktu di potongan ini habis untuk ngecas dan pindah; belum ada jam narik." };
     } else if (tanpaNarik){
       def = { b:"Pindah" + (L.tempat ? " ke " + L.tempat.n : ""), s:"&plusmn;" + Math.round((L.pindahJam || L.w) * 60) + " menit di jalan",
@@ -989,7 +1048,7 @@ function buildSteps(o, r, opts){
       var jedaRumah = L.diRumah != null ? L.diRumah : (!tidakPulang && L.w >= 1.5 && !(pos && pos.home > 15));
       def = L.sesi
         ? { b:"Istirahat + ngecas",
-            s:(L.sesi.sebelumPindah ? "Ngecas dulu di SPKLU terdekat, baru " + (jedaRumah ? "pulang istirahat" : "istirahat") : jedaRumah ? "Di rumah atau SPKLU langganan" : "SPKLU terdekat, sambil makan") + " &middot; <b>" + pctB(L.sesi.dari) + " &rarr; " + pctB(L.sesi.ke) + "%</b> &middot; &plusmn;" + Math.round(L.sesi.durasi*60) + " menit",
+            s:(L.sesi.spklu && L.sesi.spklu.jenis === "lambat" ? "SPKLU" + teksSpkluSesi(L.sesi) + " &middot; " : "") + (L.sesi.sebelumPindah ? "Ngecas dulu di SPKLU terdekat, baru " + (jedaRumah ? "pulang istirahat" : "istirahat") : jedaRumah ? "Di rumah atau SPKLU langganan" : "SPKLU terdekat, sambil makan") + " &middot; <b>" + pctB(L.sesi.dari) + " &rarr; " + pctB(L.sesi.ke) + "%</b> &middot; &plusmn;" + Math.round(L.sesi.durasi*60) + " menit",
             i:L.sesi.ac ? "Ngecas di rumah (7 kW) sampai " + pctB(L.sesi.ke) + "%, &plusmn;" + (L.sesi.durasi).toFixed(1).replace(".", ",") + " jam."
                         : "Waktu terbaik ngecas &mdash; tidak ada order hilang, tidak perlu sampai 100%.",
             k:"Ngecas di jam istirahat tidak memakan jam narik" + (L.sesi.jamHilang > 0.05 ? ", kecuali " + Math.round(L.sesi.jamHilang*60) + " menit yang lewat dari istirahat" : "") + ". " +
@@ -1048,7 +1107,7 @@ function buildSteps(o, r, opts){
     var val = 0, order = 0, kmBayar = 0, detail = "";
     if (!L.jeda){
       /* listrik km pindah ikut (dulu rekap langkah Rp 11-15 rb di atas angka besar) */
-      val = L.grossH * L.jamJalan - ((L.kmH * L.jamJalan + (L.pindahKm || 0)) / CALIB.kmkwh) * TARIF_KWH;
+      val = L.grossH * L.jamJalan - ((L.kmH * L.jamJalan + (L.pindahKm || 0)) / CALIB.kmkwh) * tarifKwh();
       kmBayar = L.paidKmH * L.jamJalan; order = kmBayar / L.tripKm;
       detail = tanpaNarik ? "baterai " + pctB(L.socMulai) + "%&rarr;" + pctB(L.socAkhir) + "%" + (L.pindahKm > 0.5 ? " &middot; pindah &plusmn;" + Math.round(L.pindahKm) + " km" : "") :
                "&asymp; " + (order < 0.5 ? "0" : order < 1 ? "1" : Math.round(order)) + " order &middot; " + Math.round(kmBayar) + " km berpenumpang" +
@@ -1059,7 +1118,7 @@ function buildSteps(o, r, opts){
     }
     cum += val;
     var sesiTeks = charge && !L.jeda
-      ? " &middot; <b>ngecas " + pctB(L.sesi.dari) + "&rarr;" + pctB(L.sesi.ke) + "% &plusmn;" + Math.round(L.sesi.durasi*60) + " menit</b>" : "";
+      ? " &middot; <b>ngecas " + pctB(L.sesi.dari) + "&rarr;" + pctB(L.sesi.ke) + "% &plusmn;" + Math.round(L.sesi.durasi*60) + " menit</b>" + (tanpaNarik ? "" : teksSpkluSesi(L.sesi)) : "";
     var kenapa = def.k || "";
     if (charge && !L.jeda){
       if (L.sesi.luber > 0.05) kenapa += (kenapa ? " " : "") + "Ngecas ini " + Math.round(L.sesi.luber*60) + " menit lebih lama dari sisa " + labelBlok(nama).toLowerCase() + "; sisanya masuk jam berikutnya.";
@@ -1079,7 +1138,7 @@ function buildSteps(o, r, opts){
        sudah ke Kota karena aturan 20:00): HP memakai tempat itu, rumus yang
        sama dengan jamMulaiPulang. Batas keras 22:00 (Minggu 20:30). */
     var kmHome = HP.km, jamTempuh = HP.jamTempuh, mulai = HP.mulai, batas = HP.batas;
-    var listrikPulang = (r.kmHome + r.deadKm) / CALIB.kmkwh * TARIF_KWH;
+    var listrikPulang = (r.kmHome + r.deadKm) / CALIB.kmkwh * tarifKwh();
     var socTibaPct = Math.round(Math.max(0, r.socTiba)*100);
     /* tidak sampai rumah = ngecas dulu, ADA atau tidak colokan di rumah --
        kecuali Ibu sudah di sekitar rumah (<= 1 km): tidak disuruh ke SPKLU */
@@ -1100,7 +1159,7 @@ function buildSteps(o, r, opts){
       k:opts.stay ? "" : "Jam mulai pulang = rencana pulang dikurangi " + Math.round(jamTempuh*60) + " menit perjalanan" + (jamSibuk(o.pulang - 0.5) ? " (jam macet)" : "") +
                          " plus cadangan 15 menit; batas " + hhmm(batas) + " tidak pernah dilewati." +
                          (perluCas ? " Ngecas malam ini, bukan besok pagi: peak pagi besok mulai 05:15." : ""),
-      d:opts.stay ? "" : "listrik pulang &minus;" + rp(r.kmHome / CALIB.kmkwh * TARIF_KWH) + (r.deadKm > 0.5 ? " (+ km kosong pagi &minus;" + rp(r.deadKm / CALIB.kmkwh * TARIF_KWH) + ")" : "") + " &middot; sampai rumah &plusmn;" + socTibaPct + "%",
+      d:opts.stay ? "" : "listrik pulang &minus;" + rp(r.kmHome / CALIB.kmkwh * tarifKwh()) + (r.deadKm > 0.5 ? " (+ km kosong pagi &minus;" + rp(r.deadKm / CALIB.kmkwh * tarifKwh()) + ")" : "") + " &middot; sampai rumah &plusmn;" + socTibaPct + "%",
       v:opts.stay ? "&mdash;" : "&minus;" + rp(listrikPulang), cum:rp(cum), cls:"home",
       blok:"Pulang", label:"Pulang", peak:false });
   }
@@ -1469,6 +1528,51 @@ function spkluDekat(la, lo, n){
     return { nama: SPKLU[x[0]][0], km: x[1] };
   });
 }
+/* SPKLU yang dipakai di sekitar satu tempat. Dengan data colokan TomTom:
+   yang terdekat di daftar yang cocok-cepat untuk Atto 1 (CCS2); kalau di
+   daftar hanya ada AC / tidak cocok: SPKLU CCS2 terdekat menurut TomTom
+   (ditambah waktu jalan selisih jaraknya); kalau tidak ada sama sekali:
+   lama ngecas AC. faktor = pengali lama ngecas terhadap asumsi mesin
+   (DC 30 kW, batas mobil). Dulu SPKLU dipilih dari jarak saja dan selalu
+   dihitung DC cepat, padahal data colokannya sudah ada. Tanpa data
+   TomTom: faktor 1 (asumsi lama). */
+var PILIH_SPKLU = { versi:undefined, memo:{} };
+function pilihSpklu(L){
+  if (!L) return null;
+  var ada = (typeof SpkluTT !== "undefined" && SpkluTT.versi) ? SpkluTT.versi() : null;
+  if (PILIH_SPKLU.versi !== ada) PILIH_SPKLU = { versi:ada, memo:{} };
+  var kunci = String(L.id) + "|" + L.lat + "," + L.lon + "|" + L.home;
+  if (Object.prototype.hasOwnProperty.call(PILIH_SPKLU.memo, kunci)) return PILIH_SPKLU.memo[kunci];
+  var list = spkluUntuk(L) || [], hasil = null;
+  var dc = ada ? SpkluTT.MOBIL.dcKW : 30;
+  var buat = function(nama, km, jenis, kw, tambahKm){ return { nama:nama, km:km, jenis:jenis, kw:kw, faktor:kw ? Math.max(1, dc / kw) : 1,
+    tambahJam:Math.max(0, tambahKm || 0) / CALIB.kecepatan }; };
+  if (!ada) hasil = list[0] ? buat(list[0].nama, list[0].km, null, null) : null;
+  else {
+    for (var i = 0; i < list.length && !hasil; i++){
+      var s = SpkluTT.untukNama(list[i].nama), c = s ? SpkluTT.cocok(s) : null;
+      if (!c) hasil = buat(list[i].nama, list[i].km, null, null, list[i].km - list[0].km);   /* belum ada di TomTom: dianggap cepat seperti dulu */
+      else if (c.jenis === "cepat") hasil = buat(list[i].nama, list[i].km, "cepat", c.kwEfektif, list[i].km - list[0].km);
+    }
+    if (!hasil && L.lat != null){
+      var t = SpkluTT.terdekatCocok(L.lat, L.lon, 1)[0];
+      if (t && (!list.length || t.km <= list[0].km + 15)){ var ct = SpkluTT.cocok(t.s); hasil = buat(t.s.n, t.km, "cepat", ct.kwEfektif, t.km - (list[0] ? list[0].km : 3)); hasil.tomtom = true; }
+    }
+    if (!hasil && list.length){
+      var s0 = SpkluTT.untukNama(list[0].nama), c0 = s0 && SpkluTT.cocok(s0);
+      hasil = buat(list[0].nama, list[0].km, "lambat", (c0 && c0.jenis === "lambat" && c0.kwEfektif) || SpkluTT.MOBIL.acKW, 0);
+    }
+  }
+  PILIH_SPKLU.memo[kunci] = hasil;
+  return hasil;
+}
+/* " di <nama> (±km km, ...)" untuk langkah ngecas */
+function teksSpkluSesi(sesi){
+  var sp = sesi && sesi.spklu; if (!sp || !sp.nama) return "";
+  return " di <b>" + escT(sp.nama) + "</b> (&plusmn;" + String(sp.km).replace(".", ",") + " km" +
+    (sp.jenis === "lambat" ? ", hanya AC &plusmn;" + String(Math.round(sp.kw * 10) / 10).replace(".", ",") + " kW &mdash; lama" :
+     sp.jenis === "cepat" && sp.kw && sp.kw < 29.5 ? ", " + Math.round(sp.kw) + " kW" : "") + ")";
+}
 /* Untuk lokasi yang sedang dipilih, apa pun asalnya. */
 function spkluUntuk(L){
   var v = L && L.id;
@@ -1498,6 +1602,11 @@ function spkluUntuk(L){
 function escT(s){ return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
 function spkluTeks(list){
   if (!list || !list.length) return "";
+  /* yang cocok-cepat (atau belum diketahui) dulu, AC/tidak cocok di belakang */
+  if (typeof SpkluTT !== "undefined"){
+    var urut = function(x){ var s = SpkluTT.untukNama(x.nama), c = s && SpkluTT.cocok(s); return !c || c.jenis === "cepat" ? 0 : c.jenis === "lambat" ? 1 : 2; };
+    list = list.map(function(x, i){ return { x:x, i:i, u:urut(x) }; }).sort(function(a, b){ return a.u - b.u || a.i - b.i; }).map(function(y){ return y.x; });
+  }
   return list.map(function(x){
     var s = (typeof SpkluTT !== "undefined") ? SpkluTT.untukNama(x.nama) : null;
     return "<b>" + x.nama + "</b> " + String(x.km).replace(".", ",") + " km" + (s ? " (" + escT(SpkluTT.ringkasColokan(s)) + "; " + SpkluTT.teksCocok(s) + ")" : "");

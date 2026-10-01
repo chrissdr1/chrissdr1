@@ -161,9 +161,11 @@ var SpkluTT = (function(){
     return { jumlah:d.stasiun.length, at:d.at, cepat:n.cepat, lambat:n.lambat, tidak:n.tidak };
   }
   function semua(){ var d = muat(); return d ? d.stasiun : []; }
+  /* penanda data (waktu ambil): mesin menyimpan pilihan SPKLU per tempat sampai data berganti */
+  function versi(){ var d = muat(); return d && d.stasiun && d.stasiun.length ? String(d.at) : null; }
   function hapus(){ data = null; try { localStorage.removeItem(LS); } catch (e) {} }
 
   return { segarkan:segarkan, perluSegar:perluSegar, cocok:cocok, teksCocok:teksCocok, ringkasColokan:ringkasColokan,
-           dekat:dekat, untukNama:untukNama, terdekatCocok:terdekatCocok, status:status, semua:semua, hapus:hapus,
+           dekat:dekat, untukNama:untukNama, versi:versi, terdekatCocok:terdekatCocok, status:status, semua:semua, hapus:hapus,
            url:url, olah:olah, TITIK:TITIK, MOBIL:MOBIL, NAMA:NAMA };
 })();

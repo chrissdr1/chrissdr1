@@ -76,7 +76,7 @@ var Rekomendasi = (function(){
        jam ikut), tunduk aturan jam 20:00, pindahnya sudah dihitung di atas. */
     o2.urutan = Peluang.urutanTinggal(K, o2); o2.tempatAwal = K;
     var r = simulate(o2);
-    var biayaPindah = kmPindah * (TARIF_KWH / CALIB.kmkwh);
+    var biayaPindah = kmPindah * (tarifKwh() / CALIB.kmkwh);
     /* Metrik yang sama dengan kartu "Urutan tempat": bersih termasuk
        insentif (jam yang habis di jalan ikut mengurangi insentif). */
     /* "sampai pulang": insentif untuk jam yang SUDAH lewat bukan pendapatan
@@ -124,6 +124,8 @@ var Rekomendasi = (function(){
       var x = nilaiSatu(o, L, soc, stay, K, 1);
       if (!x) return;
       if (x.terlewat){ terlewat.push(x.n); return; }
+      /* sedang hujan: daerah rawan banjir tidak ditawarkan sebagai tujuan pindah */
+      if (!x.diSini && rawanBanjir(K) && hujanPada(o, o.keluar)){ terlewat.push(K.n + " (rawan banjir, sedang hujan)"); return; }
       out.push(x);
     });
     out.sort(function(a, b){ return b.sisa - a.sisa; });
@@ -164,8 +166,8 @@ var Rekomendasi = (function(){
     if (ctx.eve) f.push("malam sebelum libur");
     var b = blockAt(o.keluar, ctx.shapeDay).n;
     f.push("jam " + (typeof labelBlok === "function" ? labelBlok(b) : b).toLowerCase());
-    if (o.hujan) f.push("hujan");
-    if (ctx.ev) f.push("acara " + ctx.ev[0]); else if (o.acara) f.push("acara besar");
+    if (o.hujan) f.push(o.hujanJam && o.hujanJam.length ? "hujan sekitar " + hhmm(Math.min.apply(null, o.hujanJam)) + "\u2013" + hhmm(Math.max.apply(null, o.hujanJam) + 1) : "hujan");
+    if (ctx.ev) f.push("acara " + ctx.ev[0] + (ctx.ev[2] === "lokal" ? " (dihitung di BSD/Serpong)" : " (dihitung di Jakarta)")); else if (o.acara) f.push("acara besar");
     f.push("baterai " + soc + "%");
     if (o.filter === 0) f.push("filter habis");
     f.push("pulang " + hhmm(o.pulang));
