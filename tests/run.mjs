@@ -206,6 +206,11 @@ async function main(){
   const { srv, url } = await serve(APP);
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ locale:"id-ID", timezoneId:"Asia/Jakarta", serviceWorkers:"allow" });
+  /* Jam halaman dipatok ke hari kerja siang (Selasa 13-10-2026 10:00 WIB, tetap
+     berjalan): dulu sebagian pemeriksaan gagal bila tes dijalankan malam /
+     dini hari / hari Minggu. Perbandingan di sisi Node memakai TES_HARI. */
+  const TES_MULAI = new Date("2026-10-13T10:00:00+07:00"), TES_HARI = "2026-10-13", TES_DOW = 2;
+  await ctx.clock.install({ time:TES_MULAI });
   /* Internet luar dimatikan supaya hasilnya pasti: cuaca jatuh ke cadangan, ubin peta kosong. */
   /* Halaman "Mulai hari" terbuka sendiri sekali sehari; bagian 1-11 tidak mengujinya,
      jadi ditandai "dilewati" sebelum halaman dimuat -- kecuali halaman uji bagian 12. */
@@ -253,7 +258,7 @@ async function main(){
       tag:document.querySelector('#cmp .pola.dipakai') && document.querySelector('#cmp .pola.dipakai').getAttribute("data-pola"),
       net:el("p-net").textContent, asal:el("cmp-asal").textContent, status:el("p-status").textContent,
       lebar:document.getElementById("cmp").scrollWidth <= document.getElementById("cmp").clientWidth + 1 }));
-    ok(pakai.k === "15" && pakai.p === (new Date().getDay() === 0 ? "20.5" : "22") && pakai.r === "none" && pakai.tag === "4" && /Sore/.test(pakai.status) && pakai.lebar,
+    ok(pakai.k === "15" && pakai.p === (TES_DOW === 0 ? "20.5" : "22") && pakai.r === "none" && pakai.tag === "4" && /Sore/.test(pakai.status) && pakai.lebar,
        "ketuk kartu pola: rencana di atas memakai jam dan istirahatnya, kartu itu ditandai 'dipakai', tidak perlu digeser ke samping", JSON.stringify({ sebelum, pakai }));
     ok(/Bersih = pendapatan \+ insentif/.test(pakai.asal) && /Rute 700K|catatan Ibu sendiri/.test(pakai.asal) && /12 jam/.test(pakai.asal),
        "'Dari mana angkanya?' menjelaskan sumber tarif, arti bersih/per jam/narik, dan batas 12 jam", pakai.asal);
@@ -366,7 +371,7 @@ async function main(){
   ok(await page.$eval("#peta", e => e.hidden), "peta bisa disembunyikan");
 
   console.log("7. cuaca dari Open-Meteo (tiruan)");
-  const today = new Date().toLocaleDateString("sv-SE", { timeZone:"Asia/Jakarta" });
+  const today = TES_HARI;
   const fixture = { hourly: {
     time: Array.from({ length:24 }, (_, i) => `${today}T${String(i).padStart(2, "0")}:00`),
     precipitation_probability: Array.from({ length:24 }, (_, i) => (i >= 13 && i <= 16) ? 70 : 10),
@@ -2211,10 +2216,10 @@ async function main(){
       r.fulfill({ status:200, contentType:"application/json", body:JSON.stringify({ routes:[{ summary:{ travelTimeInSeconds:3300, noTrafficTravelTimeInSeconds:1800 } }] }) }); });
     const dep = await pr.evaluate(async () => {
       Peta.setKunciTomTom("kunci-uji");
-      await Lalulintas.pulangBiasa(LOKMAP.cbd, 19.75, "2026-10-06");
-      return Lalulintas.pulangBiasaCache(LOKMAP.cbd, 19.75, "2026-10-06");
+      await Lalulintas.pulangBiasa(LOKMAP.cbd, 19.75, "2026-10-20");   /* sesudah tanggal patokan tes (13-10) */
+      return Lalulintas.pulangBiasaCache(LOKMAP.cbd, 19.75, "2026-10-20");
     });
-    ok(dep === 55 && /departAt=2026-10-06T19%3A45%3A00%2B07%3A00/.test(urlDepart || ""), "pola macet jam pulang: departAt 2026-10-06T19:45:00+07:00, hasil 55 menit", `${dep} | ${urlDepart}`);
+    ok(dep === 55 && /departAt=2026-10-20T19%3A45%3A00%2B07%3A00/.test(urlDepart || ""), "pola macet jam pulang: departAt 2026-10-20T19:45:00+07:00, hasil 55 menit", `${dep} | ${urlDepart}`);
     await pr.evaluate(() => Peta.setKunciTomTom(""));
     await pr.close();
   }
@@ -2550,6 +2555,69 @@ async function main(){
     const f = await q.evaluate(() => (!document.getElementById("perubahan") || document.getElementById("perubahan").hidden) ? "" : document.getElementById("perubahan").innerText.replace(/\s+/g, " "));
     ok(/Sejak Ibu terakhir buka \(12:00\)/.test(f) && /Hujan diperkirakan mulai ±15:00/.test(f), "dibuka lagi 12:30: 'Sejak Ibu terakhir buka (12:00): hujan diperkirakan mulai 15:00'", f);
     await c28.close();
+  }
+
+
+  console.log("28. Server peringatan: sambungkan, kirim rencana pulang (berhemat), kirim saat aplikasi ditinggal, tes, putuskan");
+  {
+    const c28s = await browser.newContext({ locale:"id-ID", timezoneId:"Asia/Jakarta", serviceWorkers:"block" });
+    const ps = await c28s.newPage(); const errS = []; ps.on("pageerror", e => errS.push(e.message));
+    await ps.clock.setFixedTime(new Date("2026-10-13T19:00:00+07:00"));
+    const masuk = []; let modeSandi = "ok";
+    await ps.route(/^https?:\/\/(?!127\.0\.0\.1)(?!server\.contoh)/, r => r.abort());
+    await ps.route("https://server.contoh/**", r => {
+      const q = r.request(), u = new URL(q.url());
+      masuk.push({ path:u.pathname, metode:q.method(), sandi:q.headers()["x-sandi"], isi:q.postData() ? JSON.parse(q.postData()) : null });
+      if (u.pathname === "/vapid") return r.fulfill({ status:200, contentType:"application/json", headers:{ "Access-Control-Allow-Origin":"*" }, body:JSON.stringify({ publik:"BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U" }) });
+      if (u.pathname === "/langganan" && modeSandi === "salah") return r.fulfill({ status:401, contentType:"application/json", headers:{ "Access-Control-Allow-Origin":"*" }, body:'{"galat":"sandi salah"}' });
+      return r.fulfill({ status:200, contentType:"application/json", headers:{ "Access-Control-Allow-Origin":"*" }, body:'{"ok":true}' });
+    });
+    await ps.addInitScript(() => {
+      window.Notification = class { static get permission(){ return "granted"; } static requestPermission(){ return Promise.resolve("granted"); } constructor(){} };
+      window.__langgananDibuat = 0;
+      const reg = { pushManager:{ getSubscription:async () => null, subscribe:async (o) => { window.__langgananDibuat++; window.__kunciApl = o.applicationServerKey.length;
+        return { toJSON:() => ({ endpoint:"https://push.contoh/kirim/xyz", keys:{ p256dh:"pk-uji", auth:"ak-uji" } }), unsubscribe:async () => true }; } } };
+      Object.defineProperty(navigator, "serviceWorker", { configurable:true, value:{ getRegistration:async () => reg, register:async () => reg, ready:Promise.resolve(reg), addEventListener(){}, controller:null } });
+    });
+    await ps.goto(url + "index.html?tanpa-mulai", { waitUntil:"load" });
+    await ps.waitForFunction(() => document.querySelector("#n-steps .step"));
+    await ps.evaluate(() => { const s = el("n-lok"); s.value = "karawaci"; s.dispatchEvent(new Event("change", { bubbles:true })); el("n-soc").value = 80; el("n-soc").dataset.touched = "1"; el("n-pulang").value = "21.5"; runNow(); });
+    /* sandi salah dulu */
+    modeSandi = "salah";
+    await ps.evaluate(() => { el("server-url").value = "https://server.contoh/"; el("server-sandi").value = "salah"; el("server-sambung").click(); });
+    await ps.waitForFunction(() => /Sandi server salah/.test(el("server-status").textContent), null, { timeout:5000 }).catch(() => {});
+    const salah = await ps.evaluate(() => ({ st:el("server-status").textContent, cfg:localStorage.getItem("server-peringatan") }));
+    ok(/Sandi server salah/.test(salah.st) && (!salah.cfg || !JSON.parse(salah.cfg).aktif), "sandi salah: pesan jelas, tidak dianggap tersambung", JSON.stringify(salah));
+    modeSandi = "ok"; masuk.length = 0;
+    await ps.evaluate(() => { el("server-sandi").value = "sandi-uji"; el("server-sambung").click(); });
+    await ps.waitForFunction(() => /Tersambung/.test(el("server-status").textContent), null, { timeout:5000 }).catch(() => {});
+    await ps.waitForTimeout(200);
+    const lang = masuk.find(m => m.path === "/langganan"), ren = masuk.find(m => m.path === "/rencana");
+    const harap = await ps.evaluate(() => ({ mp:epochJam(SEKARANG.langkah.meta.mulaiPulang), pulang:epochJam(21.5), st:el("server-status").textContent, kunci:window.__kunciApl, id:JSON.parse(localStorage.getItem("server-peringatan")).id }));
+    ok(masuk.some(m => m.path === "/vapid") && lang && lang.sandi === "sandi-uji" && lang.isi.langganan.endpoint === "https://push.contoh/kirim/xyz" && lang.isi.id === harap.id && harap.kunci === 65 && /Tersambung/.test(harap.st),
+       "Sambungkan: kunci VAPID dari server (65 byte), langganan push dikirim dengan sandi dan id HP", JSON.stringify({ masuk:masuk.map(m => m.path), harap }));
+    ok(ren && ren.isi.rencana.tgl === "2026-10-13" && ren.isi.rencana.mulaiPulang === harap.mp && ren.isi.rencana.pulang === harap.pulang &&
+       ren.isi.rencana.rumah.lat === -6.1973 && ren.isi.rencana.pos && ren.isi.rencana.tempat === "Karawaci" && ren.isi.rencana.menitApp > 0,
+       "rencana pulang dikirim: jam mulai pulang = langkah, jam pulang, posisi, rumah, menit hitungan aplikasi", JSON.stringify(ren && ren.isi.rencana));
+    const n1 = masuk.filter(m => m.path === "/rencana").length;
+    await ps.evaluate(() => { runNow(); runNow(); runNow(); });
+    const n2 = masuk.filter(m => m.path === "/rencana").length;
+    await ps.evaluate(() => { el("n-pulang").value = "22"; el("n-pulang").dispatchEvent(new Event("change")); runNow(); });
+    await ps.waitForTimeout(150);
+    const n3 = masuk.filter(m => m.path === "/rencana").length, akhir = masuk.filter(m => m.path === "/rencana").pop();
+    ok(n2 === n1 && n3 === n1 + 1 && akhir.isi.rencana.pulang === await ps.evaluate(() => epochJam(22)), "berhemat: hitung ulang tanpa perubahan tidak mengirim; jam pulang diubah = kirim", JSON.stringify({ n1, n2, n3 }));
+    await ps.evaluate(() => { Object.defineProperty(document, "hidden", { configurable:true, get:() => true }); document.dispatchEvent(new Event("visibilitychange")); });
+    await ps.waitForTimeout(150);
+    ok(masuk.filter(m => m.path === "/rencana").length === n3 + 1, "Ibu meninggalkan aplikasi: rencana terbaru langsung dikirim", String(masuk.length));
+    await ps.evaluate(() => { Object.defineProperty(document, "hidden", { configurable:true, get:() => false }); el("server-uji").click(); });
+    await ps.waitForFunction(() => /Tes dikirim/.test(el("server-status").textContent), null, { timeout:3000 }).catch(() => {});
+    await ps.evaluate(() => el("server-putus").click());
+    await ps.waitForTimeout(150);
+    const putus = await ps.evaluate(() => ({ cfg:localStorage.getItem("server-peringatan"), st:el("server-status").textContent }));
+    ok(masuk.some(m => m.path === "/uji") && masuk.some(m => m.path === "/henti" && m.sandi === "sandi-uji") && putus.cfg === null && /Diputuskan/.test(putus.st),
+       "Kirim tes -> /uji; Putuskan -> /henti, pengaturan dihapus dari HP", JSON.stringify(putus));
+    ok(!errS.length, "bagian 28 tanpa galat halaman", errS.join(" | "));
+    await c28s.close();
   }
 
   await browser.close(); srv.close();
