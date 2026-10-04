@@ -257,15 +257,25 @@ app/
   sw.js, manifest.webmanifest, icons/, rute-700k.html
 tests/run.mjs         uji Chromium: uji mandiri, service worker, adapter AI, cuaca, peta,
                       acara, sinkron (semua layanan luar ditiru), uji emas
+tests/worker.mjs      uji server peringatan: Web Push (RFC 8291/8292), logika, endpoint, cron
+worker/               server peringatan opsional (Cloudflare Workers) -- lihat worker/README.md
 tools/                sdk-entry.mjs, make-icons.py
 ```
+
+## Peringatan saat aplikasi tertutup (opsional)
+
+Halaman statis tidak bisa memberi tahu saat tertutup. Server kecil di
+`worker/` (Cloudflare Workers, paket gratis) mengirim notifikasi push ke HP
+Ibu: jalan pulang macet, waktunya jalan pulang, baterai menurut perkiraan
+habis. Cara pasang: `worker/README.md`; lalu isi alamat & sandinya di
+Pengaturan anak › Peringatan di HP.
 
 ## Menguji
 
 ```
 npm install
 npx playwright install chromium
-npm test                                      # 289 pemeriksaan
+npm test                                      # 296 pemeriksaan aplikasi + 25 server peringatan
 npm run sapuan                                # sapuan dalam: 9.204 keadaan (tanggal x jam x posisi x baterai), harus 0 pelanggaran
 ORIG_HTML=/path/artifact-asli.html npm test   # + uji emas terhadap artifact satu-berkas
 ```

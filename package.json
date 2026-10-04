@@ -6,7 +6,7 @@
   "scripts": {
     "build:sdk": "esbuild tools/sdk-entry.mjs --bundle --format=iife --global-name=AnthropicSDK --platform=browser --target=es2019 --minify --legal-comments=none --outfile=app/vendor/anthropic-sdk.min.js",
     "serve": "python3 -m http.server 8080 --directory app",
-    "test": "node tests/run.mjs",
+    "test": "node tests/run.mjs && node tests/worker.mjs",
     "sapuan": "node tests/sapuan.mjs"
   },
   "devDependencies": {

@@ -453,6 +453,14 @@
     <p style="font-size:13px;color:var(--ink-2);max-width:66ch">Hanya tiga hal penting yang menggetarkan HP: baterai tidak cukup sampai rumah, waktunya jalan pulang, dan jalan pulang ditutup/banjir. Perubahan lain hanya muncul di kotak &ldquo;Berubah&rdquo; saat aplikasi dibuka. Peringatan hanya jalan selama aplikasi terbuka atau baru ditinggal; aplikasi yang sudah ditutup tidak bisa memberi tahu.</p>
     <label class="chk"><input type="checkbox" id="peringatan-getar" checked> Getar untuk hal penting</label>
     <div class="row" style="margin-top:8px"><button type="button" class="go ghost" id="izin-notif">Izinkan notifikasi</button><span class="status" id="izin-status"></span></div>
+    <h4 style="margin-top:16px">Server peringatan (saat aplikasi tertutup)</h4>
+    <p style="font-size:13px;color:var(--ink-2);max-width:66ch">Opsional. Dengan server sendiri (Cloudflare Workers, cara pasang di <code>worker/README.md</code>), HP tetap diberi tahu walau aplikasi tertutup: jalan pulang macet, waktunya jalan pulang, baterai menurut perkiraan habis. Yang dikirim ke server: jam mulai/pulang, posisi narik terakhir, dan perkiraan baterai.</p>
+    <div class="grid" style="margin-top:8px">
+      <div class="f"><label for="server-url">Alamat server</label><input id="server-url" type="url" inputmode="url" placeholder="https://hallo-shanti-peringatan.xxx.workers.dev" autocomplete="off"></div>
+      <div class="f"><label for="server-sandi">Sandi server</label><input id="server-sandi" type="password" autocomplete="off"></div>
+    </div>
+    <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px"><button type="button" class="go ghost" id="server-sambung">Sambungkan</button><button type="button" class="go ghost" id="server-uji">Kirim tes</button><button type="button" class="go ghost" id="server-putus">Putuskan</button></div>
+    <p class="status" id="server-status" role="status"></p>
   </div>
 </section>
 <section id="sk-panel">

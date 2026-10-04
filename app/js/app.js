@@ -3283,6 +3283,7 @@ function cekPerubahan(){
   if (baru.length){ daftar.item = baru.reverse().concat(daftar.item).slice(0, 6); tulisLS("perubahan-hari", daftar); }
   KEP_LALU = b; tulisLS("keputusan-terakhir", b);
   renderPerubahan(daftar);
+  kirimRencanaServer(false);
 }
 function renderPerubahan(daftar){
   var n = el("perubahan"); if (!n) return;
@@ -3306,6 +3307,103 @@ function mintaIzinNotif(){
   });
 }
 el("izin-notif").addEventListener("click", mintaIzinNotif);
+
+/* ---------------- server peringatan (opsional, worker/) ----------------
+   Halaman statis tidak bisa memberi tahu saat tertutup. Kalau anak memasang
+   server sendiri, HP berlangganan Web Push dan mengirim "rencana pulang"
+   (jam mulai/pulang, posisi, perkiraan baterai) tiap kali berubah; server
+   yang memeriksa macet / waktu pulang / baterai lalu mengirim notifikasi. */
+function serverPeringatan(){ return bacaLS("server-peringatan", null); }
+function epochJam(h){ var d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() + Math.round(h * 60) * 60e3; }
+function b64uKeBytes(s){
+  s = String(s).replace(/-/g, "+").replace(/_/g, "/"); var bin = atob(s + "===".slice((s.length + 3) % 4)), out = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out;
+}
+function statusServer(t, cls){ var n = el("server-status"); if (n){ n.textContent = t; n.className = "status" + (cls ? " " + cls : ""); } }
+function mintaServer(path, isi, cfg){
+  cfg = cfg || serverPeringatan();
+  return fetch(cfg.url.replace(/\/+$/, "") + path, { method:"POST", keepalive:true, headers:{ "Content-Type":"application/json", "X-Sandi":cfg.sandi },
+    body:JSON.stringify(Object.assign({ id:cfg.id }, isi || {})) });
+}
+/* kapan perkiraan baterai turun di bawah batas untuk pulang (sebelum jam pulang) */
+function prediksiBateraiKritis(S){
+  if (!S || S.stay || !S.L || !(S.L.home > 1) || typeof Baterai === "undefined" || !Baterai.terakhir()) return null;
+  var o = S.o, batas = socMinPulang(S.L.home, o.bat), op = opsiBaterai(o.pulang);
+  for (var j = Math.ceil(jamSekarangTepat() * 4) / 4; j <= o.pulang; j += 0.25){
+    var e = Baterai.perkiraan(j, op);
+    if (e && e.soc < batas) return { t:epochJam(j), soc:e.soc, min:batas };
+  }
+  return null;
+}
+var SERVER_KIRIM = { kunci:null, waktu:0 };
+function rencanaUntukServer(){
+  var S = SEKARANG; if (!S || !S.o || !S.L || jamManual) return null;
+  var o = S.o, L = S.L, meta = (S.langkah && S.langkah.meta) || {};
+  var mp = (!S.stay && typeof meta.mulaiPulang === "number") ? meta.mulaiPulang : null;
+  var batas = batasMalam(o.ctx); if (typeof meta.tinggalSampai === "number") batas = Math.min(batas, meta.tinggalSampai);
+  var bat = prediksiBateraiKritis(S), kirimHP = bacaLS("peringatan-terkirim", null), dikirim = [];
+  if (kirimHP && kirimHP.tgl === iso(new Date())) Object.keys(kirimHP.k || {}).forEach(function(k){ var t = k.split("|")[0]; if (dikirim.indexOf(t) < 0) dikirim.push(t); });
+  return { tgl:iso(new Date()), stay:!!S.stay, mulaiPulang:mp != null ? epochJam(mp) : null, batasMulai:S.stay ? null : epochJam(batas), pulang:epochJam(o.pulang),
+    menitApp:mp != null ? Math.round(jamTempuhRumah(L, mp, L.home, tipeDari(o.ctx)) * 60) : null,
+    pos:(L.lat != null && L.lon != null) ? { lat:Math.round(L.lat * 1e4) / 1e4, lon:Math.round(L.lon * 1e4) / 1e4 } : null, rumah:{ lat:RUMAH.lat, lon:RUMAH.lon }, tempat:L.n,
+    bateraiKritisPada:bat ? bat.t : null, socKritis:bat ? bat.soc : null, socMin:bat ? bat.min : null, dikirimHP:dikirim };
+}
+/* berhemat: hanya bila berubah berarti (jam per 5 menit, posisi ~1 km), paling lambat tiap 30 menit */
+function kirimRencanaServer(paksa){
+  var cfg = serverPeringatan(); if (!cfg || !cfg.aktif || !cfg.url) return;
+  var r = rencanaUntukServer(); if (!r) return;
+  var bulat = function(t){ return t == null ? null : Math.round(t / 300e3); };
+  var kunci = JSON.stringify([r.tgl, r.stay, bulat(r.mulaiPulang), bulat(r.batasMulai), bulat(r.pulang), r.pos && Math.round(r.pos.lat * 100), r.pos && Math.round(r.pos.lon * 100),
+                              r.bateraiKritisPada == null ? null : Math.round(r.bateraiKritisPada / 600e3), r.dikirimHP.join()]);
+  if (!paksa && kunci === SERVER_KIRIM.kunci && Date.now() - SERVER_KIRIM.waktu < 30 * 60e3) return;
+  SERVER_KIRIM = { kunci:kunci, waktu:Date.now() };
+  try { mintaServer("/rencana", { rencana:r }, cfg)["catch"](function(){ SERVER_KIRIM.kunci = null; }); } catch (e) {}
+}
+/* Ibu meninggalkan aplikasi: rencana terbaru langsung dikirim */
+document.addEventListener("visibilitychange", function(){ if (document.hidden) kirimRencanaServer(true); });
+window.addEventListener("pagehide", function(){ kirimRencanaServer(true); });
+function sambungServer(){
+  var url = el("server-url").value.trim(), sandi = el("server-sandi").value;
+  if (!/^https:\/\/[^\s]+$/.test(url)){ statusServer("Alamat server harus diawali https://", "err"); return; }
+  if (!sandi){ statusServer("Isi sandi server.", "err"); return; }
+  if (typeof Notification === "undefined" || !navigator.serviceWorker){ statusServer("HP/browser ini tidak mendukung notifikasi push.", "err"); return; }
+  var lama = serverPeringatan(), cfg = { url:url.replace(/\/+$/, ""), sandi:sandi, id:(lama && lama.id) || ("hp-" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36)), aktif:false };
+  statusServer("Menyambungkan…");
+  Promise.resolve(Notification.permission === "granted" ? "granted" : Notification.requestPermission()).then(function(p){
+    if (p !== "granted") throw new Error("Notifikasi belum diizinkan di HP ini.");
+    return navigator.serviceWorker.getRegistration().then(function(reg){ return reg || navigator.serviceWorker.register("sw.js"); });
+  }).then(function(reg){
+    if (!reg || !reg.pushManager) throw new Error("HP/browser ini tidak mendukung notifikasi push (pasang aplikasi ke layar utama dulu).");
+    return fetch(cfg.url + "/vapid").then(function(r){ if (!r.ok) throw new Error("Server tidak menjawab (" + r.status + ")."); return r.json(); }).then(function(j){
+      if (!j || !j.publik) throw new Error("Server belum dipasang lengkap (kunci VAPID).");
+      return reg.pushManager.getSubscription().then(function(s){ return s || reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:b64uKeBytes(j.publik) }); });
+    });
+  }).then(function(sub){
+    return mintaServer("/langganan", { langganan:sub.toJSON ? sub.toJSON() : sub }, cfg).then(function(r){
+      if (r.status === 401) throw new Error("Sandi server salah.");
+      if (!r.ok) throw new Error("Server menolak (" + r.status + ").");
+    });
+  }).then(function(){
+    cfg.aktif = true; tulisLS("server-peringatan", cfg); SERVER_KIRIM.kunci = null;
+    kirimRencanaServer(true);
+    statusServer("Tersambung. Tekan \u201cKirim tes\u201d untuk mencoba notifikasinya.", "ok");
+  })["catch"](function(e){ statusServer((e && e.message) || "Gagal menyambungkan.", "err"); });
+}
+el("server-sambung").addEventListener("click", sambungServer);
+el("server-uji").addEventListener("click", function(){
+  var cfg = serverPeringatan(); if (!cfg || !cfg.aktif){ statusServer("Sambungkan dulu.", "err"); return; }
+  mintaServer("/uji", null, cfg).then(function(r){ statusServer(r.ok ? "Tes dikirim \u2014 notifikasi harus muncul dalam beberapa detik." : "Tes gagal (" + r.status + ").", r.ok ? "ok" : "err"); })
+    ["catch"](function(){ statusServer("Server tidak bisa dihubungi.", "err"); });
+});
+el("server-putus").addEventListener("click", function(){
+  var cfg = serverPeringatan(); if (!cfg){ statusServer("Belum tersambung."); return; }
+  try { mintaServer("/henti", null, cfg)["catch"](function(){}); } catch (e) {}
+  if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) navigator.serviceWorker.getRegistration().then(function(reg){
+    return reg && reg.pushManager && reg.pushManager.getSubscription(); }).then(function(s){ if (s) s.unsubscribe(); })["catch"](function(){});
+  try { localStorage.removeItem("server-peringatan"); } catch (e) {}
+  statusServer("Diputuskan. Server tidak lagi mengirim ke HP ini.");
+});
+(function(){ var cfg = serverPeringatan(); if (cfg){ el("server-url").value = cfg.url || ""; el("server-sandi").value = cfg.sandi || ""; if (cfg.aktif) statusServer("Tersambung ke server peringatan.", "ok"); } })();
 el("peringatan-getar").checked = getarAktif();
 el("peringatan-getar").addEventListener("change", function(){ tulisLS("peringatan-getar", this.checked); });
 document.addEventListener("visibilitychange", function(){

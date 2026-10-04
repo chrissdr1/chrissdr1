@@ -1,0 +1,18 @@
+# Server peringatan Hallo Shanti -- Cloudflare Workers (paket gratis cukup).
+# Langkah pasang: worker/README.md
+name = "hallo-shanti-peringatan"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+
+# Origin aplikasi yang boleh memanggil server ini (CORS).
+[vars]
+ASAL = "https://chrissdr1.github.io"
+
+# Ganti id dengan hasil: npx wrangler kv namespace create PERINGATAN
+[[kv_namespaces]]
+binding = "PERINGATAN"
+id = "GANTI_DENGAN_ID_KV"
+
+# Tiap 5 menit: cek macet jalan pulang, waktunya pulang, baterai.
+[triggers]
+crons = ["*/5 * * * *"]

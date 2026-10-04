@@ -3,7 +3,7 @@
    kali ada file yang berubah (samakan dengan TERBIT di js/data.js -- tes
    memeriksanya). Strategi: sajikan dari cache dulu supaya cepat, lalu ambil
    versi baru di latar belakang untuk pembukaan berikutnya. */
-var VERSION = "2026-10-01.2";
+var VERSION = "2026-10-04.1";
 var CACHE = "shanti-" + VERSION;
 var ASSETS = [
   "./", "index.html", "style.css", "manifest.webmanifest", "rute-700k.html",
@@ -43,6 +43,13 @@ self.addEventListener("activate", function(e){
   }));
 });
 
+/* Pesan dari server peringatan (worker/): tampil walau aplikasi tertutup. */
+self.addEventListener("push", function(e){
+  var d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (x) { d = { isi:e.data ? e.data.text() : "" }; }
+  e.waitUntil(self.registration.showNotification(d.judul || "Hallo Shanti", { body:d.isi || "", tag:d.tag || "peringatan", renotify:true,
+    icon:"icons/icon-192.png", badge:"icons/icon-192.png", vibrate:[300, 150, 300] }));
+});
 /* Notifikasi peringatan (baterai, waktunya pulang, jalan ditutup): disentuh =
    buka / tampilkan aplikasi. */
 self.addEventListener("notificationclick", function(e){
