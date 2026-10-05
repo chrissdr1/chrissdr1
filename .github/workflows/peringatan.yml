@@ -1,0 +1,109 @@
+name: Pasang server peringatan
+
+# Memasang / memperbarui server peringatan (worker/) di Cloudflare Workers.
+# Dijalankan MANUAL: tab Actions -> "Pasang server peringatan" -> Run workflow.
+# Butuh Repository secrets (Settings -> Secrets and variables -> Actions):
+#   CLOUDFLARE_API_TOKEN   token template "Edit Cloudflare Workers"
+#   CLOUDFLARE_ACCOUNT_ID  Account ID Cloudflare
+#   PERINGATAN_SANDI       sandi bebas; juga diketik di HP Ibu
+#   PERINGATAN_EMAIL       email kontak untuk layanan push (VAPID)
+#   TOMTOM_KEY             (opsional) kunci TomTom untuk cek macet
+# Kunci VAPID dibuat sekali di sini dan hanya disimpan sebagai secret Worker
+# (tidak pernah dicetak di log).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: peringatan
+  cancel-in-progress: false
+
+jobs:
+  pasang:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SANDI: ${{ secrets.PERINGATAN_SANDI }}
+      EMAIL: ${{ secrets.PERINGATAN_EMAIL }}
+      TOMTOM: ${{ secrets.TOMTOM_KEY }}
+      NAMA: hallo-shanti-peringatan
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Periksa secret
+        run: |
+          kurang=""
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || kurang="$kurang CLOUDFLARE_API_TOKEN"
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || kurang="$kurang CLOUDFLARE_ACCOUNT_ID"
+          [ -n "$SANDI" ] || kurang="$kurang PERINGATAN_SANDI"
+          [ -n "$EMAIL" ] || kurang="$kurang PERINGATAN_EMAIL"
+          if [ -n "$kurang" ]; then echo "::error::Secret belum diisi:$kurang"; exit 1; fi
+          [ -n "$TOMTOM" ] || echo "::warning::TOMTOM_KEY kosong: server tidak mengecek macet (peringatan waktu pulang & baterai tetap jalan)."
+
+      - name: Uji kode server
+        working-directory: .
+        run: node tests/worker.mjs
+
+      - name: KV (dibuat sekali)
+        run: |
+          API="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/storage/kv/namespaces"
+          AUTH="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
+          id=$(curl -fsS -H "$AUTH" "$API?per_page=100" | jq -r --arg t "$NAMA" '.result[] | select(.title==$t) | .id' | head -1)
+          if [ -z "$id" ]; then
+            id=$(curl -fsS -X POST -H "$AUTH" -H "Content-Type: application/json" --data "{\"title\":\"$NAMA\"}" "$API" | jq -r '.result.id')
+            echo "KV baru dibuat."
+          fi
+          [ -n "$id" ] && [ "$id" != "null" ] || { echo "::error::Gagal membuat/menemukan KV (cek izin token: Workers KV Storage Edit)"; exit 1; }
+          sed -i "s/GANTI_DENGAN_ID_KV/$id/" wrangler.toml
+          grep -q "$id" wrangler.toml
+
+      - name: Pasang Worker
+        run: npx --yes wrangler@4 deploy
+
+      - name: Secret Worker
+        run: |
+          AUTH="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
+          ada=$(curl -fsS -H "$AUTH" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$NAMA/secrets" | jq -r '.result[].name' || true)
+          if ! echo "$ada" | grep -qx VAPID_PRIVATE; then
+            # kunci VAPID dibuat sekali; tidak dicetak ke log
+            node --input-type=module -e '
+              const kp = await crypto.subtle.generateKey({ name:"ECDSA", namedCurve:"P-256" }, true, ["sign"]);
+              const pub = Buffer.from(await crypto.subtle.exportKey("raw", kp.publicKey)).toString("base64url");
+              const d = (await crypto.subtle.exportKey("jwk", kp.privateKey)).d;
+              (await import("node:fs")).writeFileSync(process.env.RUNNER_TEMP + "/vapid.json", JSON.stringify({ pub, d }));'
+            pub=$(jq -r .pub "$RUNNER_TEMP/vapid.json"); priv=$(jq -r .d "$RUNNER_TEMP/vapid.json")
+            echo "::add-mask::$priv"
+            printf '%s' "$pub"  | npx --yes wrangler@4 secret put VAPID_PUBLIC
+            printf '%s' "$priv" | npx --yes wrangler@4 secret put VAPID_PRIVATE
+            rm -f "$RUNNER_TEMP/vapid.json"
+            echo "Kunci VAPID baru dibuat."
+          else
+            echo "Kunci VAPID sudah ada (tidak diganti, langganan HP tetap berlaku)."
+          fi
+          printf '%s' "$SANDI" | npx --yes wrangler@4 secret put SANDI
+          printf '%s' "mailto:$EMAIL" | npx --yes wrangler@4 secret put VAPID_SUBJECT
+          if [ -n "$TOMTOM" ]; then printf '%s' "$TOMTOM" | npx --yes wrangler@4 secret put TOMTOM_KEY; fi
+
+      - name: Alamat server & cek
+        run: |
+          sub=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" | jq -r '.result.subdomain')
+          url="https://$NAMA.$sub.workers.dev"
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS "$url/vapid" | jq -e .publik >/dev/null 2>&1; then ok=1; break; fi; sleep 10
+          done
+          {
+            echo "## Server peringatan"
+            if [ -n "$ok" ]; then echo "Terpasang dan menjawab: **$url**"; else echo "Terpasang, tapi $url belum menjawab /vapid (tunggu 1-2 menit lalu buka $url/vapid di browser)."; fi
+            echo ""
+            echo "Di HP Ibu: Pengaturan anak > Peringatan di HP > isi **Alamat server** di atas dan **Sandi server** (PERINGATAN_SANDI), lalu Sambungkan dan Kirim tes."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Alamat server: $url"

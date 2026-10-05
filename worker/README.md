@@ -20,7 +20,24 @@ Jam mulai pulang, jam pulang, batas mulai pulang (22:00 / keluar Jakarta
 dan perkiraan kapan baterai menipis. Tidak ada catatan setoran. Data
 rencana terhapus sendiri setelah 36 jam.
 
-## Pasang (sekali, ±15 menit)
+## Pasang lewat GitHub (paling mudah, tanpa komputer)
+
+1. Cloudflare: **My Profile → API Tokens → Create Token** → template
+   **"Edit Cloudflare Workers"**. Salin token + **Account ID**.
+   (Jangan tempel token di chat/pesan mana pun.)
+2. GitHub, repo ini: **Settings → Secrets and variables → Actions → New
+   repository secret**, isi: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`,
+   `PERINGATAN_SANDI` (sandi bebas), `PERINGATAN_EMAIL`, `TOMTOM_KEY`
+   (opsional).
+3. Tab **Actions → Pasang server peringatan → Run workflow**. Ringkasan
+   hasilnya menampilkan **alamat server**.
+4. Di HP Ibu: Pengaturan anak › Peringatan di HP → alamat + sandi →
+   **Sambungkan** → **Kirim tes**.
+
+Workflow yang sama dijalankan lagi untuk memperbarui server (kunci VAPID
+dipertahankan, jadi HP tidak perlu menyambung ulang).
+
+## Pasang dari komputer (cara lain, ±15 menit)
 
 Butuh: akun Cloudflare (gratis) dan Node.js di komputer.
 
