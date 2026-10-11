@@ -105,9 +105,14 @@ plus token). Pencarian web harus tidak dimatikan admin di Settings → Privacy.
 2. Buat token: GitHub → Settings → Developer settings → **Fine-grained tokens** →
    Generate. Repository access: *Only select repositories* → repo tadi.
    Permissions → Repository → **Contents: Read and write**. Masa berlaku sesuai selera.
-3. Di aplikasi: tab **Catatan → Terhubung ke anak → isi repo dan token → Simpan**.
-   Setiap "Simpan hari ini" menulis `catatan/shanti.json` ke repo itu. Kalau
-   ganti HP, atur token di HP baru dan catatannya kembali sendiri.
+3. Di HP Ibu: gulir ke **paling bawah** halaman (tab mana saja) → ketuk
+   **Pengaturan anak** → bagian **Sinkron catatan ke GitHub** → Repo (bawaan
+   `chrissdr1/buku-setoran-data`) dan **Token akses** → **Simpan**. Status
+   harus menjadi "Repo privat, token diterima." lalu "Tersinkron … · N hari di
+   repo". Setiap "Simpan hari ini" menulis `catatan/shanti.json` ke repo itu;
+   catatan lama di HP ikut terkirim. Kalau ganti HP, atur token di HP baru
+   dan catatannya kembali sendiri. Token kedaluwarsa = status "Token ditolak
+   GitHub": buat token baru dan simpan lagi.
 
 ### 2b. Lapisan kemacetan TomTom di peta (opsional)
 
