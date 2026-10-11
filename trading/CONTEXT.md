@@ -1,33 +1,17 @@
 # Trading — konteks kerja
 
-Terakhir diperbarui: 2026-10-11 (kerangka awal, belum diisi).
+Terakhir diperbarui: 2026-10-11.
 
-**Hanya status non-sensitif di file ini.** Angka performa, parameter strategi,
-dan detail broker masuk ke repo privat, bukan ke sini.
-
-## Tujuan
-
-_Belum diisi._
-
-## Status sekarang
-
-_Belum diisi. Isi dalam satu kalimat per sistem: sedang riset, sudah backtest,
-paper trading, atau live._
-
-## Keputusan yang sudah diambil
-
-_Belum diisi. Format: tanggal — keputusan — alasan singkat._
-
-## Tugas terbuka
-
-_Belum diisi._
-
-## Lokasi
-
-- Sesi Claude: lihat `_office/REGISTRI.md`, bagian Trading.
-- Kode dan data: _belum diisi (repo privat?)._
+**Status dan detail ada di repo privat `chrissdr1/kantor-data`** (`trading/CONTEXT.md`).
+File ini sengaja tidak memuat performa, parameter strategi, atau status sistem,
+karena repo ini publik.
 
 ## Aturan tetap
 
 - Tidak ada eksekusi order live tanpa persetujuan manual.
-- Tidak ada kredensial di repo mana pun.
+- Tidak ada kredensial atau data broker di repo mana pun.
+
+## Lokasi
+
+- Status dan keputusan: `chrissdr1/kantor-data`, folder `trading/`.
+- Sesi Claude: lihat `_office/REGISTRI.md`, bagian Trading.

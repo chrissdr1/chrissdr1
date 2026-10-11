@@ -1,28 +1,15 @@
 # Produk digital — konteks kerja
 
-Terakhir diperbarui: 2026-10-11 (kerangka awal, belum diisi).
+Terakhir diperbarui: 2026-10-11.
 
-## Tujuan
-
-_Belum diisi._
-
-## Produk dan status
-
-_Belum diisi. Satu baris per produk: nama, tahap (ide, dibuat, dijual), kanal (Etsy, Lynk.id, lainnya)._
-
-## Keputusan yang sudah diambil
-
-_Belum diisi. Format: tanggal — keputusan — alasan singkat._
-
-## Tugas terbuka
-
-_Belum diisi._
-
-## Lokasi
-
-- Sesi Claude: lihat `_office/REGISTRI.md`, bagian Produk digital.
-- Berkas produk: _belum diisi._
+**Status dan detail ada di repo privat `chrissdr1/kantor-data`** (`digital-produk/CONTEXT.md`).
+File ini tidak memuat status toko, dokumen legal, atau angka penjualan, karena repo ini publik.
 
 ## Aturan tetap
 
-- Dokumen legal (Impressum, Widerrufsbelehrung, Datenschutzerklärung) dibuat atau diverifikasi oleh pihak yang berwenang sebelum dipublikasikan.
+- Dokumen legal sebelum publikasi dibuat atau diverifikasi oleh pihak yang berwenang.
+
+## Lokasi
+
+- Status dan keputusan: `chrissdr1/kantor-data`, folder `digital-produk/`.
+- Sesi Claude: lihat `_office/REGISTRI.md`, bagian Produk digital.
